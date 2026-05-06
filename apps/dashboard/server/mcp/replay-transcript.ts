@@ -134,12 +134,9 @@ export function buildReplayTranscript(
       truncated: false,
     }
   }
-  // maxBytes is wired here so later tasks (Task 6) can reference it without
-  // altering the function signature.
   const maxBytes =
     opts.maxBytes ??
     (opts.verbosity === "summary" ? DEFAULT_MAX_BYTES_SUMMARY : DEFAULT_MAX_BYTES_DETAILED)
-  void maxBytes
 
   const dom = buildDomMapFromFullSnapshot(events)
   const startTs = events[0]!.timestamp
@@ -203,14 +200,22 @@ export function buildReplayTranscript(
   }
   flushInput()
 
-  const transcript =
-    `Replay (${((endTs - startTs) / 1000).toFixed(1)}s, ${events.length} events)\n\n` +
-    lines.join("\n")
-
+  const header = `Replay (${((endTs - startTs) / 1000).toFixed(1)}s, ${events.length} events)\n\n`
+  let body = lines.join("\n")
+  let truncated = false
+  if ((header + body).length > maxBytes) {
+    truncated = true
+    const budget = maxBytes - header.length - 40
+    const halfBudget = Math.max(0, Math.floor(budget / 2))
+    const headSlice = body.slice(0, halfBudget)
+    const tailSlice = body.slice(body.length - halfBudget)
+    const omitted = lines.length - headSlice.split("\n").length - tailSlice.split("\n").length
+    body = `${headSlice}\n… (${Math.max(omitted, 0)} events omitted) …\n${tailSlice}`
+  }
   return {
-    transcript,
+    transcript: header + body,
     eventCount: events.length,
     durationMs: endTs - startTs,
-    truncated: false,
+    truncated,
   }
 }

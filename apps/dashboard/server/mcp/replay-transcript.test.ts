@@ -27,4 +27,12 @@ describe("buildReplayTranscript", () => {
     expect(out.transcript).toContain("console.error")
     expect(out.transcript).toContain("loaded /checkout/error")
   })
+
+  it("truncates output past maxBytes and sets the flag", async () => {
+    const fixture = await Bun.file(`${import.meta.dir}/__fixtures__/oversized.json`).json()
+    const out = buildReplayTranscript(fixture.events, { verbosity: "summary" })
+    expect(out.truncated).toBe(true)
+    expect(out.transcript.length).toBeLessThanOrEqual(4 * 1024 + 200)
+    expect(out.transcript).toContain("events omitted")
+  })
 })
