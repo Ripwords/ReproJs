@@ -25,11 +25,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const handler = oauthProviderAuthServerMetadata(auth)
-  const req = event.node.req
-  const url = `${req.headers["x-forwarded-proto"] ?? "http"}://${req.headers.host}${req.url}`
-  const response = await handler(
-    new Request(url, { method: "GET", headers: req.headers as HeadersInit }),
-  )
+  // The Request URL only needs to be parseable; the OAuth metadata response is
+  // populated from auth's internal config (which uses env.BETTER_AUTH_URL).
+  // We deliberately do NOT reconstruct the URL from request headers
+  // (x-forwarded-proto, host) — those are user-controllable and an attacker
+  // who can inject them could trick clients into validating tokens against
+  // a wrong issuer.
+  const discoveryUrl = `${env.BETTER_AUTH_URL}/.well-known/oauth-authorization-server/api/auth`
+  const response = await handler(new Request(discoveryUrl, { method: "GET" }))
 
   event.node.res.statusCode = response.status
   response.headers.forEach((value, key) => {
