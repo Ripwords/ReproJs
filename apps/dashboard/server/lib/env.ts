@@ -98,6 +98,12 @@ const Schema = z.object({
   REPLAY_FEATURE_ENABLED: boolString.default(true),
   INTAKE_REPLAY_MAX_BYTES: intString(1_048_576),
 
+  // MCP — feature gate + tunables. Phase 1 ships behind MCP_ENABLED=false; we
+  // flip the default in Phase 4 once the full surface is shipped & tested.
+  MCP_ENABLED: boolString.default(false),
+  MCP_ACCESS_TOKEN_TTL_SECONDS: intString(3600),
+  MCP_RATE_LIMIT_PER_USER_PER_MINUTE: intString(600),
+
   // Auth rate limit — tri-state: explicit true/false overrides the
   // production-default. Represented as optional so the derived
   // `authRateLimitEnabled` export can distinguish "unset" from "false".
