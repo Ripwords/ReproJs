@@ -32,6 +32,11 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, Body.parse)
 
   const url = new URL(`${env.BETTER_AUTH_URL}/api/auth/oauth2/consent`)
+  // better-auth's oauthProvider requires an Origin header on the consent
+  // endpoint to protect against CSRF. Forward the incoming Origin if present,
+  // or use the BETTER_AUTH_URL origin as a fallback (this request comes from
+  // our own frontend, so the origin is known and trusted).
+  const origin = event.headers.get("origin") ?? new URL(env.BETTER_AUTH_URL).origin
   const res = await auth.handler(
     new Request(url, {
       method: "POST",
@@ -39,6 +44,7 @@ export default defineEventHandler(async (event) => {
         "Content-Type": "application/json",
         accept: "application/json",
         cookie: event.headers.get("cookie") ?? "",
+        origin,
       },
       body: JSON.stringify({
         accept: body.allow,
@@ -54,6 +60,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const json = (await res.json()) as { redirect_uri: string }
-  return { redirectUri: json.redirect_uri }
+  // better-auth's /oauth2/consent handler returns { redirect: true, url: "..." }
+  // (not { redirect_uri }) — the `url` field is the authorization code redirect.
+  const json = (await res.json()) as { redirect: boolean; url: string }
+  return { redirectUri: json.url }
 })

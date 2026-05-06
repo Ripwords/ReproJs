@@ -5,11 +5,17 @@ import { env } from "../lib/env"
 import { buildContextFromJwt } from "../mcp/context"
 import { buildMcpServer } from "../mcp/server"
 
+// better-auth mounts the auth handler at /api/auth, so the JWT issuer is
+// BETTER_AUTH_URL + "/api/auth" (better-auth sets iss = ctx.context.baseURL,
+// and baseURL in auth.ts is configured as env.BETTER_AUTH_URL which Nitro
+// then appends "/api/auth" to during the handler registration).
+const ISSUER = `${env.BETTER_AUTH_URL}/api/auth`
+
 const handler = mcpHandler(
   {
     jwksUrl: `${env.BETTER_AUTH_URL}/api/auth/jwks`,
     verifyOptions: {
-      issuer: env.BETTER_AUTH_URL,
+      issuer: ISSUER,
       audience: `${env.BETTER_AUTH_URL}/api/mcp`,
     },
   },
