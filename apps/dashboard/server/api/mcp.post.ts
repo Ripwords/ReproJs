@@ -33,7 +33,10 @@ export default defineEventHandler(async (event) => {
   const init: RequestInit = {
     method: "POST",
     headers: event.headers,
-    body: rawBody ? new Uint8Array(rawBody) : undefined,
+  }
+  if (rawBody !== undefined) {
+    const buf = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody, "utf-8")
+    init.body = new Uint8Array(buf)
   }
   const res = await handler(new Request(url, init))
   return sendWebResponse(event, res)
