@@ -1,10 +1,12 @@
+import { gunzipSync } from "node:zlib"
 import { z } from "zod"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { db } from "../../db"
 import { reports, reportAttachments } from "../../db/schema"
 import { requireProjectRoleByUser } from "../../lib/permissions"
 import { mcpError } from "../errors"
 import { getStorage } from "../../lib/storage"
+import { buildReplayTranscript, type RrwebEvent } from "../replay-transcript"
 import type { McpRequestContext } from "../context"
 
 const SCREENSHOT_MAX_BYTES = 1024 * 1024 // 1 MB
@@ -60,6 +62,77 @@ export const getScreenshotTool = {
           type: "image" as const,
           data: base64,
           mimeType: chosen.contentType,
+        },
+      ],
+    }
+  },
+}
+
+export const getReplayTranscriptTool = {
+  name: "repro_get_replay_transcript",
+  config: {
+    description:
+      "Re-fetch the textual replay timeline for a ticket. The 'summary' verbosity (default) matches the inline transcript in repro_get_ticket; 'detailed' includes more event types like focus/blur and DOM mutation counts.",
+    inputSchema: z.object({
+      ticketId: z.string().uuid(),
+      verbosity: z.enum(["summary", "detailed"]).optional(),
+    }),
+  },
+  handler: async (
+    input: { ticketId: string; verbosity?: "summary" | "detailed" },
+    ctx: McpRequestContext,
+  ) => {
+    const [report] = await db
+      .select({ projectId: reports.projectId })
+      .from(reports)
+      .where(eq(reports.id, input.ticketId))
+      .limit(1)
+    if (!report) throw mcpError("NOT_FOUND", `ticket ${input.ticketId} not found`)
+    await requireProjectRoleByUser(ctx.userId, report.projectId, "viewer")
+
+    const [replayAttachment] = await db
+      .select({
+        storageKey: reportAttachments.storageKey,
+      })
+      .from(reportAttachments)
+      .where(
+        and(eq(reportAttachments.reportId, input.ticketId), eq(reportAttachments.kind, "replay")),
+      )
+      .limit(1)
+    if (!replayAttachment) {
+      throw mcpError("NOT_FOUND", `no replay captured for ticket ${input.ticketId}`)
+    }
+
+    const storage = await getStorage()
+    const obj = await storage.get(replayAttachment.storageKey)
+    let events: RrwebEvent[]
+    try {
+      const decompressed = gunzipSync(Buffer.from(obj.bytes))
+      events = JSON.parse(decompressed.toString("utf-8")) as RrwebEvent[]
+    } catch (e) {
+      throw mcpError(
+        "INVALID_INPUT",
+        `replay attachment for ticket ${input.ticketId} could not be decoded: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      )
+    }
+    const t = buildReplayTranscript(events, { verbosity: input.verbosity ?? "summary" })
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(
+            {
+              transcript: t.transcript,
+              eventCount: t.eventCount,
+              durationMs: t.durationMs,
+              truncated: t.truncated,
+              verbosity: input.verbosity ?? "summary",
+            },
+            null,
+            2,
+          ),
         },
       ],
     }
