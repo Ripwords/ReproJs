@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { eq } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 import { db } from "../../db"
 import { projects, projectMembers, user } from "../../db/schema"
 import type { McpRequestContext } from "../context"
@@ -21,7 +21,10 @@ export const listProjectsTool = {
       .limit(1)
 
     if (actor?.role === "admin") {
-      const all = await db.select({ id: projects.id, name: projects.name }).from(projects)
+      const all = await db
+        .select({ id: projects.id, name: projects.name })
+        .from(projects)
+        .where(isNull(projects.deletedAt))
       return {
         content: [
           {
@@ -44,7 +47,7 @@ export const listProjectsTool = {
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-      .where(eq(projectMembers.userId, ctx.userId))
+      .where(and(eq(projectMembers.userId, ctx.userId), isNull(projects.deletedAt)))
 
     return {
       content: [{ type: "text" as const, text: JSON.stringify(memberships, null, 2) }],
