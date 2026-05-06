@@ -207,3 +207,46 @@ export const getReplayRawTool = {
     }
   },
 }
+
+// SharedReportContext shape (from packages/shared) — narrowed locally.
+interface ReportContextWithCookies {
+  cookies?: Array<{
+    name: string
+    value: string
+    domain?: string
+    path?: string
+    secure?: boolean
+    httpOnly?: boolean
+    sameSite?: string
+  }>
+}
+
+export const getTicketCookiesTool = {
+  name: "repro_get_ticket_cookies",
+  config: {
+    description:
+      "Fetch the cookies captured at report time for a ticket. WARNING: cookies often contain session tokens from the host application — handle this output with care. Returns an empty array if no cookies were captured. (Cookies are deliberately omitted from repro_get_ticket to require an explicit opt-in here.)",
+    inputSchema: z.object({
+      ticketId: z.string().uuid(),
+    }),
+  },
+  handler: async (input: { ticketId: string }, ctx: McpRequestContext) => {
+    const [report] = await db
+      .select({
+        projectId: reports.projectId,
+        context: reports.context,
+      })
+      .from(reports)
+      .where(eq(reports.id, input.ticketId))
+      .limit(1)
+    if (!report) throw mcpError("NOT_FOUND", `ticket ${input.ticketId} not found`)
+    await requireProjectRoleByUser(ctx.userId, report.projectId, "viewer")
+
+    const ctxJson = (report.context ?? {}) as ReportContextWithCookies
+    const cookies = ctxJson.cookies ?? []
+
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ cookies }, null, 2) }],
+    }
+  },
+}
