@@ -1,5 +1,6 @@
 import { z } from "zod"
-import { eq } from "drizzle-orm"
+import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm"
+import { encodeCursor, decodeCursor } from "../cursor"
 import { gunzipSync } from "node:zlib"
 import { db } from "../../db"
 import { reports, reportAttachments } from "../../db/schema"
@@ -123,6 +124,125 @@ export const getTicketTool = {
 
     return {
       content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
+    }
+  },
+}
+
+export const listTicketsTool = {
+  name: "repro_list_tickets",
+  config: {
+    description:
+      "List Repro tickets (reports) in a project, newest first. Supports filtering by status, priority, tags, free-text search, and cursor pagination. Returns up to 50 items per page.",
+    inputSchema: z.object({
+      projectId: z.string().uuid(),
+      status: z
+        .array(z.enum(["open", "in_progress", "resolved", "closed"]))
+        .optional()
+        .describe("Filter to these statuses (default: any)."),
+      priority: z
+        .array(z.enum(["low", "normal", "high", "urgent"]))
+        .optional()
+        .describe("Filter to these priorities (default: any)."),
+      tag: z
+        .array(z.string())
+        .optional()
+        .describe("Filter to tickets containing ALL of these tags."),
+      query: z
+        .string()
+        .optional()
+        .describe("Case-insensitive substring match on title/description."),
+      cursor: z.string().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+    }),
+  },
+  handler: async (
+    input: {
+      projectId: string
+      status?: string[]
+      priority?: string[]
+      tag?: string[]
+      query?: string
+      cursor?: string
+      limit?: number
+    },
+    ctx: McpRequestContext,
+  ) => {
+    await requireProjectRoleByUser(ctx.userId, input.projectId, "viewer")
+    const limit = input.limit ?? 25
+    const decodedCursor = input.cursor ? decodeCursor(input.cursor) : null
+
+    const conditions = [eq(reports.projectId, input.projectId)]
+    if (input.status?.length) {
+      conditions.push(
+        inArray(reports.status, input.status as ("open" | "in_progress" | "resolved" | "closed")[]),
+      )
+    }
+    if (input.priority?.length) {
+      conditions.push(
+        inArray(reports.priority, input.priority as ("low" | "normal" | "high" | "urgent")[]),
+      )
+    }
+    if (input.tag?.length) {
+      // tags @> ARRAY[$tags] — Postgres array-contains.
+      conditions.push(sql`${reports.tags} @> ${input.tag}::text[]`)
+    }
+    if (input.query) {
+      const needle = `%${input.query.toLowerCase()}%`
+      conditions.push(
+        sql`(lower(${reports.title}) LIKE ${needle} OR lower(coalesce(${reports.description}, '')) LIKE ${needle})`,
+      )
+    }
+    if (decodedCursor) {
+      // Keyset pagination: rows strictly after the cursor in (createdAt DESC, id DESC).
+      conditions.push(
+        or(
+          lt(reports.createdAt, decodedCursor.createdAt),
+          and(eq(reports.createdAt, decodedCursor.createdAt), lt(reports.id, decodedCursor.id)),
+        )!,
+      )
+    }
+
+    const rows = await db
+      .select({
+        id: reports.id,
+        title: reports.title,
+        status: reports.status,
+        priority: reports.priority,
+        tags: reports.tags,
+        githubIssueNumber: reports.githubIssueNumber,
+        githubIssueUrl: reports.githubIssueUrl,
+        createdAt: reports.createdAt,
+        updatedAt: reports.updatedAt,
+      })
+      .from(reports)
+      .where(and(...conditions))
+      .orderBy(desc(reports.createdAt), desc(reports.id))
+      .limit(limit + 1)
+
+    const hasMore = rows.length > limit
+    const page = rows.slice(0, limit)
+    const nextCursor =
+      hasMore && page.length > 0
+        ? encodeCursor({
+            createdAt: page[page.length - 1]!.createdAt,
+            id: page[page.length - 1]!.id,
+          })
+        : null
+
+    const items = page.map((r) => ({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      priority: r.priority,
+      tags: r.tags,
+      github: r.githubIssueNumber
+        ? { issueNumber: r.githubIssueNumber, issueUrl: r.githubIssueUrl ?? null }
+        : null,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+    }))
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ items, nextCursor }, null, 2) }],
     }
   },
 }
