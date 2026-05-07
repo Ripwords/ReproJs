@@ -186,6 +186,11 @@ export const TriagePatchInput = z
   )
 export type TriagePatchInput = z.infer<typeof TriagePatchInput>
 
+export const CreateCommentBody = z.object({
+  body: z.string().min(1).max(65_536),
+})
+export type CreateCommentBody = z.infer<typeof CreateCommentBody>
+
 export const BulkUpdateInput = z
   .object({
     reportIds: z.array(z.uuid()).min(1).max(100),

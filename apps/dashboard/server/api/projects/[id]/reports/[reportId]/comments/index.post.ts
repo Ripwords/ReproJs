@@ -6,17 +6,13 @@ import {
   readValidatedBody,
   setResponseStatus,
 } from "h3"
-import { z } from "zod"
+import { CreateCommentBody } from "@reprojs/shared"
 import { db } from "../../../../../../db"
 import {
   addReportComment,
   addReportCommentSideEffects,
 } from "../../../../../../lib/comments-service"
 import { requireProjectRole } from "../../../../../../lib/permissions"
-
-const CreateCommentBody = z.object({
-  body: z.string().min(1).max(65_536),
-})
 
 export default defineEventHandler(async (event) => {
   const projectId = getRouterParam(event, "id")
