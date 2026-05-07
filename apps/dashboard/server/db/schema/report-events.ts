@@ -16,6 +16,7 @@ export const reportEvents = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     actorId: text("actor_id"),
+    actorClientId: text("actor_client_id"),
     kind: text("kind", {
       enum: [
         "status_changed",
@@ -23,6 +24,7 @@ export const reportEvents = pgTable(
         "priority_changed",
         "tag_added",
         "tag_removed",
+        "github_linked",
         "github_unlinked",
         "assignee_added",
         "assignee_removed",

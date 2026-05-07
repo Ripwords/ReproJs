@@ -13,6 +13,7 @@ export const reportComments = pgTable(
       .references(() => reports.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
     githubLogin: text("github_login"),
+    actorClientId: text("actor_client_id"),
     body: text("body").notNull(),
     githubCommentId: bigint("github_comment_id", { mode: "number" }).unique(),
     source: reportCommentSources("source").notNull(),
