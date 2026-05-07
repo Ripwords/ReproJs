@@ -14,6 +14,11 @@ const userItems = computed(() => [
       icon: "i-heroicons-user",
       to: "/settings/account",
     },
+    {
+      label: "AI assistants (MCP)",
+      icon: "i-heroicons-cpu-chip",
+      to: "/settings/mcp",
+    },
   ],
   [
     {

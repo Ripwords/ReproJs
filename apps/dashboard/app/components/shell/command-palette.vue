@@ -133,11 +133,18 @@ const navGroup = computed<CommandGroup>(() => {
     )
   }
 
-  items.push({
-    label: "Account",
-    icon: "i-heroicons-user",
-    onSelect: () => go("/settings/account"),
-  })
+  items.push(
+    {
+      label: "Account",
+      icon: "i-heroicons-user",
+      onSelect: () => go("/settings/account"),
+    },
+    {
+      label: "AI assistants (MCP)",
+      icon: "i-heroicons-cpu-chip",
+      onSelect: () => go("/settings/mcp"),
+    },
+  )
 
   if (isAdmin.value) {
     items.push(
