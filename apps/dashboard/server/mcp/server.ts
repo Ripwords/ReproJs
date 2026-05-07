@@ -9,6 +9,12 @@ import {
   getReplayRawTool,
   getTicketCookiesTool,
 } from "./tools/reports"
+import {
+  updateTicketTool,
+  addCommentTool,
+  linkGithubIssueTool,
+  unlinkGithubIssueTool,
+} from "./tools/writes"
 import type { McpRequestContext } from "./context"
 import { McpToolError } from "./errors"
 
@@ -112,6 +118,50 @@ export function buildMcpServer(ctx: McpRequestContext): McpServer {
     try {
       return await getTicketCookiesTool.handler(
         input as Parameters<typeof getTicketCookiesTool.handler>[0],
+        ctx,
+      )
+    } catch (err) {
+      return toolErrorResult(err)
+    }
+  })
+
+  server.registerTool(updateTicketTool.name, updateTicketTool.config, async (input) => {
+    try {
+      return await updateTicketTool.handler(
+        input as Parameters<typeof updateTicketTool.handler>[0],
+        ctx,
+      )
+    } catch (err) {
+      return toolErrorResult(err)
+    }
+  })
+
+  server.registerTool(addCommentTool.name, addCommentTool.config, async (input) => {
+    try {
+      return await addCommentTool.handler(
+        input as Parameters<typeof addCommentTool.handler>[0],
+        ctx,
+      )
+    } catch (err) {
+      return toolErrorResult(err)
+    }
+  })
+
+  server.registerTool(linkGithubIssueTool.name, linkGithubIssueTool.config, async (input) => {
+    try {
+      return await linkGithubIssueTool.handler(
+        input as Parameters<typeof linkGithubIssueTool.handler>[0],
+        ctx,
+      )
+    } catch (err) {
+      return toolErrorResult(err)
+    }
+  })
+
+  server.registerTool(unlinkGithubIssueTool.name, unlinkGithubIssueTool.config, async (input) => {
+    try {
+      return await unlinkGithubIssueTool.handler(
+        input as Parameters<typeof unlinkGithubIssueTool.handler>[0],
         ctx,
       )
     } catch (err) {
