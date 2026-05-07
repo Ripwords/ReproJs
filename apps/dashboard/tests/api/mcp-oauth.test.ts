@@ -133,10 +133,13 @@ describe("MCP OAuth + Streamable HTTP", () => {
     await client.connect(transport)
 
     const tools = await client.listTools()
-    expect(tools.tools.map((t) => t.name).toSorted()).toEqual([
-      "repro_get_ticket",
-      "repro_list_projects",
-    ])
+    const toolNames = tools.tools.map((t) => t.name)
+    // Phase 1 acceptance: the two read tools the OAuth-flow proves can be
+    // round-tripped. Later phases extend the registry; assert the Phase 1
+    // tools are present without freezing the total count.
+    expect(toolNames).toContain("repro_list_projects")
+    expect(toolNames).toContain("repro_get_ticket")
+    expect(toolNames.length).toBeGreaterThanOrEqual(2)
 
     const listResult = await client.callTool({
       name: "repro_list_projects",
