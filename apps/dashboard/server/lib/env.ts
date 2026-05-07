@@ -98,9 +98,11 @@ const Schema = z.object({
   REPLAY_FEATURE_ENABLED: boolString.default(true),
   INTAKE_REPLAY_MAX_BYTES: intString(1_048_576),
 
-  // MCP — feature gate + tunables. Phase 1 ships behind MCP_ENABLED=false; we
-  // flip the default in Phase 4 once the full surface is shipped & tested.
-  MCP_ENABLED: boolString.default(false),
+  // MCP — feature gate + tunables. Default-on as of v0.6.0. Operators who
+  // want to disable MCP entirely can set MCP_ENABLED=false; that hides the
+  // /api/mcp route + discovery endpoints + oauth-provider plugin without
+  // touching the dashboard's other auth flows.
+  MCP_ENABLED: boolString.default(true),
   MCP_ACCESS_TOKEN_TTL_SECONDS: intString(3600),
   MCP_RATE_LIMIT_PER_USER_PER_MINUTE: intString(600),
 
