@@ -7,7 +7,9 @@ import { githubIntegrations, projects, reportEvents, reports, user } from "../..
 import { requireInstallAdmin } from "../../lib/permissions"
 
 const DAY_MS = 86_400_000
+// 7-day recency window (last7Days count + newLast7Count per-project filter).
 const VOLUME_DAYS = 7
+// 30-day window for the daily report-volume trend series.
 const TREND_DAYS = 30
 
 function startOfUtcDay(d: Date): Date {
@@ -148,7 +150,7 @@ export default defineEventHandler(async (event): Promise<AdminOverviewDTO> => {
       .from(reports)
       .innerJoin(projects, eq(projects.id, reports.projectId))
       .where(and(isNull(projects.deletedAt), gte(reports.createdAt, trendStart)))
-      .groupBy(sql`1`),
+      .groupBy(sql`to_char(${reports.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`),
   ])
 
   const total = totalRows[0]?.total ?? 0

@@ -149,6 +149,8 @@ describe("GET /api/admin/overview", () => {
     expect(body.recentReports).toEqual([])
     expect(body.recentEvents).toEqual([])
     expect(body.perProject).toEqual([])
+    expect(body.volume.length).toBe(30)
+    expect(body.volume.every((v) => v.count === 0)).toBe(true)
   })
 
   test("recentReports caps at 10", async () => {
@@ -243,14 +245,16 @@ describe("GET /api/admin/overview", () => {
       expect(cur - prev).toBe(DAY)
     }
 
-    const todayStr = new Date(now).toISOString().slice(0, 10)
-    const day3Str = new Date(now - 3 * DAY).toISOString().slice(0, 10)
+    // Anchor on the response's own last day to avoid a 00:00-UTC race
+    // between capturing `now` and the server handling the request.
+    const todayStr = body.volume[body.volume.length - 1]!.date
+    const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime()
+    const day3Str = new Date(todayMs - 3 * DAY).toISOString().slice(0, 10)
+    const day10Str = new Date(todayMs - 10 * DAY).toISOString().slice(0, 10)
     const byDate = Object.fromEntries(body.volume.map((v) => [v.date, v.count]))
 
-    expect(body.volume[body.volume.length - 1]!.date).toBe(todayStr)
     expect(byDate[todayStr]).toBe(2)
     expect(byDate[day3Str]).toBe(1)
-    const day10Str = new Date(now - 10 * DAY).toISOString().slice(0, 10)
     expect(byDate[day10Str]).toBe(0)
   })
 
