@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.1
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.0...v0.6.1)
+
+### 🩹 Fixes
+
+- **dashboard:** Correct horizontal bar axis + donut segment slivers ([0009331](https://github.com/Ripwords/ReproJs/commit/0009331))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## v0.6.0
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.5.2...v0.6.0)
