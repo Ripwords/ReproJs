@@ -52,3 +52,6 @@ docs/.vitepress/cache
 
 apps/extension/public/repro.iife.js
 apps/extension/public/icons/
+
+# CodeGraph MCP index (generated, machine-local)
+.codegraph/
