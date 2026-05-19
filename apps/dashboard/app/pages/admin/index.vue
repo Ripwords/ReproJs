@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Orientation } from "@unovis/ts"
 import type { AdminOverviewDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
 import { priorityColor, relativeTime } from "~/composables/use-report-format"
@@ -220,7 +221,7 @@ function describeEvent(e: AdminOverviewDTO["recentEvents"][number]): string {
               :height="240"
               :categories="topProjectsCategories"
               :y-axis="['open']"
-              orientation="horizontal"
+              :orientation="Orientation.Horizontal"
               :x-formatter="topProjectsXFormatter"
             />
             <div v-else class="text-sm text-muted py-10 text-center">No open reports yet.</div>
