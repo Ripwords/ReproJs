@@ -1,5 +1,117 @@
 # Changelog
 
+## v0.6.0
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.5.2...v0.6.0)
+
+### 🚀 Enhancements
+
+- **mcp:** Add MCP_ENABLED + tunable env vars ([2a56bb0](https://github.com/Ripwords/ReproJs/commit/2a56bb0))
+- **mcp:** Scaffold replay transcript reducer ([0efdc09](https://github.com/Ripwords/ReproJs/commit/0efdc09))
+- **mcp:** Build DOM map from FullSnapshot for selector resolution ([2c3567c](https://github.com/Ripwords/ReproJs/commit/2c3567c))
+- **mcp:** Emit navigation, coalesced inputs, console.error ([26f859f](https://github.com/Ripwords/ReproJs/commit/26f859f))
+- **mcp:** Cap transcript size with middle truncation ([0384931](https://github.com/Ripwords/ReproJs/commit/0384931))
+- **auth:** Add requireProjectRoleByUser for non-H3 callers ([db1b076](https://github.com/Ripwords/ReproJs/commit/db1b076))
+- **mcp:** Wire oauth-provider + jwt plugins behind MCP_ENABLED ([c3a29ba](https://github.com/Ripwords/ReproJs/commit/c3a29ba))
+- **mcp:** Add OAuth consent page + decision endpoint ([f8583b6](https://github.com/Ripwords/ReproJs/commit/f8583b6))
+- **mcp:** Add McpToolError + helper ([400c570](https://github.com/Ripwords/ReproJs/commit/400c570))
+- **mcp:** Add JWT → request context builder ([439314e](https://github.com/Ripwords/ReproJs/commit/439314e))
+- **mcp:** Add repro_list_projects tool ([41239b5](https://github.com/Ripwords/ReproJs/commit/41239b5))
+- **mcp:** Add repro_get_ticket tool with inline replay transcript ([b9e6a8d](https://github.com/Ripwords/ReproJs/commit/b9e6a8d))
+- **mcp:** Per-request McpServer factory with both tools ([f1cc067](https://github.com/Ripwords/ReproJs/commit/f1cc067))
+- **mcp:** Add Streamable HTTP /api/mcp routes (POST/GET/DELETE) ([3759a76](https://github.com/Ripwords/ReproJs/commit/3759a76))
+- **mcp:** Add cursor encode/decode helper for pagination ([ef962e7](https://github.com/Ripwords/ReproJs/commit/ef962e7))
+- **mcp:** Add repro_list_tickets with filters + cursor pagination ([5f42bf7](https://github.com/Ripwords/ReproJs/commit/5f42bf7))
+- **mcp:** Add repro_list_ticket_comments with cursor pagination ([68b5e14](https://github.com/Ripwords/ReproJs/commit/68b5e14))
+- **mcp:** Add repro_list_project_members ([60e7459](https://github.com/Ripwords/ReproJs/commit/60e7459))
+- **mcp:** Add repro_get_screenshot tool ([106e998](https://github.com/Ripwords/ReproJs/commit/106e998))
+- **mcp:** Add repro_get_replay_transcript tool ([d5389b9](https://github.com/Ripwords/ReproJs/commit/d5389b9))
+- **mcp:** Add repro_get_replay_raw with 200KB acknowledgeSize cap ([7e5577f](https://github.com/Ripwords/ReproJs/commit/7e5577f))
+- **mcp:** Add repro_get_ticket_cookies (opt-in cookies surface) ([761f62c](https://github.com/Ripwords/ReproJs/commit/761f62c))
+- **mcp:** Register Phase 2 tools in McpServer factory ([0f219f4](https://github.com/Ripwords/ReproJs/commit/0f219f4))
+- **db:** Add actor_client_id audit column + github_linked event kind ([27d1662](https://github.com/Ripwords/ReproJs/commit/27d1662))
+- **mcp:** Add 4 write tools (update/comment/link/unlink) ([eddac03](https://github.com/Ripwords/ReproJs/commit/eddac03))
+- **mcp:** Register Phase 3 write tools in McpServer factory ([89dda29](https://github.com/Ripwords/ReproJs/commit/89dda29))
+- **mcp:** Add /api/me/mcp-connections list + revoke endpoints ([d68b8a7](https://github.com/Ripwords/ReproJs/commit/d68b8a7))
+- **mcp:** Add /settings/mcp page (connect snippets + connected apps) ([9836a5d](https://github.com/Ripwords/ReproJs/commit/9836a5d))
+- **mcp:** Flip MCP_ENABLED default to true ([9483645](https://github.com/Ripwords/ReproJs/commit/9483645))
+- **mcp:** Add per-request access check (status + allowlist) ([8720976](https://github.com/Ripwords/ReproJs/commit/8720976))
+- **mcp:** Add per-user rate limiter to access checker ([8261c62](https://github.com/Ripwords/ReproJs/commit/8261c62))
+- **mcp:** Wire access check into Streamable HTTP routes ([a2c3d14](https://github.com/Ripwords/ReproJs/commit/a2c3d14))
+- **mcp:** Add RFC 9728 protected-resource metadata endpoint ([2a7f509](https://github.com/Ripwords/ReproJs/commit/2a7f509))
+- **shared:** Add volume series to AdminOverviewDTO ([c0e3a70](https://github.com/Ripwords/ReproJs/commit/c0e3a70))
+- **dashboard:** Add 30-day report volume series to admin overview ([9723bd1](https://github.com/Ripwords/ReproJs/commit/9723bd1))
+- **dashboard:** Add insight charts to admin overview ([9f50c84](https://github.com/Ripwords/ReproJs/commit/9f50c84))
+- **dashboard:** Add pure pollUntil helper ([b954f5b](https://github.com/Ripwords/ReproJs/commit/b954f5b))
+
+### 🔥 Performance
+
+- **mcp:** Fold last-used lookup into single grouped query ([43c3804](https://github.com/Ripwords/ReproJs/commit/43c3804))
+
+### 🩹 Fixes
+
+- **mcp:** Use env.BETTER_AUTH_URL not request headers for OAuth metadata URL ([babb73a](https://github.com/Ripwords/ReproJs/commit/babb73a))
+- **mcp:** Filter out soft-deleted projects in repro_list_projects ([4a117bf](https://github.com/Ripwords/ReproJs/commit/4a117bf))
+- **mcp:** Coerce raw body to Buffer before Uint8Array conversion ([1784c96](https://github.com/Ripwords/ReproJs/commit/1784c96))
+- **mcp:** Correct JWT issuer and consent response parsing ([9270e52](https://github.com/Ripwords/ReproJs/commit/9270e52))
+- **dashboard:** Type BarChart orientation via Orientation enum ([437eadf](https://github.com/Ripwords/ReproJs/commit/437eadf))
+- **dashboard:** Refetch projects list after deleting a project ([4b4de3d](https://github.com/Ripwords/ReproJs/commit/4b4de3d))
+- **dashboard:** Poll for github issue link before refetching in triage sidebar ([3158026](https://github.com/Ripwords/ReproJs/commit/3158026))
+- **dashboard:** Abort github-sync poll on triage drawer unmount ([eb7533e](https://github.com/Ripwords/ReproJs/commit/eb7533e))
+- Use workspace-local node_modules paths in db/auth scripts ([3db3926](https://github.com/Ripwords/ReproJs/commit/3db3926))
+- **ci:** Align db scripts to workspace .bin form; set MCP_ENABLED in ci ([0d19c31](https://github.com/Ripwords/ReproJs/commit/0d19c31))
+- **test:** Isolate every SDK test file in its own bun process ([d98e510](https://github.com/Ripwords/ReproJs/commit/d98e510))
+
+### 💅 Refactors
+
+- **triage:** Extract applyTicketTriagePatch service function ([5ba753b](https://github.com/Ripwords/ReproJs/commit/5ba753b))
+- **comments:** Extract addReportComment service function ([4ae056c](https://github.com/Ripwords/ReproJs/commit/4ae056c))
+- **github:** Extract link/unlink service functions ([217d4c2](https://github.com/Ripwords/ReproJs/commit/217d4c2))
+- **comments:** Move CreateCommentBody schema to @reprojs/shared ([0d14acd](https://github.com/Ripwords/ReproJs/commit/0d14acd))
+- **dashboard:** Harden volume query groupBy and test anchoring ([a978fc8](https://github.com/Ripwords/ReproJs/commit/a978fc8))
+- **dashboard:** Clarify chart formatters and declare @unovis/ts dep ([615b5cc](https://github.com/Ripwords/ReproJs/commit/615b5cc))
+- **dashboard:** Share projects-list cache key constant and regroup test ([3418bfe](https://github.com/Ripwords/ReproJs/commit/3418bfe))
+
+### 📖 Documentation
+
+- Trim filing-reports guide and add SVG illustrations ([97cede5](https://github.com/Ripwords/ReproJs/commit/97cede5))
+- **spec:** MCP OAuth server design ([3c3318d](https://github.com/Ripwords/ReproJs/commit/3c3318d))
+- **plan:** MCP OAuth server — Phase 1 ([4635ffd](https://github.com/Ripwords/ReproJs/commit/4635ffd))
+- **plan:** MCP OAuth server — Phase 2 ([3829a2b](https://github.com/Ripwords/ReproJs/commit/3829a2b))
+- **plan:** MCP OAuth server — Phase 3 ([2b786f4](https://github.com/Ripwords/ReproJs/commit/2b786f4))
+- **plan:** MCP OAuth server — Phase 4 ([5493949](https://github.com/Ripwords/ReproJs/commit/5493949))
+- **mcp:** Add user guide for connecting AI assistants ([564941e](https://github.com/Ripwords/ReproJs/commit/564941e))
+- **mcp:** Add self-hosting / operator guide ([db85bbe](https://github.com/Ripwords/ReproJs/commit/db85bbe))
+- **mcp:** Add MCP pages to VitePress sidebar ([f0627f2](https://github.com/Ripwords/ReproJs/commit/f0627f2))
+- **plan:** MCP OAuth server — Phase 5 ([46ad998](https://github.com/Ripwords/ReproJs/commit/46ad998))
+- Spec for admin overview charts + project-delete and github-sync refetch fixes ([e8b414d](https://github.com/Ripwords/ReproJs/commit/e8b414d))
+- Implementation plan for admin charts + refetch fixes ([16d4fd0](https://github.com/Ripwords/ReproJs/commit/16d4fd0))
+- **mcp:** Add precise tool reference to the AI assistants guide ([30473c4](https://github.com/Ripwords/ReproJs/commit/30473c4))
+
+### 🏡 Chore
+
+- **mcp:** Add @better-auth/oauth-provider + @modelcontextprotocol/sdk ([de0e2c0](https://github.com/Ripwords/ReproJs/commit/de0e2c0))
+- Pin oxlint to 1.59.0 ([617cc92](https://github.com/Ripwords/ReproJs/commit/617cc92))
+- **db:** Regenerate OAuth tables migration after rebase ([3c42538](https://github.com/Ripwords/ReproJs/commit/3c42538))
+- **dashboard:** Add nuxt-charts module ([d435c35](https://github.com/Ripwords/ReproJs/commit/d435c35))
+- Gitignore .cursor/ IDE workspace dir ([4d2c727](https://github.com/Ripwords/ReproJs/commit/4d2c727))
+
+### ✅ Tests
+
+- **mcp:** Integration — full OAuth + tools/call roundtrip ([94222c5](https://github.com/Ripwords/ReproJs/commit/94222c5))
+- **mcp:** Integration tests for Phase 2 read tools ([27c5180](https://github.com/Ripwords/ReproJs/commit/27c5180))
+- **mcp:** Integration tests for Phase 3 write tools ([1aecf79](https://github.com/Ripwords/ReproJs/commit/1aecf79))
+- **mcp:** Unfreeze Phase 1 tool-list assertion ([a3c0062](https://github.com/Ripwords/ReproJs/commit/a3c0062))
+- **mcp:** Add negative permissions/access integration suite ([fbf39bc](https://github.com/Ripwords/ReproJs/commit/fbf39bc))
+
+### 🤖 CI
+
+- Bump pinned bun 1.3.12 -> 1.3.13 ([146ec43](https://github.com/Ripwords/ReproJs/commit/146ec43))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## v0.5.2
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.5.1...v0.5.2)
