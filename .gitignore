@@ -55,3 +55,6 @@ apps/extension/public/icons/
 
 # CodeGraph MCP index (generated, machine-local)
 .codegraph/
+
+# Cursor IDE workspace settings (machine-local)
+.cursor/
