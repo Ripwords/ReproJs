@@ -60,5 +60,14 @@ export const AdminOverviewDTO = z.object({
   recentReports: z.array(AdminRecentReportDTO),
   recentEvents: z.array(AdminRecentEventDTO),
   perProject: z.array(AdminProjectBreakdownDTO),
+  // Zero-filled daily report counts for the trend chart. Ordered oldest →
+  // newest; every UTC day in the trailing window is present (gaps = 0).
+  // `date` is a `YYYY-MM-DD` UTC day string.
+  volume: z.array(
+    z.object({
+      date: z.string(),
+      count: z.number().int(),
+    }),
+  ),
 })
 export type AdminOverviewDTO = z.infer<typeof AdminOverviewDTO>

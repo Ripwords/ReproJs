@@ -10,6 +10,7 @@
 <script setup lang="ts">
 import type {
   GithubConfigDTO,
+  ReportDetailDTO,
   ReportPriority,
   ReportStatus,
   ReportSummaryDTO,
@@ -19,6 +20,7 @@ import AssigneesPicker from "./pickers/assignees-picker.vue"
 import MilestonePicker from "./pickers/milestone-picker.vue"
 import UnlinkDialog from "~/components/integrations/github/unlink-dialog.vue"
 import { safeHref } from "~/composables/use-safe-href"
+import { pollUntil } from "~/composables/use-poll-until"
 import { useGithubIntegration } from "~/composables/use-github-integration"
 
 interface Props {
@@ -53,16 +55,53 @@ const posting = ref(false)
 const unlinkOpen = ref(false)
 const ghSubmitting = ref(false)
 
+// GitHub sync is async (in-process worker); poll the report until the issue
+// link lands, ~12s ceiling (12 attempts × 1s).
+const GITHUB_SYNC_POLL = { attempts: 12, intervalMs: 1_000 } as const
+
+// Aborts the in-flight github-sync poll if the drawer/route unmounts mid-poll,
+// so a stale success/info toast can't surface on an unrelated page.
+const syncAbort = new AbortController()
+onUnmounted(() => syncAbort.abort())
+
 async function createIssue() {
   ghSubmitting.value = true
   try {
     await $fetch(`/api/projects/${props.projectId}/reports/${props.report.id}/github-sync`, {
       method: "POST",
       credentials: "include",
+      signal: syncAbort.signal,
     })
+    // github-sync is async: it enqueues an in-process worker and returns
+    // immediately. Poll the report until the worker links the issue, then
+    // refetch once so the parent renders consistent data. ~12s ceiling.
+    const linked = await pollUntil(
+      () =>
+        $fetch<ReportDetailDTO>(`/api/projects/${props.projectId}/reports/${props.report.id}`, {
+          credentials: "include",
+          signal: syncAbort.signal,
+        }),
+      (r) => r.githubIssueNumber !== null,
+      GITHUB_SYNC_POLL,
+    )
+    if (syncAbort.signal.aborted) return
     emit("patched")
-    toast.add({ title: "GitHub issue created", color: "success", icon: "i-heroicons-check-circle" })
+    if (linked) {
+      toast.add({
+        title: "GitHub issue created",
+        color: "success",
+        icon: "i-heroicons-check-circle",
+      })
+    } else {
+      toast.add({
+        title: "Issue is being created",
+        description: "It'll appear here shortly.",
+        color: "info",
+        icon: "i-heroicons-information-circle",
+      })
+    }
   } catch (err) {
+    if (syncAbort.signal.aborted) return
     toast.add({
       title: "Could not create GitHub issue",
       description: err instanceof Error ? err.message : undefined,
