@@ -167,7 +167,11 @@ export const auth = betterAuth({
       ? [
           jwt(),
           oauthProvider({
-            loginPage: "/sign-in",
+            // Must be the real sign-in route. "/sign-in" does not exist —
+            // the global auth guard bounces it to "/auth/sign-in?next=…",
+            // and the nested unencoded query drops the OAuth/PKCE params
+            // (state, code_challenge, signed exp/sig), breaking the flow.
+            loginPage: "/auth/sign-in",
             consentPage: "/oauth/consent",
             allowDynamicClientRegistration: true,
             allowUnauthenticatedClientRegistration: true,
