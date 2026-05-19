@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUN_VERSION: 1.3.12
+  BUN_VERSION: 1.3.13
 
 jobs:
   check:

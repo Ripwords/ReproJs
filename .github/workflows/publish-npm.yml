@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 env:
-  BUN_VERSION: 1.3.12
+  BUN_VERSION: 1.3.13
 
 jobs:
   # Mirrors publish-docker's verify job so SDK publishes get the same

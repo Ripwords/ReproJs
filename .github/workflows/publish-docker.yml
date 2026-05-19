@@ -28,7 +28,7 @@ permissions:
 
 env:
   IMAGE: ripwords/reprojs-dashboard
-  BUN_VERSION: 1.3.12
+  BUN_VERSION: 1.3.13
 
 jobs:
   # Publish-time safety net. Mirrors `bun run prerelease` so a locally-stale
