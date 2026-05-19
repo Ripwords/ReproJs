@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.2
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.1...v0.6.2)
+
+### 🩹 Fixes
+
+- **mcp:** Point OAuth loginPage at the real /auth/sign-in route ([96823c3](https://github.com/Ripwords/ReproJs/commit/96823c3))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## v0.6.1
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.0...v0.6.1)
