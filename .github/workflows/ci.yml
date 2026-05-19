@@ -96,6 +96,11 @@ jobs:
       ENCRYPTION_KEY: Y2ktdGVzdC1lbmNyeXB0aW9uLWtleS0zMi1ieXRlcy0xMjM0NQ==
       MAIL_PROVIDER: console
       NODE_ENV: test
+      # The MCP integration suite (mcp-*.test.ts) and the dev server it
+      # drives hard-require this; the tests throw by design when it's unset.
+      # Job-level env so both `bun test tests/` and the `bun run dev` step
+      # inherit it.
+      MCP_ENABLED: "true"
       # Silences nuxt-security's default per-IP rate limiter for the whole
       # suite so a big test file can't cascade 429s into unrelated test files.
       # The app's own rate-limit.ts still protects endpoints that matter.
