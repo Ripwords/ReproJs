@@ -1,5 +1,19 @@
 const BACKOFF_MS = [10_000, 30_000, 120_000, 600_000, 3_600_000] as const
 
+/**
+ * TTL for the signed screenshot URL embedded in a GitHub issue body.
+ *
+ * GitHub issues are permanent and GitHub proxies embedded images through its
+ * Camo cache, which re-fetches the source long after the issue was created
+ * (cache eviction, first view of an old issue, etc.). A short TTL therefore
+ * meant every issue older than the TTL rendered a broken image the moment Camo
+ * re-requested it — a previous 7-day value made this surface ~1 week after each
+ * report. The token is HMAC-scoped to a single (project, report, screenshot),
+ * so an effectively-permanent expiry is the correct lifetime for an embed in a
+ * permanent document. 100 years ≈ permanent for any realistic deployment.
+ */
+export const GITHUB_EMBED_SCREENSHOT_TTL_SECONDS = 100 * 365 * 24 * 60 * 60
+
 export function computeBackoff(attempts: number): number {
   const idx = Math.max(0, Math.min(attempts - 1, BACKOFF_MS.length - 1))
   return BACKOFF_MS[idx] ?? BACKOFF_MS[0]

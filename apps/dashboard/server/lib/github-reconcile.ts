@@ -16,7 +16,12 @@ import {
 } from "@reprojs/integrations-github"
 import type { Octokit } from "@octokit/rest"
 import { env } from "./env"
-import { buildIssueBody, labelsFor, reportMarker } from "./github-helpers"
+import {
+  buildIssueBody,
+  GITHUB_EMBED_SCREENSHOT_TTL_SECONDS,
+  labelsFor,
+  reportMarker,
+} from "./github-helpers"
 import { getGithubClient, __hasClientOverride } from "./github"
 import { buildSignedAttachmentUrl } from "./signed-attachment-url"
 import { getStorage } from "./storage"
@@ -573,7 +578,10 @@ export async function reconcileReport(reportId: string): Promise<void> {
         reportId: report.id,
         kind: "screenshot",
         secret: env.ATTACHMENT_URL_SECRET,
-        ttlSeconds: 60 * 60 * 24 * 7, // 7 days
+        // Embedded in a permanent GitHub issue + re-fetched by GitHub's Camo
+        // image cache long after creation — must effectively never expire, or
+        // the image breaks once the token lapses. See the constant's docs.
+        ttlSeconds: GITHUB_EMBED_SCREENSHOT_TTL_SECONDS,
       })
     : null
 

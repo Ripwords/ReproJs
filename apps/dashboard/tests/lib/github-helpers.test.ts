@@ -1,6 +1,54 @@
 // apps/dashboard/tests/lib/github-helpers.test.ts
 import { describe, expect, test } from "bun:test"
-import { buildIssueBody, computeBackoff, labelsFor } from "../../server/lib/github-helpers"
+import {
+  buildIssueBody,
+  computeBackoff,
+  GITHUB_EMBED_SCREENSHOT_TTL_SECONDS,
+  labelsFor,
+} from "../../server/lib/github-helpers"
+import {
+  buildSignedAttachmentUrl,
+  verifyAttachmentToken,
+} from "../../server/lib/signed-attachment-url"
+
+describe("GITHUB_EMBED_SCREENSHOT_TTL_SECONDS", () => {
+  const FIFTY_YEARS_SECONDS = 50 * 365 * 24 * 60 * 60
+
+  test("is effectively permanent (GitHub issues never expire)", () => {
+    // Regression: a 7-day TTL meant every issue older than a week rendered a
+    // broken image once GitHub's Camo proxy re-fetched the screenshot.
+    expect(GITHUB_EMBED_SCREENSHOT_TTL_SECONDS).toBeGreaterThanOrEqual(FIFTY_YEARS_SECONDS)
+  })
+
+  test("a token minted with it stays valid far beyond the old 7-day window", () => {
+    const SECRET = "test-secret-0123456789abcdef"
+    const url = buildSignedAttachmentUrl({
+      baseUrl: "https://dash.example.com",
+      projectId: "p1",
+      reportId: "r1",
+      kind: "screenshot",
+      secret: SECRET,
+      ttlSeconds: GITHUB_EMBED_SCREENSHOT_TTL_SECONDS,
+    })
+    const expiresAt = Number(new URL(url).searchParams.get("expires"))
+    const token = new URL(url).searchParams.get("token") ?? ""
+
+    // Expiry must land well past a week from now.
+    const eightDays = Math.floor(Date.now() / 1000) + 8 * 24 * 60 * 60
+    expect(expiresAt).toBeGreaterThan(eightDays)
+
+    expect(
+      verifyAttachmentToken({
+        secret: SECRET,
+        projectId: "p1",
+        reportId: "r1",
+        kind: "screenshot",
+        expiresAt,
+        token,
+      }),
+    ).toBe(true)
+  })
+})
 
 describe("computeBackoff", () => {
   test("attempt 1 → 10 seconds", () => {
