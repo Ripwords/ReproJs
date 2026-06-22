@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.3
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.2...v0.6.3)
+
+### 🩹 Fixes
+
+- **github:** Embed issue screenshots with a non-expiring signed URL ([66a44a2](https://github.com/Ripwords/ReproJs/commit/66a44a2))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## v0.6.2
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.1...v0.6.2)
