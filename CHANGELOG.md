@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6.4
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.3...v0.6.4)
+
+### 🩹 Fixes
+
+- **sdk-ui:** Stop annotation shortcuts firing while typing text labels ([4ff661f](https://github.com/Ripwords/ReproJs/commit/4ff661f))
+- **release:** Pass --no-tag to changelogen to avoid v* tag collision ([b80ea49](https://github.com/Ripwords/ReproJs/commit/b80ea49))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## v0.6.3
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.2...v0.6.3)
