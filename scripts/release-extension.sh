@@ -70,10 +70,15 @@ TAG="extension-v${NEW_VERSION}"
 echo "→ bumping @reprojs/extension $CURRENT_VERSION → $NEW_VERSION via changelogen..."
 (
   cd apps/extension
+  # --no-tag: changelogen hardcodes an unprefixed `git tag v${version}` that
+  # collides with the dashboard's existing v*.*.* tags (e.g. an old v0.1.3)
+  # and aborts the release. amend_release_commit_and_retag creates the real
+  # `extension-v*` tag below, so the unprefixed one is pure collision risk.
   bunx changelogen --release \
     -r "$NEW_VERSION" \
     --from "$LAST_EXT_TAG" \
-    --no-github
+    --no-github \
+    --no-tag
 )
 
 # The extension bundles @reprojs/core at build time, so changes to core's

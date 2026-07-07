@@ -83,12 +83,18 @@ echo "→ bumping @reprojs/core $CURRENT_VERSION → $NEW_VERSION via changeloge
 # --no-github: changelogen's GitHub Release sync hardcodes `v${version}` as
 # the tag name, which wouldn't match our `sdk-v*` tag. publish-npm.yml
 # creates the GH Release itself after npm publish succeeds.
+# --no-tag: changelogen also creates a local `git tag v${version}` (hardcoded,
+# unprefixed). Once the dashboard's v*.*.* line reaches the SDK's numbering
+# (e.g. an old dashboard v0.4.1 already exists), that `git tag v0.4.1` collides
+# and aborts the release mid-run. We don't want the unprefixed tag anyway —
+# amend_release_commit_and_retag below creates the real `sdk-v*` tag.
 (
   cd packages/core
   bunx changelogen --release \
     -r "$NEW_VERSION" \
     --from "$LAST_SDK_TAG" \
-    --no-github
+    --no-github \
+    --no-tag
 )
 
 # changelogen has no path filter — without this, packages/core/CHANGELOG.md

@@ -80,10 +80,15 @@ TAG="expo-v${NEW_VERSION}"
 echo "→ bumping @reprojs/expo $CURRENT_VERSION → $NEW_VERSION via changelogen..."
 (
   cd packages/expo
+  # --no-tag: changelogen hardcodes an unprefixed `git tag v${version}` that
+  # can collide with the dashboard's existing v*.*.* tags and abort the
+  # release. amend_release_commit_and_retag creates the real `expo-v*` tag
+  # below, so the unprefixed one is pure collision risk.
   bunx changelogen --release \
     -r "$NEW_VERSION" \
     --from "$LAST_EXPO_TAG" \
-    --no-github
+    --no-github \
+    --no-tag
 )
 
 echo "→ filtering CHANGELOG to commits that touched @reprojs/expo paths..."
