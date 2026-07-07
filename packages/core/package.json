@@ -1,6 +1,6 @@
 {
   "name": "@reprojs/core",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Framework-agnostic embeddable feedback SDK — annotated screenshots, 30s session replay, and diagnostic context for any web app.",
   "keywords": [
     "bug-report",
