@@ -40,6 +40,24 @@ describe("matchShortcut", () => {
     expect(matchShortcut(e, DEFAULT_SHORTCUTS)).toBeNull()
   })
 
+  test("ignores shortcuts when a closed-shadow input is focused", () => {
+    // A closed ShadowRoot hides internal nodes from a window listener:
+    // composedPath() is truncated at the host and e.target retargets to the
+    // host, so neither reveals the focused <textarea>. The widget passes its
+    // ShadowRoot so the guard can consult root.activeElement instead.
+    const textarea = document.createElement("textarea")
+    const host = document.createElement("div")
+    const root = { activeElement: textarea } as unknown as DocumentOrShadowRoot
+    const e = new KeyboardEvent("keydown", { key: "h" })
+    Object.defineProperty(e, "target", { value: host })
+    Object.defineProperty(e, "composedPath", { value: () => [host] })
+
+    // Without the root, the bug reproduces: the shortcut leaks through.
+    expect(matchShortcut(e, DEFAULT_SHORTCUTS)).toBe<Action>("tool.highlight")
+    // With the root, the guard sees the focused textarea and suppresses it.
+    expect(matchShortcut(e, DEFAULT_SHORTCUTS, root)).toBeNull()
+  })
+
   test("returns null when no shortcut matches", () => {
     expect(matchShortcut(ev("q"), DEFAULT_SHORTCUTS)).toBeNull()
   })

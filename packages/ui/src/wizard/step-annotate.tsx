@@ -1,5 +1,5 @@
 import { h } from "preact"
-import { useEffect } from "preact/hooks"
+import { useEffect, useRef } from "preact/hooks"
 import { Canvas } from "../annotation/canvas"
 import { flatten } from "../annotation/flatten"
 import { DEFAULT_SHORTCUTS, registerShortcuts, type Action } from "../annotation/shortcuts"
@@ -19,6 +19,7 @@ interface Props {
 }
 
 export function StepAnnotate({ bg, steps, currentStep, onSkip, onNext, onCancel }: Props) {
+  const rootRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const dispatch = (action: Action) => {
       switch (action) {
@@ -48,7 +49,11 @@ export function StepAnnotate({ bg, steps, currentStep, onSkip, onNext, onCancel 
         }
       }
     }
-    const dispose = registerShortcuts(window, DEFAULT_SHORTCUTS, dispatch)
+    // getRootNode() resolves the closed ShadowRoot the widget is mounted in
+    // (fallback to document for a light-DOM mount). The window listener needs
+    // it to detect focus inside the annotation <textarea> — see isInsideInput.
+    const root = (rootRef.current?.getRootNode() as DocumentOrShadowRoot | undefined) ?? document
+    const dispose = registerShortcuts(window, DEFAULT_SHORTCUTS, dispatch, root)
     return () => dispose()
   }, [bg])
 
@@ -64,7 +69,7 @@ export function StepAnnotate({ bg, steps, currentStep, onSkip, onNext, onCancel 
 
   return h(
     "div",
-    { class: "ft-wizard" },
+    { class: "ft-wizard", ref: rootRef },
     h(WizardHeader, {
       eyebrow: "Repro",
       title: "Report a bug",
