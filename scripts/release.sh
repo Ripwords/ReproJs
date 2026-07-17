@@ -141,18 +141,28 @@ while IFS='|' read -r NAME DIR PREFIX OWN DEPS; do
     continue
   fi
 
-  # `git log --invert-grep`, not `git diff`. A release commit bumps its own
-  # package.json + CHANGELOG.md, which live inside the artifact's paths — so a
-  # plain diff counts "chore(release): sdk-v0.4.2" as an SDK change, marks
-  # everything that bundles core as affected, and every release makes the next
-  # one look necessary. Ignoring release commits breaks that loop; they're the
-  # only thing that writes CHANGELOG.md, so nothing real is filtered out.
+  # Two things get discounted, or a release makes the next one look necessary:
+  #
+  # 1. Release commits (--invert-grep). A release bumps its own package.json,
+  #    which lives inside the artifact's own paths, so a plain diff counts
+  #    "chore(release): sdk-v0.4.2" as an SDK change and marks everything that
+  #    bundles core affected — forever.
+  # 2. CHANGELOG.md (:(exclude)). It's a release artifact, not source. Editing
+  #    one is never a reason to ship a package. A changelog-only commit that
+  #    wasn't a release commit — restoring eroded history, say — otherwise
+  #    reads as a source change to core and would publish a new SDK to npm,
+  #    rebuild the image, and push the extension into Web Store review with no
+  #    code change behind any of it.
+  #
+  # Neither can hide real work: nothing but a release writes a version bump,
+  # and no source lives in a CHANGELOG.
+  EXCL=':(exclude)*CHANGELOG.md'
   # shellcheck disable=SC2086 # word splitting is how the pathspecs are passed
-  OWN_CHANGED=$(git log --format=%h --invert-grep --grep='^chore(release):' "${LAST_TAG}..HEAD" -- $OWN)
+  OWN_CHANGED=$(git log --format=%h --invert-grep --grep='^chore(release):' "${LAST_TAG}..HEAD" -- $OWN "$EXCL")
   DEP_CHANGED=""
   if [ -n "$DEPS" ]; then
     # shellcheck disable=SC2086
-    DEP_CHANGED=$(git log --format=%h --invert-grep --grep='^chore(release):' "${LAST_TAG}..HEAD" -- $DEPS)
+    DEP_CHANGED=$(git log --format=%h --invert-grep --grep='^chore(release):' "${LAST_TAG}..HEAD" -- $DEPS "$EXCL")
   fi
   [ -z "$OWN_CHANGED$DEP_CHANGED" ] && continue
 
