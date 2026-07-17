@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.6.5
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.4...v0.6.5)
+
+### 🩹 Fixes
+
+- **sdk-ui:** Decode screenshots via createImageBitmap so host CSPs can't block capture ([00c23a6](https://github.com/Ripwords/ReproJs/commit/00c23a6))
+- **ci:** Pin npm to a major and bump publish jobs to Node 24 ([e2663b2](https://github.com/Ripwords/ReproJs/commit/e2663b2))
+
+### 🏡 Chore
+
+- **release:** Sdk-v0.4.1 ([6524efc](https://github.com/Ripwords/ReproJs/commit/6524efc))
+- **release:** Extension-v0.1.3 ([71eef2b](https://github.com/Ripwords/ReproJs/commit/71eef2b))
+- **release:** Extension-v0.1.4 ([fa42a25](https://github.com/Ripwords/ReproJs/commit/fa42a25))
+- **release:** Sdk-v0.4.2 ([66ba150](https://github.com/Ripwords/ReproJs/commit/66ba150))
+
+### ✅ Tests
+
+- **sdk-ui:** Add a strict-CSP route to the demo playground ([b57883a](https://github.com/Ripwords/ReproJs/commit/b57883a))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## v0.6.4
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.3...v0.6.4)
