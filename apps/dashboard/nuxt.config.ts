@@ -147,10 +147,16 @@ export default defineNuxtConfig({
     // here would defeat that oracle protection, so disable nuxt-security's
     // corsHandler entirely and let the handler own CORS. xssValidator is
     // also off because intake bodies are structured JSON + base64 blobs.
+    // requestSizeLimiter is off too: its ~8 MB multipart ceiling sat below
+    // the SDK's advertised attachment limits (10 MB/file, 25 MB total) and
+    // killed video-attachment submissions mid-upload. The intake handler
+    // enforces its own authoritative byte caps (INTAKE_MAX_BYTES and the
+    // per-file/total INTAKE_USER_FILE_* gates) with proper 413 responses.
     "/api/intake/**": {
       security: {
         corsHandler: false,
         xssValidator: false,
+        requestSizeLimiter: false,
       },
     },
     // GitHub webhook — nuxt-security's per-IP rate limiter would block

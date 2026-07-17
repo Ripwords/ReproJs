@@ -77,7 +77,11 @@ const Schema = z.object({
   INTAKE_RATE_PER_KEY: intString(60),
   INTAKE_RATE_PER_IP: intString(20),
   INTAKE_RATE_PER_KEY_ANON: intString(10),
-  INTAKE_MAX_BYTES: intString(5_242_880),
+  // Whole-multipart ceiling. Must sit ABOVE the SDK's advertised attachment
+  // limits (10 MB/file, 25 MB total user files) plus screenshot/replay/logs
+  // headroom — a 5 MB default silently 413'd every video attachment the
+  // widget itself accepted.
+  INTAKE_MAX_BYTES: intString(41_943_040),
   INTAKE_USER_FILE_MAX_BYTES: intString(10 * 1024 * 1024),
   INTAKE_USER_FILES_TOTAL_MAX_BYTES: intString(25 * 1024 * 1024),
   INTAKE_USER_FILES_MAX_COUNT: intString(5),
