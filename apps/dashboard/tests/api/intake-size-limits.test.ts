@@ -1,4 +1,5 @@
 import { beforeAll, expect, setDefaultTimeout, test } from "bun:test"
+import net from "node:net"
 import { seedProject, truncateDomain, truncateReports } from "../helpers"
 
 setDefaultTimeout(30_000)
@@ -54,6 +55,58 @@ function reportForm(attachments: { name: string; bytes: number; type: string }[]
   })
   return f
 }
+
+// Send a raw HTTP request with a forged Content-Length so we can advertise a
+// huge body while only writing a few bytes. `fetch` recomputes Content-Length
+// from the actual body and won't let us forge it, so we go down to a TCP
+// socket. Before the pre-buffer gate, the handler would call
+// readMultipartFormData and block waiting for the (never-arriving) full body —
+// the test would time out with status 0. With the gate, the handler rejects on
+// the header alone and responds 413 immediately.
+function rawForgedRequest(
+  path: string,
+  forgedContentLength: number,
+  timeoutMs = 5000,
+): Promise<{ status: number }> {
+  const url = new URL(BASE)
+  const port = Number(url.port || 80)
+  return new Promise((resolve, reject) => {
+    const body = "--X\r\n(not a real body)\r\n"
+    const socket = net.connect(port, url.hostname, () => {
+      const head =
+        [
+          `POST ${path} HTTP/1.1`,
+          `Host: ${url.host}`,
+          `Origin: ${ORIGIN}`,
+          "Content-Type: multipart/form-data; boundary=X",
+          `Content-Length: ${forgedContentLength}`,
+          "Connection: close",
+          "",
+          "",
+        ].join("\r\n") + body
+      socket.write(head)
+    })
+    let data = ""
+    socket.setTimeout(timeoutMs)
+    socket.on("data", (c) => {
+      data += c.toString()
+    })
+    socket.on("timeout", () => {
+      socket.destroy()
+      resolve({ status: 0 }) // no response arrived — pre-fix behaviour
+    })
+    socket.on("close", () => {
+      const m = data.match(/^HTTP\/1\.1 (\d+)/)
+      resolve({ status: m ? Number(m[1]) : 0 })
+    })
+    socket.on("error", reject)
+  })
+}
+
+test("forged Content-Length above the ceiling → 413 before buffering the body", async () => {
+  const { status } = await rawForgedRequest("/api/intake/reports", 200_000_000)
+  expect(status).toBe(413)
+})
 
 test("accepts a 9MB video attachment (single file within client limits)", async () => {
   const res = await fetch(`${BASE}/api/intake/reports`, {

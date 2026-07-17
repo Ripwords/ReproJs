@@ -1,5 +1,6 @@
 import { setup } from "../nuxt-setup"
 import { afterEach, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
+import net from "node:net"
 import { eq } from "drizzle-orm"
 import { ShareMintResponse } from "@reprojs/shared"
 import { db } from "../../server/db"
@@ -75,6 +76,48 @@ describe("POST /api/intake/media", () => {
     await truncateSharedMedia()
     // Some tests flip share_links_enabled off — restore for the next test.
     await db.update(projects).set({ shareLinksEnabled: true }).where(eq(projects.id, projectId))
+  })
+
+  test("forged Content-Length above the ceiling → 413 before buffering the body", async () => {
+    // See intake-size-limits.test.ts for the rationale — fetch recomputes
+    // Content-Length, so we forge it over a raw TCP socket. Pre-fix, the
+    // handler blocked in readMultipartFormData waiting for the never-arriving
+    // body and the socket timed out (status 0); the pre-buffer gate now
+    // rejects on the header alone.
+    const url = new URL(BASE_URL)
+    const port = Number(url.port || 80)
+    const status = await new Promise<number>((resolve, reject) => {
+      const body = "--X\r\n(not a real body)\r\n"
+      const socket = net.connect(port, url.hostname, () => {
+        socket.write(
+          [
+            "POST /api/intake/media HTTP/1.1",
+            `Host: ${url.host}`,
+            `Origin: ${ORIGIN}`,
+            "Content-Type: multipart/form-data; boundary=X",
+            "Content-Length: 200000000",
+            "Connection: close",
+            "",
+            "",
+          ].join("\r\n") + body,
+        )
+      })
+      let data = ""
+      socket.setTimeout(5000)
+      socket.on("data", (c) => {
+        data += c.toString()
+      })
+      socket.on("timeout", () => {
+        socket.destroy()
+        resolve(0)
+      })
+      socket.on("close", () => {
+        const m = data.match(/^HTTP\/1\.1 (\d+)/)
+        resolve(m ? Number(m[1]) : 0)
+      })
+      socket.on("error", reject)
+    })
+    expect(status).toBe(413)
   })
 
   test("happy path: mints a share link and persists a shared_media row", async () => {

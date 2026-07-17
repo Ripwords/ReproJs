@@ -78,6 +78,18 @@ export default defineEventHandler(async (event) => {
       ? (getHeader(event, "x-repro-origin") ?? "")
       : rawOrigin
 
+  // Pre-buffer size gate: readMultipartFormData below buffers the ENTIRE body
+  // into RAM before any other check runs, so an oversized (or maliciously huge)
+  // body would be fully read pre-auth. Reject on the declared Content-Length
+  // first. Content-Length can be absent or lie (chunked bodies), so the
+  // post-parse video-size cap stays as the authoritative check; this only caps
+  // the honest-but-oversized common case cheaply. Deployments that must also
+  // bound chunked/streamed bodies should set a reverse-proxy body cap.
+  const declaredLength = getHeader(event, "content-length")
+  if (declaredLength !== undefined && Number(declaredLength) > env.INTAKE_MAX_BYTES) {
+    throw createError({ statusCode: 413, statusMessage: "Payload too large" })
+  }
+
   let parts: Awaited<ReturnType<typeof readMultipartFormData>>
   try {
     parts = await readMultipartFormData(event)
