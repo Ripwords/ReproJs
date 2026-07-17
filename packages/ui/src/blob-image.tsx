@@ -21,7 +21,16 @@ export function BlobImage({ blob, alt, class: className }: Props) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const src = await decodeImage(blob)
+      // decodeImage is documented to always resolve (null on failure)
+      // rather than throw, but this is the SDK's fail-open guarantee, not
+      // a runtime one — never let a widget-breaking exception here reach
+      // an unhandled rejection. Treat a throw the same as a null result.
+      let src: Awaited<ReturnType<typeof decodeImage>> = null
+      try {
+        src = await decodeImage(blob)
+      } catch {
+        return
+      }
       if (!src) return
       const canvas = ref.current
       if (cancelled || !canvas) {

@@ -86,7 +86,7 @@ export const reportAttachments = pgTable(
       .notNull()
       .references(() => reports.id, { onDelete: "cascade" }),
     kind: text("kind", {
-      enum: ["screenshot", "annotated-screenshot", "replay", "logs", "user-file"],
+      enum: ["screenshot", "annotated-screenshot", "replay", "logs", "user-file", "media"],
     }).notNull(),
     storageKey: text("storage_key").notNull(),
     contentType: text("content_type").notNull(),
@@ -100,12 +100,15 @@ export const reportAttachments = pgTable(
     scanStatus: text("scan_status"),
     scanEngine: text("scan_engine"),
     scanDurationMs: integer("scan_duration_ms"),
+    durationMs: integer("duration_ms"),
+    trimStartMs: integer("trim_start_ms"),
+    trimEndMs: integer("trim_end_ms"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
     kindCheck: check(
       "report_attachments_kind_check",
-      sql`${table.kind} IN ('screenshot', 'annotated-screenshot', 'replay', 'logs', 'user-file')`,
+      sql`${table.kind} IN ('screenshot', 'annotated-screenshot', 'replay', 'logs', 'user-file', 'media')`,
     ),
     reportIdx: index("report_attachments_report_idx").on(table.reportId),
   }),

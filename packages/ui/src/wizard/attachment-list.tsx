@@ -1,7 +1,7 @@
 import { h } from "preact"
 import { useRef, useState } from "preact/hooks"
 import { BlobImage } from "../blob-image"
-import type { Attachment, AttachmentLimits } from "@reprojs/sdk-utils"
+import { formatBytes, type Attachment, type AttachmentLimits } from "@reprojs/sdk-utils"
 
 interface Props {
   attachments: Attachment[]
@@ -9,12 +9,6 @@ interface Props {
   errors?: string[]
   onAdd: (files: File[]) => void
   onRemove: (id: string) => void
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function isMacLike(): boolean {

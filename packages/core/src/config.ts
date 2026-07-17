@@ -35,6 +35,10 @@ export interface InitOptions {
   collectors?: CollectorConfig
   replay?: ReplayInitConfig
   screenshot?: ScreenshotConfig
+  // Keyboard shortcut that opens the launcher menu, e.g. "ctrl+shift+b".
+  // Default undefined = no shortcut. An unparseable spec is silently ignored
+  // (fail open) — see hotkey.ts.
+  hotkey?: string
 }
 
 export interface ResolvedConfig {
@@ -45,6 +49,7 @@ export interface ResolvedConfig {
   metadata: Record<string, string | number | boolean> | undefined
   replay: ReplayInitConfig | undefined
   screenshot: ScreenshotConfig | undefined
+  hotkey: string | undefined
 }
 
 const KEY_RE = /^rp_pk_[A-Za-z0-9]{24}$/
@@ -69,5 +74,6 @@ export function resolveConfig(opts: InitOptions): ResolvedConfig {
     metadata: opts.metadata,
     replay: opts.replay,
     screenshot: opts.screenshot,
+    hotkey: opts.hotkey,
   }
 }

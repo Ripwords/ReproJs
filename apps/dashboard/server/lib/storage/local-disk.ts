@@ -1,6 +1,7 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
+import { createReadStream } from "node:fs"
+import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
-import type { StorageAdapter } from "./index"
+import type { StorageAdapter, StorageStream } from "./index"
 
 const CONTENT_TYPE_SUFFIX = ".contenttype"
 
@@ -29,6 +30,21 @@ export class LocalDiskAdapter implements StorageAdapter {
       // sidecar missing — fall through
     }
     return { bytes: new Uint8Array(bytes), contentType }
+  }
+
+  async getStream(key: string, range?: { start: number; end?: number }): Promise<StorageStream> {
+    const full = this.resolveKey(key)
+    const st = await stat(full)
+    let contentType = "application/octet-stream"
+    try {
+      contentType = (await readFile(`${full}${CONTENT_TYPE_SUFFIX}`, "utf8")).trim()
+    } catch {
+      // sidecar missing — fall through
+    }
+    const start = range?.start ?? 0
+    const end = range?.end ?? st.size - 1
+    const stream = createReadStream(full, { start, end })
+    return { stream, contentType, totalBytes: st.size, start, end }
   }
 
   async delete(key: string) {

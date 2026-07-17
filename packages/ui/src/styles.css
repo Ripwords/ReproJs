@@ -134,66 +134,13 @@
   gap: 20px;
 }
 
-/* Details uses a 2-column layout: annotated screenshot on the left,
-   form fields on the right. The screenshot column carries the visual
-   weight on wide viewports so the form column doesn't float in empty
-   space. Below 900px we stack the columns. */
-.ft-wizard-details-grid {
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
-  gap: 32px;
-  align-items: start;
-}
-.ft-wizard-details-preview {
-  position: sticky;
-  top: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-}
-/* The preview renders as a <canvas> (BlobImage) rather than an <img>: host
-   CSPs that omit blob: from img-src refuse a blob: object URL. Both are
-   matched so the constraint survives either element. */
-.ft-wizard-details-preview img,
-.ft-wizard-details-preview canvas {
-  max-width: 100%;
-  max-height: calc(100vh - 220px);
-  border: 1px solid var(--ft-color-border);
-  border-radius: var(--ft-radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-  background: var(--ft-color-surface-soft);
-}
-.ft-wizard-details-preview-empty {
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  border: 1px dashed var(--ft-color-border);
-  border-radius: var(--ft-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ft-color-text-faint);
-  font-size: 13px;
-  background: var(--ft-color-surface-soft);
-}
+/* Details is a single stacked column now that the annotate step (and its
+   sticky screenshot preview) is gone — title, description, media, and
+   attachments all live in one form column. */
 .ft-wizard-details-form {
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-@media (max-width: 900px) {
-  .ft-wizard-details-grid {
-    grid-template-columns: 1fr;
-  }
-  .ft-wizard-details-preview {
-    position: static;
-  }
-  .ft-wizard-details-preview img,
-  .ft-wizard-details-preview canvas {
-    max-height: 40vh;
-  }
 }
 
 .ft-wizard-footer {
@@ -699,4 +646,521 @@
 .ft-attach-error {
   font-size: 12px;
   color: var(--ft-color-danger);
+}
+
+/* === Media picker (Details step) — mirrors .ft-attach-*'s layout, but
+   chips are togglable selections from the gallery rather than an upload
+   list, so each chip is a <button aria-pressed> instead of a static item
+   with a separate remove control. */
+.ft-media {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ft-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.ft-media-item {
+  position: relative;
+  background: var(--ft-color-surface-soft);
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ft-color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ft-media-item.selected {
+  border-color: var(--ft-color-primary);
+  background: var(--ft-color-primary-soft);
+}
+.ft-media-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-surface);
+  overflow: hidden;
+}
+.ft-media-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ft-media-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+.ft-media-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--ft-radius-pill);
+  background: var(--ft-color-primary);
+  color: #ffffff;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ft-media-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ft-color-text-muted);
+}
+.ft-media-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ft-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ft-media-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  border: 1px dashed var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  color: var(--ft-color-text-faint);
+  font-size: 13px;
+  background: var(--ft-color-surface-soft);
+}
+.ft-media-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ft-media-error {
+  font-size: 12px;
+  color: var(--ft-color-danger);
+}
+
+/* === Recording control bar === */
+.ft-rec-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 2147483641;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--ft-radius-pill);
+  background: var(--ft-color-text);
+  color: var(--ft-color-bg);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.35);
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+.ft-rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--ft-radius-pill);
+  background: var(--ft-color-danger);
+  animation: ft-rec-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes ft-rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.ft-rec-time {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+.ft-rec-stop,
+.ft-rec-cancel {
+  border: 0;
+  border-radius: var(--ft-radius-pill);
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ft-rec-stop {
+  background: var(--ft-color-danger);
+  color: #ffffff;
+}
+.ft-rec-stop:hover {
+  background: color-mix(in oklch, var(--ft-color-danger) 85%, black);
+}
+.ft-rec-cancel {
+  background: transparent;
+  color: var(--ft-color-bg);
+  opacity: 0.7;
+}
+.ft-rec-cancel:hover {
+  opacity: 1;
+}
+
+/* === Trim screen === */
+.ft-trim {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
+.ft-trim-video {
+  width: 100%;
+  max-height: 50vh;
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  background: #000; /* letterbox black — intentional, not a theme token */
+}
+.ft-trim-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  text-align: center;
+  border: 1px dashed var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-surface-soft);
+  color: var(--ft-color-text-muted);
+  font-size: 13px;
+}
+.ft-trim-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ft-trim-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 64px;
+  align-items: center;
+  gap: 12px;
+}
+.ft-trim-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--ft-color-text-muted);
+}
+.ft-trim-slider {
+  width: 100%;
+  accent-color: var(--ft-color-primary);
+}
+.ft-trim-clock {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ft-color-text);
+  text-align: right;
+}
+.ft-trim-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* === Outcome bar === */
+.ft-outcome-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  background: var(--ft-color-bg);
+  border-top: 1px solid var(--ft-color-border);
+}
+.ft-outcome-discard {
+  background: transparent;
+  border: 0;
+  color: var(--ft-color-text-faint);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 14px 16px;
+  cursor: pointer;
+  margin-right: auto;
+}
+.ft-outcome-discard:hover {
+  color: var(--ft-color-danger);
+}
+.ft-outcome-body {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--ft-color-surface-soft);
+}
+.ft-outcome-preview {
+  max-width: 100%;
+  max-height: calc(100vh - 220px);
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  background: var(--ft-color-surface-soft);
+}
+
+/* === Launcher menu === */
+.ft-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483641;
+  background: transparent;
+}
+.ft-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  padding: 8px;
+  gap: 2px;
+  background: var(--ft-color-bg);
+  color: var(--ft-color-text);
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-lg);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.25);
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+/* Anchored above/aside the launcher — same corner the launcher itself sits
+   in, offset by its 56px + margin so the popover never overlaps it. */
+.ft-menu.pos-bottom-right {
+  right: 24px;
+  bottom: 92px;
+}
+.ft-menu.pos-bottom-left {
+  left: 24px;
+  bottom: 92px;
+}
+.ft-menu.pos-top-right {
+  right: 24px;
+  top: 92px;
+}
+.ft-menu.pos-top-left {
+  left: 24px;
+  top: 92px;
+}
+.ft-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--ft-radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ft-menu-row:hover {
+  background: var(--ft-color-surface-soft);
+}
+.ft-menu-icon {
+  flex: none;
+  width: 24px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1;
+}
+.ft-menu-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ft-menu-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.ft-menu-hint {
+  font-size: 12px;
+  color: var(--ft-color-text-muted);
+}
+.ft-menu-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--ft-color-border);
+}
+
+/* === Gallery === */
+.ft-gallery-header {
+  justify-content: space-between;
+}
+.ft-gallery-body {
+  flex-direction: column;
+  overflow: auto;
+  padding: 20px;
+}
+.ft-gallery-loading,
+.ft-gallery-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--ft-color-text-faint);
+  font-size: 14px;
+}
+.ft-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+.ft-gallery-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-lg);
+  background: var(--ft-color-surface);
+}
+.ft-gallery-thumb {
+  aspect-ratio: 16 / 10;
+  border-radius: var(--ft-radius-md);
+  overflow: hidden;
+  background: var(--ft-color-surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ft-gallery-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ft-gallery-thumb-placeholder {
+  font-size: 28px;
+}
+.ft-gallery-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ft-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ft-gallery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ft-gallery-action {
+  padding: 6px 10px;
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-pill);
+  background: var(--ft-color-bg);
+  color: var(--ft-color-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ft-gallery-action:hover {
+  background: var(--ft-color-surface-soft);
+}
+.ft-gallery-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.ft-gallery-action-primary {
+  background: var(--ft-color-primary);
+  color: var(--ft-color-bg);
+  border-color: transparent;
+  margin-left: auto;
+}
+.ft-gallery-action-primary:hover {
+  background: color-mix(in oklch, var(--ft-color-primary) 85%, black);
+}
+.ft-gallery-copy-error {
+  color: var(--ft-color-danger);
+  font-size: 12px;
+}
+.ft-gallery-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-surface-soft);
+}
+.ft-gallery-preview-image,
+.ft-gallery-preview-video {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--ft-radius-md);
+}
+.ft-gallery-preview-video {
+  background: #000; /* letterbox black — intentional, not a theme token, matches .ft-trim-video */
+}
+.ft-gallery-preview-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-surface-soft);
+  color: var(--ft-color-text-muted);
+  font-size: 13px;
+}
+
+/* === Mode toast === */
+/* Transient status message anchored bottom-center of the widget layer:
+   eviction notices, "Saved to gallery", "Screen recording unavailable". */
+.ft-mode-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: 360px;
+  padding: 10px 16px;
+  background: var(--ft-color-text);
+  color: var(--ft-color-bg);
+  border-radius: var(--ft-radius-md);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: center;
+  z-index: 2147483647;
+  animation: ft-mode-toast-in 180ms ease-out;
+}
+@keyframes ft-mode-toast-in {
+  from {
+    transform: translate(-50%, 8px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
 }

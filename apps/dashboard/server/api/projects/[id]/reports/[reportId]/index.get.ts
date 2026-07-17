@@ -77,6 +77,9 @@ export default defineEventHandler(async (event): Promise<ReportDetailDTO> => {
         scanStatus: reportAttachments.scanStatus,
         scanEngine: reportAttachments.scanEngine,
         scanDurationMs: reportAttachments.scanDurationMs,
+        durationMs: reportAttachments.durationMs,
+        trimStartMs: reportAttachments.trimStartMs,
+        trimEndMs: reportAttachments.trimEndMs,
       })
       .from(reportAttachments)
       .where(eq(reportAttachments.reportId, reportId)),
@@ -113,7 +116,10 @@ export default defineEventHandler(async (event): Promise<ReportDetailDTO> => {
     attachments: attachmentRows.map((a) => ({
       id: a.id,
       kind: a.kind,
-      url: `/api/projects/${projectId}/reports/${reportId}/attachment?id=${a.id}`,
+      url:
+        a.kind === "media"
+          ? `/api/projects/${projectId}/reports/${reportId}/media/${a.id}`
+          : `/api/projects/${projectId}/reports/${reportId}/attachment?id=${a.id}`,
       contentType: a.contentType,
       sizeBytes: a.sizeBytes,
       filename: a.filename ?? null,
@@ -121,6 +127,9 @@ export default defineEventHandler(async (event): Promise<ReportDetailDTO> => {
       scanStatus: a.scanStatus ?? null,
       scanEngine: a.scanEngine ?? null,
       scanDurationMs: a.scanDurationMs ?? null,
+      durationMs: a.durationMs ?? null,
+      trimStartMs: a.trimStartMs ?? null,
+      trimEndMs: a.trimEndMs ?? null,
     })),
   }
 })

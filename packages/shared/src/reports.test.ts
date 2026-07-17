@@ -167,6 +167,9 @@ test("AttachmentDTO.filename accepts string and null", () => {
     scanStatus: null,
     scanEngine: null,
     scanDurationMs: null,
+    durationMs: null,
+    trimStartMs: null,
+    trimEndMs: null,
   }
 
   const withFilename = AttachmentDTO.parse({ ...base, filename: "report.pdf" })
@@ -189,6 +192,9 @@ test("AttachmentDTO.scan* fields accept clean-scan metadata", () => {
     scanStatus: "clean",
     scanEngine: "ClamAV",
     scanDurationMs: 23,
+    durationMs: null,
+    trimStartMs: null,
+    trimEndMs: null,
   })
   expect(parsed.scanStatus).toBe("clean")
   expect(parsed.scanEngine).toBe("ClamAV")

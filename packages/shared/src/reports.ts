@@ -221,8 +221,31 @@ export const AttachmentKind = z.enum([
   "replay",
   "logs",
   "user-file",
+  "media",
 ])
 export type AttachmentKind = z.infer<typeof AttachmentKind>
+
+/** Sidecar metadata for gallery media parts (`media[N]` + `mediaMeta`). */
+export const MediaMetaEntry = z
+  .object({
+    kind: z.enum(["image", "video"]),
+    mime: z.string().min(1).max(255),
+    durationMs: z.number().int().nonnegative().optional(),
+    trim: z
+      .object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() })
+      .refine((t) => t.endMs > t.startMs, "endMs must be after startMs")
+      .optional(),
+  })
+  // kind and mime family must agree in BOTH directions — otherwise a
+  // `{ kind: "video", mime: "image/png" }` entry would claim the far larger
+  // video size budget for an image payload (and vice-versa).
+  .refine((m) => (m.kind === "video") === m.mime.startsWith("video/"), {
+    message: "kind must match the mime family (video ⟺ video/*)",
+    path: ["mime"],
+  })
+export type MediaMetaEntry = z.infer<typeof MediaMetaEntry>
+export const MediaMetaInput = z.array(MediaMetaEntry).max(3)
+export type MediaMetaInput = z.infer<typeof MediaMetaInput>
 
 export const AttachmentDTO = z.object({
   id: z.uuid(),
@@ -237,6 +260,9 @@ export const AttachmentDTO = z.object({
   scanStatus: z.string().nullable(),
   scanEngine: z.string().nullable(),
   scanDurationMs: z.number().int().nullable(),
+  durationMs: z.number().int().nullable(),
+  trimStartMs: z.number().int().nullable(),
+  trimEndMs: z.number().int().nullable(),
 })
 export type AttachmentDTO = z.infer<typeof AttachmentDTO>
 

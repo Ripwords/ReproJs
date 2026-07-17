@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from "vue"
-import type { ProjectDTO } from "@reprojs/shared"
+import { ref, computed, watch } from "vue"
+import type { ProjectDTO, ProjectRole, SharedMediaDTO } from "@reprojs/shared"
 import { PROJECTS_LIST_KEY } from "~/composables/useApi"
 import ConfirmDeleteDialog from "~/components/common/confirm-delete-dialog.vue"
 
@@ -22,6 +22,15 @@ useHead({
 })
 
 const isOwner = computed(() => project.value?.effectiveRole === "owner")
+// Sharing tab's link list/revoke is manager+ (rank matches server's
+// requireProjectRole(event, id, "manager") in the shared-media routes);
+// the enable toggle and retention input stay owner-gated below since they
+// PATCH the project itself.
+const ROLE_RANK: Record<ProjectRole, number> = { viewer: 1, manager: 2, developer: 3, owner: 4 }
+const canManageSharing = computed(() => {
+  const role = project.value?.effectiveRole
+  return !!role && ROLE_RANK[role] >= ROLE_RANK.manager
+})
 
 // Local form state — seeded from the fetched project.
 const generalForm = ref({
@@ -29,10 +38,15 @@ const generalForm = ref({
   originsText: (project.value?.allowedOrigins ?? []).join("\n"),
   dailyReportCap: project.value?.dailyReportCap ?? 1000,
 })
+const sharingForm = ref({
+  shareRetentionDays: project.value?.shareRetentionDays ?? 30,
+})
 
 const saving = ref(false)
 const rotating = ref(false)
 const replayUpdating = ref(false)
+const shareLinksUpdating = ref(false)
+const retentionSaving = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 
@@ -40,9 +54,42 @@ const activeTab = ref("general")
 const tabs = [
   { value: "general", label: "General", icon: "i-heroicons-cog-6-tooth" },
   { value: "triage", label: "Triage", icon: "i-heroicons-inbox" },
+  { value: "sharing", label: "Sharing", icon: "i-heroicons-share" },
   { value: "security", label: "Security", icon: "i-heroicons-key" },
   { value: "danger", label: "Danger zone", icon: "i-heroicons-exclamation-triangle" },
 ]
+
+// Shared-media list is fetched lazily the first time the Sharing tab is
+// activated, matching the report detail page's pattern of deferring
+// tab-scoped data until the tab is actually opened.
+const sharedMediaList = ref<SharedMediaDTO[]>([])
+const sharedMediaLoaded = ref(false)
+const sharedMediaLoading = ref(false)
+const revokingId = ref<string | null>(null)
+
+async function ensureSharedMedia() {
+  if (sharedMediaLoaded.value || !canManageSharing.value) return
+  sharedMediaLoading.value = true
+  try {
+    sharedMediaList.value = await $fetch<SharedMediaDTO[]>(
+      `/api/projects/${projectId.value}/shared-media`,
+      { credentials: "include" },
+    )
+    sharedMediaLoaded.value = true
+  } catch (err) {
+    toast.add({
+      title: "Could not load shared links",
+      description: describeError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
+  } finally {
+    sharedMediaLoading.value = false
+  }
+}
+watch(activeTab, (t) => {
+  if (t === "sharing") void ensureSharedMedia()
+})
 
 function describeError(err: unknown): string | undefined {
   if (err instanceof Error) return err.message
@@ -99,6 +146,119 @@ async function updateReplayEnabled(enabled: boolean) {
     })
   } finally {
     replayUpdating.value = false
+  }
+}
+
+async function updateShareLinksEnabled(enabled: boolean) {
+  shareLinksUpdating.value = true
+  try {
+    await $fetch(`/api/projects/${projectId.value}`, {
+      method: "PATCH",
+      credentials: "include",
+      body: { shareLinksEnabled: enabled },
+    })
+    toast.add({ title: "Saved", color: "success", icon: "i-heroicons-check-circle" })
+    await refresh()
+  } catch (err) {
+    toast.add({
+      title: "Could not save",
+      description: describeError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
+  } finally {
+    shareLinksUpdating.value = false
+  }
+}
+
+async function saveRetention() {
+  retentionSaving.value = true
+  try {
+    await $fetch(`/api/projects/${projectId.value}`, {
+      method: "PATCH",
+      credentials: "include",
+      // Clamp client-side (matches the UInput's min/max below) — the server
+      // still validates 1-365 via UpdateProjectInput, this just avoids a
+      // round-trip for an obviously-out-of-range value.
+      body: {
+        shareRetentionDays: Math.min(365, Math.max(1, sharingForm.value.shareRetentionDays)),
+      },
+    })
+    toast.add({ title: "Saved", color: "success", icon: "i-heroicons-check-circle" })
+    await refresh()
+  } catch (err) {
+    toast.add({
+      title: "Could not save",
+      description: describeError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
+  } finally {
+    retentionSaving.value = false
+  }
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+type MediaStatus = "active" | "expired" | "revoked"
+
+function mediaStatus(media: SharedMediaDTO): MediaStatus {
+  if (media.revokedAt) return "revoked"
+  if (new Date(media.expiresAt).getTime() < Date.now()) return "expired"
+  return "active"
+}
+
+function statusColor(status: MediaStatus): "success" | "neutral" | "error" {
+  if (status === "active") return "success"
+  if (status === "expired") return "neutral"
+  return "error"
+}
+
+async function copyShareUrl(url: string) {
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.add({ title: "Copied", color: "success", icon: "i-heroicons-clipboard-document-check" })
+  } catch {
+    toast.add({
+      title: "Could not copy",
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
+  }
+}
+
+async function confirmRevoke(media: SharedMediaDTO) {
+  const ok = await confirm({
+    title: "Revoke share link?",
+    description:
+      "The link takes effect within a few minutes for any cached copies — new visits stop resolving once caches expire.",
+    confirmLabel: "Revoke",
+    confirmColor: "error",
+    icon: "i-heroicons-link-slash",
+  })
+  if (!ok) return
+  revokingId.value = media.id
+  try {
+    await $fetch(`/api/projects/${projectId.value}/shared-media/${media.id}`, {
+      method: "DELETE",
+      credentials: "include",
+    })
+    toast.add({ title: "Link revoked", color: "success", icon: "i-heroicons-check-circle" })
+    sharedMediaLoaded.value = false
+    await ensureSharedMedia()
+  } catch (err) {
+    toast.add({
+      title: "Could not revoke link",
+      description: describeError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
+  } finally {
+    revokingId.value = null
   }
 }
 
@@ -251,6 +411,105 @@ async function confirmDelete() {
             />
           </UFormField>
         </div>
+      </UCard>
+    </div>
+
+    <!-- Sharing -->
+    <div v-else-if="activeTab === 'sharing'" class="space-y-4 max-w-3xl">
+      <UCard>
+        <template #header>
+          <h2 class="text-base font-semibold text-default">Share links</h2>
+        </template>
+        <div class="space-y-4">
+          <UFormField
+            label="Enable share links"
+            help="Lets reporters mint a public link to a trimmed session recording. When off, new mint requests are rejected."
+          >
+            <USwitch
+              :model-value="project?.shareLinksEnabled ?? false"
+              :disabled="shareLinksUpdating || !isOwner || !project"
+              @update:model-value="updateShareLinksEnabled"
+            />
+          </UFormField>
+          <UFormField label="Retention (days)" help="Applies to new links.">
+            <div class="flex gap-2 max-w-xs">
+              <UInput
+                v-model.number="sharingForm.shareRetentionDays"
+                :disabled="!isOwner"
+                type="number"
+                min="1"
+                max="365"
+                class="w-full"
+              />
+              <UButton
+                label="Save"
+                color="primary"
+                variant="soft"
+                :loading="retentionSaving"
+                :disabled="!isOwner"
+                @click="saveRetention"
+              />
+            </div>
+          </UFormField>
+        </div>
+      </UCard>
+
+      <UCard v-if="canManageSharing" :ui="{ body: 'p-0' }">
+        <template #header>
+          <h2 class="text-base font-semibold text-default">Shared links</h2>
+        </template>
+        <UTable
+          :data="sharedMediaList"
+          :loading="sharedMediaLoading"
+          :columns="[
+            { accessorKey: 'createdAt', header: 'Created' },
+            { accessorKey: 'sizeBytes', header: 'Size' },
+            { accessorKey: 'expiresAt', header: 'Expires' },
+            { accessorKey: 'status', header: 'Status' },
+            { id: 'actions', header: '' },
+          ]"
+          :ui="{ td: 'text-sm', th: 'text-sm font-medium text-muted uppercase' }"
+        >
+          <template #createdAt-cell="{ row }">
+            {{ new Date(row.original.createdAt).toLocaleString() }}
+          </template>
+          <template #sizeBytes-cell="{ row }">
+            {{ formatBytes(row.original.sizeBytes) }}
+          </template>
+          <template #expiresAt-cell="{ row }">
+            {{ new Date(row.original.expiresAt).toLocaleString() }}
+          </template>
+          <template #status-cell="{ row }">
+            <UBadge :color="statusColor(mediaStatus(row.original))" variant="subtle" size="sm">
+              {{ mediaStatus(row.original) }}
+            </UBadge>
+          </template>
+          <template #actions-cell="{ row }">
+            <div class="flex justify-end gap-2">
+              <UButton
+                icon="i-heroicons-clipboard"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                aria-label="Copy link"
+                @click="copyShareUrl(row.original.shareUrl)"
+              />
+              <UButton
+                icon="i-heroicons-link-slash"
+                color="error"
+                variant="ghost"
+                size="xs"
+                aria-label="Revoke link"
+                :loading="revokingId === row.original.id"
+                :disabled="mediaStatus(row.original) !== 'active'"
+                @click="confirmRevoke(row.original)"
+              />
+            </div>
+          </template>
+          <template #empty>
+            <p class="text-sm text-muted py-6 text-center">No shared links yet.</p>
+          </template>
+        </UTable>
       </UCard>
     </div>
 

@@ -4,6 +4,7 @@ import { render } from "preact"
 import { Window } from "happy-dom"
 import { StepDetails } from "./step-details"
 import { h } from "preact"
+import type { GalleryItem } from "../gallery/store"
 
 function setupDom() {
   const win = new Window()
@@ -33,25 +34,44 @@ function walkForTag(node: Element, tag: string): Element | null {
   return null
 }
 
+function walkForClass(node: Element, cls: string): Element | null {
+  const classes = node.className?.split?.(" ") ?? []
+  if (classes.includes(cls)) return node
+  for (let i = 0; i < node.childNodes.length; i++) {
+    const child = node.childNodes[i]
+    if (child && (child as Element).tagName) {
+      const found = walkForClass(child as Element, cls)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function baseProps() {
+  return {
+    title: "",
+    description: "",
+    attachments: [],
+    attachmentErrors: [],
+    mediaItems: [] as GalleryItem[],
+    selectedMediaIds: [] as string[],
+    mediaErrors: [] as string[],
+    onTitleChange: () => {},
+    onDescriptionChange: () => {},
+    onAttachmentsAdd: () => {},
+    onAttachmentRemove: () => {},
+    onMediaToggle: () => {},
+    onCaptureNow: () => {},
+    onRecordNow: () => {},
+  }
+}
+
 describe("StepDetails", () => {
   test("renders title + description fields with labels", () => {
     const win = setupDom()
     const root = win.document.createElement("div")
     win.document.body.appendChild(root as unknown as Node)
-    render(
-      h(StepDetails, {
-        title: "",
-        description: "",
-        attachments: [],
-        attachmentErrors: [],
-        annotatedBlob: null,
-        onTitleChange: () => {},
-        onDescriptionChange: () => {},
-        onAttachmentsAdd: () => {},
-        onAttachmentRemove: () => {},
-      }),
-      root as unknown as Element,
-    )
+    render(h(StepDetails, baseProps()), root as unknown as Element)
     expect(root.textContent).toContain("Title")
     expect(root.textContent).toContain("Details")
     expect(walkForTag(root as unknown as Element, "input")).toBeTruthy()
@@ -65,17 +85,10 @@ describe("StepDetails", () => {
     let captured = ""
     render(
       h(StepDetails, {
-        title: "",
-        description: "",
-        attachments: [],
-        attachmentErrors: [],
-        annotatedBlob: null,
+        ...baseProps(),
         onTitleChange: (v: string) => {
           captured = v
         },
-        onDescriptionChange: () => {},
-        onAttachmentsAdd: () => {},
-        onAttachmentRemove: () => {},
       }),
       root as unknown as Element,
     )
@@ -83,5 +96,42 @@ describe("StepDetails", () => {
     input.value = "hello"
     input.dispatchEvent(new win.Event("input", { bubbles: true }))
     expect(captured).toBe("hello")
+  })
+
+  test("renders the media section and forwards media props to MediaPicker", () => {
+    const win = setupDom()
+    const root = win.document.createElement("div")
+    win.document.body.appendChild(root as unknown as Node)
+    render(
+      h(StepDetails, {
+        ...baseProps(),
+        mediaItems: [
+          {
+            id: "a",
+            kind: "image",
+            blob: new Blob(["x"], { type: "image/png" }),
+            thumb: null,
+            mime: "image/png",
+            sizeBytes: 1024,
+            createdAt: Date.now(),
+          },
+        ],
+        mediaErrors: ["image exceeds 10 MB limit"],
+      }),
+      root as unknown as Element,
+    )
+    expect(root.textContent).toContain("Media")
+    expect(walkForClass(root as unknown as Element, "ft-media")).toBeTruthy()
+    expect(walkForClass(root as unknown as Element, "ft-media-item")).toBeTruthy()
+    expect(walkForClass(root as unknown as Element, "ft-media-error")).toBeTruthy()
+    expect(root.textContent).toContain("image exceeds 10 MB limit")
+  })
+
+  test("still renders AttachmentList", () => {
+    const win = setupDom()
+    const root = win.document.createElement("div")
+    win.document.body.appendChild(root as unknown as Node)
+    render(h(StepDetails, baseProps()), root as unknown as Element)
+    expect(walkForClass(root as unknown as Element, "ft-attach")).toBeTruthy()
   })
 })

@@ -26,6 +26,8 @@ export default defineEventHandler(async (event): Promise<ProjectDTO[]> => {
       allowedOrigins: r.allowedOrigins,
       dailyReportCap: r.dailyReportCap,
       replayEnabled: r.replayEnabled,
+      shareLinksEnabled: r.shareLinksEnabled,
+      shareRetentionDays: r.shareRetentionDays,
     }))
   }
 
@@ -41,6 +43,8 @@ export default defineEventHandler(async (event): Promise<ProjectDTO[]> => {
       allowedOrigins: projects.allowedOrigins,
       dailyReportCap: projects.dailyReportCap,
       replayEnabled: projects.replayEnabled,
+      shareLinksEnabled: projects.shareLinksEnabled,
+      shareRetentionDays: projects.shareRetentionDays,
     })
     .from(projects)
     .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
@@ -58,5 +62,7 @@ export default defineEventHandler(async (event): Promise<ProjectDTO[]> => {
     allowedOrigins: r.allowedOrigins,
     dailyReportCap: r.dailyReportCap,
     replayEnabled: r.replayEnabled,
+    shareLinksEnabled: r.shareLinksEnabled,
+    shareRetentionDays: r.shareRetentionDays,
   }))
 })

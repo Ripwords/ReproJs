@@ -1,11 +1,12 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3"
 import { env } from "../env"
-import type { StorageAdapter } from "./index"
+import type { StorageAdapter, StorageStream } from "./index"
 
 function resolveCredentials(): { accessKeyId: string; secretAccessKey: string } {
   const envId = env.S3_ACCESS_KEY_ID
@@ -74,8 +75,14 @@ export class S3Adapter implements StorageAdapter {
   private readonly client: S3Client
   private readonly bucket: string
 
-  constructor() {
+  // `client` param is a test-only injection seam so getStream's Head-fallback logic
+  // can be exercised against a mocked S3Client instead of a live endpoint.
+  constructor(client?: S3Client) {
     this.bucket = env.S3_BUCKET
+    if (client) {
+      this.client = client
+      return
+    }
     const endpoint = env.S3_ENDPOINT ? validateS3Endpoint(env.S3_ENDPOINT) : undefined
     this.client = new S3Client({
       ...(endpoint ? { endpoint } : {}),
@@ -103,6 +110,46 @@ export class S3Adapter implements StorageAdapter {
     const bytes = new Uint8Array(await res.Body.transformToByteArray())
     const contentType = res.ContentType ?? "application/octet-stream"
     return { bytes, contentType }
+  }
+
+  async getStream(key: string, range?: { start: number; end?: number }): Promise<StorageStream> {
+    const res = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Range: range ? `bytes=${range.start}-${range.end ?? ""}` : undefined,
+      }),
+    )
+    if (!res.Body) throw new Error(`S3 get: empty body for ${key}`)
+    const contentType = res.ContentType ?? "application/octet-stream"
+    const stream = res.Body.transformToWebStream()
+
+    if (range) {
+      const match = res.ContentRange ? /\/(\d+)$/.exec(res.ContentRange) : null
+      let totalBytes: number
+      if (match) {
+        totalBytes = Number(match[1])
+      } else {
+        // Some S3-compatibles (e.g. certain MinIO/Garage configs) omit ContentRange on
+        // 206 responses. res.ContentLength there is only the partial byte count, which
+        // would violate StorageStream.totalBytes' "full object size" contract and corrupt
+        // downstream Content-Range headers. Fetch the true size via HEAD instead.
+        const head = await this.client.send(
+          new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+        )
+        totalBytes = head.ContentLength ?? 0
+      }
+      return {
+        stream,
+        contentType,
+        totalBytes,
+        start: range.start,
+        end: range.end ?? totalBytes - 1,
+      }
+    }
+
+    const totalBytes = res.ContentLength ?? 0
+    return { stream, contentType, totalBytes, start: 0, end: totalBytes - 1 }
   }
 
   async delete(key: string): Promise<void> {

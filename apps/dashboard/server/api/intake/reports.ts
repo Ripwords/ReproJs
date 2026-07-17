@@ -1,7 +1,7 @@
 import { createError, defineEventHandler, getHeader, getRequestIP, readMultipartFormData } from "h3"
 import { and, count, eq, gte, sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
-import { LogsAttachment, ReportIntakeInput } from "@reprojs/shared"
+import { LogsAttachment, MediaMetaEntry, ReportIntakeInput } from "@reprojs/shared"
 import { db } from "../../db"
 import { githubIntegrations, projects, reports, reportAttachments } from "../../db/schema"
 import {
@@ -24,6 +24,36 @@ const DENIED_USER_FILE_MIMES = new Set([
   "application/x-executable",
 ])
 const DENIED_USER_FILE_EXTS = [".exe", ".bat", ".cmd", ".com", ".scr", ".sh", ".ps1", ".vbs"]
+
+// Gallery media (`media[N]` + `mediaMeta`) — screenshots + trimmed
+// recordings from the SDK's own capture/annotation flow, distinct from
+// arbitrary user-picked `attachment[N]` files.
+const MEDIA_PART_RE = /^media\[(\d+)\]$/
+// Strip any `;codecs=...`/`;charset=...` parameters so a browser-emitted
+// content-type like `video/webm;codecs=vp9` (Chrome's MediaRecorder default)
+// is validated and stored as the bare `video/webm` the allowlist expects.
+function bareMime(m: string): string {
+  return m.split(";")[0]?.trim() ?? m
+}
+const ALLOWED_MEDIA_MIMES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "video/webm",
+  "video/mp4",
+])
+const MEDIA_EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "video/webm": "webm",
+  "video/mp4": "mp4",
+}
+// clamd's default StreamMaxLength (25 MB). Media parts above this are stored
+// unscanned (scanStatus: "skipped-size") rather than fail-closed rejected —
+// the mime allowlist is the primary control for large video parts. See
+// task-10 brief for rationale.
+const CLAMAV_STREAM_CEILING = 26_214_400
 
 export default defineEventHandler(async (event) => {
   // Preflight reflects Origin so browsers can proceed with the real POST.
@@ -57,6 +87,18 @@ export default defineEventHandler(async (event) => {
   // TRUST_XFF is OFF by default — a public deployment must not be trivially
   // rate-limit-bypassed via a spoofed X-Forwarded-For header.
   const ip = getRequestIP(event, { xForwardedFor: env.TRUST_XFF }) ?? "unknown"
+
+  // Pre-buffer size gate: readMultipartFormData below buffers the ENTIRE body
+  // into RAM before any other check runs, so an oversized (or maliciously huge)
+  // body would be fully read pre-auth. Reject on the declared Content-Length
+  // first. Content-Length can be absent or lie (chunked bodies), so the
+  // post-parse totalBytes gate stays as the authoritative check; this only caps
+  // the honest-but-oversized common case cheaply. Deployments that must also
+  // bound chunked/streamed bodies should set a reverse-proxy body cap.
+  const declaredLength = getHeader(event, "content-length")
+  if (declaredLength !== undefined && Number(declaredLength) > env.INTAKE_MAX_BYTES) {
+    throw createError({ statusCode: 413, statusMessage: "Payload too large" })
+  }
 
   let parts: Awaited<ReturnType<typeof readMultipartFormData>>
   try {
@@ -282,6 +324,164 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // ── Gallery media validation + virus scan (BEFORE the report row is
+  // inserted, same rationale as the user-file block above) ─────────────────
+  const mediaParts = parts.flatMap((p) => {
+    const m = p.name?.match(MEDIA_PART_RE)
+    if (!m || !p.data || p.data.length === 0) return []
+    return [
+      { idx: Number(m[1]), data: p.data, mime: bareMime(p.type ?? "application/octet-stream") },
+    ]
+  })
+
+  interface MediaScanMeta {
+    scannedAt: Date | null
+    scanStatus: string
+    scanEngine: string | null
+    scanDurationMs: number | null
+  }
+  const mediaScanMetaByIdx = new Map<number, MediaScanMeta>()
+  const mediaMetaByIdx = new Map<number, MediaMetaEntry>()
+
+  if (mediaParts.length > 0) {
+    // Indices must form the exact unique contiguous set 0..mediaParts.length-1.
+    // Without this, duplicate media[N] parts (e.g. two media[0]s) both pass
+    // the mediaMeta length check below, both resolve the same mediaMeta
+    // entry, and both persist to the SAME storage key
+    // `${report.id}/media/N.<ext>` — the second `storage.put` silently
+    // overwrites the first blob while two attachment rows end up pointing at
+    // one key with divergent sizes. Gaps/out-of-range indices (e.g. a lone
+    // media[7]) are equally malformed and are now caught here too, instead
+    // of surfacing as a less specific "mediaMeta entry missing" error later.
+    const seenMediaIdx = new Set<number>()
+    for (const { idx } of mediaParts) {
+      if (idx >= mediaParts.length || seenMediaIdx.has(idx)) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "media part indices must be unique and contiguous",
+        })
+      }
+      seenMediaIdx.add(idx)
+    }
+
+    const mediaMetaPart = parts.find((p) => p.name === "mediaMeta")
+    if (!mediaMetaPart?.data) {
+      throw createError({ statusCode: 400, statusMessage: "Missing 'mediaMeta' part" })
+    }
+
+    let rawMeta: unknown
+    try {
+      rawMeta = JSON.parse(mediaMetaPart.data.toString("utf8"))
+    } catch {
+      throw createError({ statusCode: 400, statusMessage: "Invalid mediaMeta" })
+    }
+    if (!Array.isArray(rawMeta)) {
+      throw createError({ statusCode: 400, statusMessage: "Invalid mediaMeta" })
+    }
+    // Length check BEFORE the count cap: a mismatched meta array is a
+    // malformed request regardless of how many parts were sent, and we want
+    // a distinct 400 for it rather than letting a coincidentally-oversized
+    // array masquerade as a 413.
+    if (rawMeta.length !== mediaParts.length) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "mediaMeta length must match the number of media parts",
+      })
+    }
+    if (mediaParts.length > env.INTAKE_MEDIA_MAX_COUNT) {
+      throw createError({
+        statusCode: 413,
+        statusMessage: `Too many media parts (max ${env.INTAKE_MEDIA_MAX_COUNT})`,
+      })
+    }
+
+    let meta: MediaMetaEntry[]
+    try {
+      meta = rawMeta.map((entry) => MediaMetaEntry.parse(entry))
+    } catch (err) {
+      const issues =
+        err && typeof err === "object" && "issues" in err
+          ? (err as { issues: unknown }).issues
+          : String(err)
+      console.warn("[intake] invalid mediaMeta entry", JSON.stringify(issues, null, 2))
+      throw createError({ statusCode: 400, statusMessage: "Invalid mediaMeta", data: { issues } })
+    }
+    meta.forEach((entry, i) => mediaMetaByIdx.set(i, entry))
+
+    for (const { idx, data, mime } of mediaParts) {
+      const m = mediaMetaByIdx.get(idx)
+      if (!m) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `mediaMeta entry missing for media[${idx}]`,
+        })
+      }
+      // Normalize the declared mediaMeta mime the same way as the part mime so
+      // a parameterized codec string on either side (part content-type or the
+      // sidecar meta) still matches and stays on the bare allowlist.
+      if (!ALLOWED_MEDIA_MIMES.has(mime) || mime !== bareMime(m.mime)) {
+        throw createError({
+          statusCode: 415,
+          statusMessage: `Media type not allowed: media[${idx}]`,
+        })
+      }
+      const cap =
+        m.kind === "image" ? env.INTAKE_MEDIA_IMAGE_MAX_BYTES : env.INTAKE_MEDIA_VIDEO_MAX_BYTES
+      if (data.length > cap) {
+        throw createError({
+          statusCode: 413,
+          statusMessage: `media[${idx}] exceeds the ${m.kind} size cap`,
+        })
+      }
+      if (m.trim && m.durationMs !== undefined && m.trim.endMs > m.durationMs) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `media[${idx}] trim.endMs exceeds durationMs`,
+        })
+      }
+    }
+
+    // Virus-scan each media part, same sequential-clamd rationale as the
+    // user-file loop above. Parts over the clamd StreamMaxLength ceiling are
+    // stored unscanned rather than fail-closed rejected — see
+    // CLAMAV_STREAM_CEILING comment.
+    if (env.INTAKE_USER_FILE_SCAN_ENABLED) {
+      for (const { idx, data } of mediaParts) {
+        if (data.length > CLAMAV_STREAM_CEILING) {
+          mediaScanMetaByIdx.set(idx, {
+            scannedAt: null,
+            scanStatus: "skipped-size",
+            scanEngine: null,
+            scanDurationMs: null,
+          })
+          continue
+        }
+        let scan: Awaited<ReturnType<typeof scanBytes>>
+        try {
+          scan = await scanBytes(new Uint8Array(data))
+        } catch (err) {
+          console.error("[intake] virus scanner unavailable", err)
+          throw createError({
+            statusCode: 503,
+            statusMessage: "Attachment scanner unavailable, please retry",
+          })
+        }
+        if (!scan.clean) {
+          throw createError({
+            statusCode: 422,
+            statusMessage: `Media rejected by virus scanner: media[${idx}] (${scan.reason ?? "infected"})`,
+          })
+        }
+        mediaScanMetaByIdx.set(idx, {
+          scannedAt: new Date(),
+          scanStatus: "clean",
+          scanEngine: scan.engine,
+          scanDurationMs: scan.durationMs,
+        })
+      }
+    }
+  }
+
   // SEC2: Daily ceiling — hard cap on reports per project per rolling 24h
   // window. Previously the COUNT and INSERT ran in separate statements which
   // allowed concurrent requests to all observe count = cap-1 and each commit
@@ -433,6 +633,45 @@ export default defineEventHandler(async (event) => {
           })
         }),
       )
+    } catch (err) {
+      await rollbackPuts(storage, writtenKeys)
+      throw err
+    }
+  }
+
+  // ── Persist gallery media attachments (kind = "media") ────────────────────
+  // All validation + virus-scanning ran above, BEFORE the report row was
+  // inserted, so every part here is known-clean and within its size cap.
+  if (mediaParts.length > 0) {
+    const storage = await getStorage()
+    const writtenKeys: string[] = []
+    try {
+      // Sequential (not Promise.all) so writtenKeys only ever contains keys
+      // that have actually landed in storage before any failure, in a
+      // well-defined order — mirrors the user-file block's rollback contract.
+      for (const { idx, data, mime } of mediaParts) {
+        const m = mediaMetaByIdx.get(idx)!
+        const ext = MEDIA_EXT[mime] ?? "bin"
+        const key = `${report.id}/media/${idx}.${ext}`
+        await storage.put(key, new Uint8Array(data), mime)
+        writtenKeys.push(key)
+        const scanMeta = mediaScanMetaByIdx.get(idx)
+        await db.insert(reportAttachments).values({
+          reportId: report.id,
+          kind: "media",
+          storageKey: key,
+          contentType: mime,
+          sizeBytes: data.length,
+          filename: `media-${idx}.${ext}`,
+          durationMs: m.durationMs ?? null,
+          trimStartMs: m.trim?.startMs ?? null,
+          trimEndMs: m.trim?.endMs ?? null,
+          scannedAt: scanMeta?.scannedAt ?? null,
+          scanStatus: scanMeta?.scanStatus ?? null,
+          scanEngine: scanMeta?.scanEngine ?? null,
+          scanDurationMs: scanMeta?.scanDurationMs ?? null,
+        })
+      }
     } catch (err) {
       await rollbackPuts(storage, writtenKeys)
       throw err

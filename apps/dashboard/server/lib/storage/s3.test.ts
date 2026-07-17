@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { GetObjectCommand, HeadObjectCommand, type S3Client } from "@aws-sdk/client-s3"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { _reloadEnvForTesting } from "../env"
 import { S3Adapter } from "./s3"
 
@@ -145,5 +146,90 @@ describe("validateS3Endpoint SSRF blocklist", () => {
       // Sanity: the regex is anchored to 169.254. so adjacent ranges aren't caught.
       expectEndpointAccepted("https://170.254.169.254/")
     })
+  })
+})
+
+function webStreamOfBytes(bytes: number[]): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(bytes))
+      controller.close()
+    },
+  })
+}
+
+/** Minimal S3Client stand-in; `send` is swapped per-test via the injection seam on S3Adapter. */
+function fakeClient(
+  sendImpl: (command: GetObjectCommand | HeadObjectCommand) => Promise<unknown>,
+): S3Client {
+  return { send: mock(sendImpl) } as unknown as S3Client
+}
+
+describe("S3Adapter#getStream", () => {
+  test("range requested, backend 206 omits ContentRange: totalBytes comes from HeadObjectCommand, not the partial ContentLength", async () => {
+    let headCalls = 0
+    const client = fakeClient(async (command) => {
+      if (command instanceof HeadObjectCommand) {
+        headCalls++
+        return { ContentLength: 100 }
+      }
+      // GetObjectCommand: 206 response WITHOUT ContentRange, ContentLength is the
+      // partial (4-byte) size only — must not leak into totalBytes.
+      return {
+        Body: { transformToWebStream: () => webStreamOfBytes([1, 2, 3, 4]) },
+        ContentLength: 4,
+        ContentType: "video/webm",
+      }
+    })
+    const adapter = new S3Adapter(client)
+
+    const result = await adapter.getStream("videos/clip.webm", { start: 0, end: 3 })
+
+    expect(result.totalBytes).toBe(100)
+    expect(result.start).toBe(0)
+    expect(result.end).toBe(3)
+    expect(headCalls).toBe(1)
+  })
+
+  test("open-ended range with missing ContentRange: end is derived from the HEAD-corrected totalBytes", async () => {
+    const client = fakeClient(async (command) => {
+      if (command instanceof HeadObjectCommand) return { ContentLength: 100 }
+      return {
+        Body: { transformToWebStream: () => webStreamOfBytes([1, 2, 3, 4]) },
+        ContentLength: 4,
+        ContentType: "video/webm",
+      }
+    })
+    const adapter = new S3Adapter(client)
+
+    const result = await adapter.getStream("videos/clip.webm", { start: 96 })
+
+    expect(result.totalBytes).toBe(100)
+    expect(result.start).toBe(96)
+    expect(result.end).toBe(99)
+  })
+
+  test("range requested, backend includes ContentRange: totalBytes parsed from it, no HEAD call", async () => {
+    let headCalls = 0
+    const client = fakeClient(async (command) => {
+      if (command instanceof HeadObjectCommand) {
+        headCalls++
+        return { ContentLength: 4 }
+      }
+      return {
+        Body: { transformToWebStream: () => webStreamOfBytes([1, 2, 3, 4]) },
+        ContentLength: 4,
+        ContentType: "video/webm",
+        ContentRange: "bytes 0-3/50",
+      }
+    })
+    const adapter = new S3Adapter(client)
+
+    const result = await adapter.getStream("videos/clip.webm", { start: 0, end: 3 })
+
+    expect(result.totalBytes).toBe(50)
+    expect(result.start).toBe(0)
+    expect(result.end).toBe(3)
+    expect(headCalls).toBe(0)
   })
 })

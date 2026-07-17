@@ -18,6 +18,12 @@ export default defineEventHandler(async (event) => {
       ...(body.allowedOrigins !== undefined ? { allowedOrigins: body.allowedOrigins } : {}),
       ...(body.dailyReportCap !== undefined ? { dailyReportCap: body.dailyReportCap } : {}),
       ...(body.replayEnabled !== undefined ? { replayEnabled: body.replayEnabled } : {}),
+      ...(body.shareLinksEnabled !== undefined
+        ? { shareLinksEnabled: body.shareLinksEnabled }
+        : {}),
+      ...(body.shareRetentionDays !== undefined
+        ? { shareRetentionDays: body.shareRetentionDays }
+        : {}),
       updatedAt: new Date(),
     })
     .where(eq(projects.id, id))
@@ -36,5 +42,7 @@ export default defineEventHandler(async (event) => {
     allowedOrigins: updated.allowedOrigins,
     dailyReportCap: updated.dailyReportCap,
     replayEnabled: updated.replayEnabled,
+    shareLinksEnabled: updated.shareLinksEnabled,
+    shareRetentionDays: updated.shareRetentionDays,
   }
 })

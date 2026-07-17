@@ -15,6 +15,8 @@ export const ProjectDTO = z.object({
   allowedOrigins: z.array(z.string()),
   dailyReportCap: z.number().int().min(1).max(1_000_000),
   replayEnabled: z.boolean(),
+  shareLinksEnabled: z.boolean(),
+  shareRetentionDays: z.number().int(),
 })
 export type ProjectDTO = z.infer<typeof ProjectDTO>
 
@@ -28,6 +30,8 @@ export const UpdateProjectInput = z.object({
   allowedOrigins: z.array(z.string().url()).max(20).optional(),
   dailyReportCap: z.number().int().min(1).max(1_000_000).optional(),
   replayEnabled: z.boolean().optional(),
+  shareLinksEnabled: z.boolean().optional(),
+  shareRetentionDays: z.number().int().min(1).max(365).optional(),
 })
 export type UpdateProjectInput = z.infer<typeof UpdateProjectInput>
 

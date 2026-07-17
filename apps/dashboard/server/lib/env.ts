@@ -77,10 +77,25 @@ const Schema = z.object({
   INTAKE_RATE_PER_KEY: intString(60),
   INTAKE_RATE_PER_IP: intString(20),
   INTAKE_RATE_PER_KEY_ANON: intString(10),
-  INTAKE_MAX_BYTES: intString(5_242_880),
+  // Whole-multipart ceiling. Must sit ABOVE the SDK's advertised attachment
+  // limits (10 MB/file, 25 MB total user files) plus screenshot/replay/logs
+  // headroom — a 5 MB default silently 413'd every video attachment the
+  // widget itself accepted.
+  // Raised to 150 MB so a single max-size gallery video (100 MB, see
+  // INTAKE_MEDIA_VIDEO_MAX_BYTES below) plus the report JSON + other parts
+  // fits under the whole-multipart ceiling.
+  INTAKE_MAX_BYTES: intString(157_286_400),
   INTAKE_USER_FILE_MAX_BYTES: intString(10 * 1024 * 1024),
   INTAKE_USER_FILES_TOTAL_MAX_BYTES: intString(25 * 1024 * 1024),
   INTAKE_USER_FILES_MAX_COUNT: intString(5),
+
+  // Gallery media (`media[N]` + `mediaMeta`) caps — separate from the
+  // generic user-file attachment caps above since media parts come from the
+  // SDK's own capture/annotation flow (screenshots + trimmed recordings),
+  // not arbitrary user-picked files.
+  INTAKE_MEDIA_MAX_COUNT: intString(3),
+  INTAKE_MEDIA_IMAGE_MAX_BYTES: intString(10_485_760),
+  INTAKE_MEDIA_VIDEO_MAX_BYTES: intString(104_857_600),
 
   // Virus scanning for user-supplied attachments. When ENABLED is false
   // (the default) the scan path is skipped entirely so self-hosters who
@@ -116,6 +131,11 @@ const Schema = z.object({
   // call (POST /api/users). 5 sends/min/admin is enough for bulk invites
   // typed by hand; a runaway loop hits the cap before burning SMTP quota.
   INVITE_RATE_PER_ADMIN: intString(5),
+
+  // Share-link mint limiter — caps how many share links a single project
+  // can mint per minute (POST /api/intake/media). Low default: minting is a
+  // deliberate reporter action (export a clip), not a high-frequency call.
+  SHARE_MINTS_PER_MINUTE: intString(2),
 
   RATE_LIMIT_STORE: z.enum(["memory", "postgres"]).default("memory"),
   TRUST_XFF: boolString.default(false),

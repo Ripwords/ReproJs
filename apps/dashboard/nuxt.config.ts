@@ -105,6 +105,7 @@ export default defineNuxtConfig({
     headers: {
       contentSecurityPolicy: {
         "img-src": ["'self'", "data:", "blob:", "https:"],
+        "media-src": ["'self'"],
       },
     },
   },
@@ -147,11 +148,20 @@ export default defineNuxtConfig({
     // here would defeat that oracle protection, so disable nuxt-security's
     // corsHandler entirely and let the handler own CORS. xssValidator is
     // also off because intake bodies are structured JSON + base64 blobs.
+    // requestSizeLimiter is off too: its ~8 MB multipart ceiling sat below
+    // the SDK's advertised attachment limits (10 MB/file, 25 MB total) and
+    // killed video-attachment submissions mid-upload. The intake handler
+    // enforces its own authoritative byte caps (INTAKE_MAX_BYTES and the
+    // per-file/total INTAKE_USER_FILE_* gates) with proper 413 responses.
     "/api/intake/**": {
       security: {
         corsHandler: false,
         xssValidator: false,
+        requestSizeLimiter: false,
       },
+    },
+    "/api/intake/media": {
+      security: { corsHandler: false, xssValidator: false, requestSizeLimiter: false },
     },
     // GitHub webhook — nuxt-security's per-IP rate limiter would block
     // GitHub's exponential-backoff delivery retries during restarts /
@@ -166,6 +176,13 @@ export default defineNuxtConfig({
         requestSizeLimiter: false,
         xssValidator: false,
       },
+    },
+    "/api/shared/**": {
+      // 5-minute ceiling, not longer: shared caches (CDN/proxies) hold these
+      // public recordings, and a revoked link must stop resolving within
+      // minutes — an hour of post-revoke availability was ruled unacceptable
+      // for session recordings that can contain on-screen PII.
+      headers: { "cache-control": "public, max-age=300" },
     },
   },
   nitro: {
@@ -191,6 +208,8 @@ export default defineNuxtConfig({
       [process.env.NODE_ENV === "production" ? "*/1 * * * *" : "*/10 * * * * *"]: ["github:sync"],
       // Daily at 03:00 UTC — cleans up any unconsumed expired write-lock rows.
       "0 3 * * *": ["github:cleanup-write-locks"],
+      // Daily at 04:00 UTC — purges expired/revoked shared_media rows + blobs.
+      "0 4 * * *": ["media:purge"],
     },
     routeRules: {
       // Baseline security headers for every dashboard response.

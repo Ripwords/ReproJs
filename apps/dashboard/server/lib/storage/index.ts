@@ -1,8 +1,17 @@
 import { env } from "../env"
 
+export interface StorageStream {
+  stream: ReadableStream<Uint8Array> | NodeJS.ReadableStream
+  contentType: string
+  totalBytes: number // full object size, regardless of range
+  start: number // inclusive byte offset actually served
+  end: number // inclusive
+}
+
 export interface StorageAdapter {
   put(key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string }>
   get(key: string): Promise<{ bytes: Uint8Array; contentType: string }>
+  getStream(key: string, range?: { start: number; end?: number }): Promise<StorageStream>
   delete(key: string): Promise<void>
 }
 
