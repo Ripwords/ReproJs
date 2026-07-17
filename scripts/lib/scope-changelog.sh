@@ -41,12 +41,28 @@ filter_changelog_by_paths() {
   # awk filter: each line either has a [shorthash] commit ref OR doesn't.
   # If it has one, keep the line iff the SHA is in our kept set. Lines
   # without a ref (headers, blanks, "compare changes" links) pass through.
+  #
+  # Crucially this only applies to the section changelogen just prepended —
+  # everything from the SECOND `## ` heading down is previously-released
+  # history and is copied through untouched.
+  #
+  # It used to filter the whole file. The keep-set only covers FROM..HEAD, so
+  # every past release's bullets referenced SHAs outside the range and were
+  # silently deleted — each release eroding the changelog a bit more.
+  # packages/core/CHANGELOG.md lost its sdk-v0.4.0 entry down from 257 bullets
+  # to 2 that way, and that gutted file is what ships to npm and gets pasted
+  # into the GitHub Release.
+  #
+  # `## ` matches version headings only: `### Fixes` has no space in the third
+  # column, so subsection headings don't increment the counter.
   awk -v sha_file="$sha_file" '
     BEGIN {
       while ((getline line < sha_file) > 0) keep[line] = 1
       close(sha_file)
     }
+    /^## / { sections++ }
     {
+      if (sections >= 2) { print; next }
       if (match($0, /\[[a-f0-9]{7,12}\]/) > 0) {
         sha = substr($0, RSTART + 1, RLENGTH - 2)
         if (!(sha in keep)) next
@@ -57,16 +73,10 @@ filter_changelog_by_paths() {
   mv "${CHANGELOG}.tmp" "$CHANGELOG"
   rm -f "$sha_file"
 }
-
-# Amend the just-created release commit + recreate the tag at the new HEAD.
-# changelogen creates the commit + tag atomically inside `--release`, so the
-# only way to inject a CHANGELOG post-process is to amend after the fact and
-# move the tag forward.
-amend_release_commit_and_retag() {
-  local TAG="$1"
-  git add -A
-  if ! git diff --cached --quiet; then
-    git commit --amend --no-edit --no-verify >/dev/null
-  fi
-  git tag -f "$TAG" >/dev/null
-}
+# NOTE: amend_release_commit_and_retag() used to live here. It amended
+# changelogen's commit and re-tagged with `git tag -f` — a LIGHTWEIGHT tag.
+# Every release script then told you to run `git push --follow-tags`, which
+# pushes annotated tags only, so those pushes silently no-op'd: no tag on the
+# remote, no publish workflow, no error. release.sh now passes --no-commit
+# --no-tag to changelogen and creates annotated tags itself, so there's
+# nothing to amend.

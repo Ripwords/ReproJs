@@ -7,8 +7,10 @@ name: Publish npm package
 #   - Manual dispatch → republishes whatever is currently in packages/core/package.json
 #
 # Decoupled from the dashboard's v*.*.* tags so SDK + dashboard can cut
-# releases on independent cadences. Use `bun run release:sdk` to bump
-# packages/core and tag locally (it runs prerelease checks first).
+# releases on independent cadences. `bun run release` (scripts/release.sh)
+# bumps packages/core and tags locally; it releases every artifact affected by
+# the change in one commit, so an SDK fix that the dashboard and extension
+# bundle tags all three at once.
 #
 # Auth — uses npm Trusted Publishing (OIDC), not a token.
 #   - The package's Trusted Publisher config on npmjs.com must match:

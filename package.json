@@ -37,15 +37,7 @@
     "docs:preview": "vitepress preview docs",
     "prepare": "husky",
     "fix": "bun run fmt && bun run lint:fix",
-    "prerelease": "bun run check && bun run sdk:build && bun run test:sdk",
-    "release": "bash ./scripts/release-dashboard.sh",
-    "release:minor": "bash ./scripts/release-dashboard.sh --minor",
-    "release:major": "bash ./scripts/release-dashboard.sh --major",
-    "postrelease": "git push --follow-tags",
-    "release:sdk": "bash ./scripts/release-sdk.sh",
-    "release:expo": "bash ./scripts/release-expo.sh",
-    "release:extension": "bash ./scripts/release-extension.sh",
-    "release:all": "bash ./scripts/release-sdk.sh ${BUMP:-patch} && bash ./scripts/release-expo.sh ${BUMP:-patch} && bash ./scripts/release-extension.sh ${BUMP:-patch}"
+    "release": "bash ./scripts/release.sh"
   },
   "devDependencies": {
     "@types/bun": "^1.3.12",
