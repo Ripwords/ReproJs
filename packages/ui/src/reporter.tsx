@@ -69,7 +69,13 @@ export function Reporter({
     let cancelled = false
     ;(async () => {
       const items = (await gallery?.list()) ?? []
-      if (!cancelled) setMediaItems(items)
+      if (!cancelled) {
+        setMediaItems(items)
+        // preselectedId is seeded before the gallery resolves; if the item
+        // was evicted between "Report bug with this" and mount, drop it here
+        // so the Review summary can't diverge from what handleSend submits.
+        setSelectedMediaIds((prev) => prev.filter((id) => items.some((i) => i.id === id)))
+      }
     })()
     return () => {
       cancelled = true
@@ -200,8 +206,15 @@ export function Reporter({
 
   const summary = useMemo<SummaryLine[]>(() => {
     const lines: SummaryLine[] = [{ label: "Title & description" }]
-    if (selectedMediaIds.length > 0) {
-      lines.push({ label: "Media", hint: `${selectedMediaIds.length} selected` })
+    // Derive the count from mediaItems ∩ selectedMediaIds — the same
+    // resolved set handleSend submits — rather than selectedMediaIds.length
+    // directly, so a stale/pruned-but-not-yet-reconciled id can never make
+    // the summary claim more is attached than actually uploads.
+    const resolvedMediaCount = mediaItems.filter((item) =>
+      selectedMediaIds.includes(item.id),
+    ).length
+    if (resolvedMediaCount > 0) {
+      lines.push({ label: "Media", hint: `${resolvedMediaCount} selected` })
     }
     lines.push({ label: "Console, network & breadcrumbs" })
     lines.push({ label: "Environment info" })
@@ -209,7 +222,7 @@ export function Reporter({
       lines.push({ label: "Additional attachments", hint: String(attachments.length) })
     }
     return lines
-  }, [selectedMediaIds, attachments.length])
+  }, [mediaItems, selectedMediaIds, attachments.length])
 
   const headerProps = {
     eyebrow: "Repro",

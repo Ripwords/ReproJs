@@ -172,6 +172,34 @@ describe("Reporter", () => {
     expect(root.textContent).toContain("1 selected")
   })
 
+  test("prunes a stale preselectedId that isn't in the loaded gallery", async () => {
+    const win = setupDom()
+    const items = [makeItem({ id: "real-1" })]
+    let payload: Record<string, unknown> | undefined
+    const root = renderReporter(win, {
+      gallery: makeGallery(items),
+      preselectedId: "ghost-id",
+      onSubmit: async (p) => {
+        payload = p as Record<string, unknown>
+        return { ok: true }
+      },
+    })
+    await flush()
+
+    // The ghost id was never a real gallery item, so nothing should read as
+    // selected once the load effect resolves.
+    expect(collectByClass(root, "selected").length).toBe(0)
+
+    await fillTitleAndContinue(win, root)
+    expect(root.textContent).not.toContain("Media")
+
+    findButtonByText(root, "Send report").click()
+    await flush()
+
+    expect(payload).toBeTruthy()
+    expect(payload?.media).toEqual([])
+  })
+
   test("blocks selection past the media limit and clears errors on a later valid toggle", async () => {
     const win = setupDom()
     const items = ["a", "b", "c", "d"].map((id) => makeItem({ id }))
