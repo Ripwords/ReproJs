@@ -70,6 +70,7 @@ export async function startScreenRecording(
   const chunks: Blob[] = []
   const startedAt = now()
   let finished = false
+  let stopping = false
   let pendingReason: RecordingEndReason = "stopped"
 
   const elapsed = () => Math.max(0, Math.round(now() - startedAt))
@@ -101,11 +102,13 @@ export async function startScreenRecording(
   // only implements the on* surface, not addEventListener.
   // oxlint-disable-next-line unicorn/prefer-add-event-listener
   recorder.onerror = () => {
+    if (stopping || finished) return
     pendingReason = "error"
     stopRecorder()
   }
 
   const stopRecorder = () => {
+    stopping = true
     try {
       if (recorder.state !== "inactive") recorder.stop()
       else recorder.onstop?.(new Event("stop"))
@@ -119,6 +122,7 @@ export async function startScreenRecording(
 
   const videoTrack = stream.getVideoTracks()[0]
   videoTrack?.addEventListener("ended", () => {
+    if (stopping || finished) return
     pendingReason = "track-ended"
     stopRecorder()
   })
@@ -127,6 +131,7 @@ export async function startScreenRecording(
     const ms = elapsed()
     opts.onTick?.(ms)
     if (ms >= maxMs) {
+      if (stopping || finished) return
       pendingReason = "auto"
       stopRecorder()
     }
@@ -141,10 +146,12 @@ export async function startScreenRecording(
 
   return {
     stop() {
+      if (stopping || finished) return
       pendingReason = "stopped"
       stopRecorder()
     },
     cancel() {
+      if (stopping || finished) return
       pendingReason = "cancelled"
       chunks.length = 0
       stopRecorder()

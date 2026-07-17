@@ -69,6 +69,43 @@ function deps(stream: FakeStream) {
   }
 }
 
+/**
+ * Mirrors the real MediaRecorder spec gap: `.stop()` flips `state` to
+ * "inactive" synchronously, but `ondataavailable`/`onstop` fire asynchronously
+ * afterwards. This lets tests exercise a second termination trigger arriving
+ * in that synchronous-state/async-event gap.
+ */
+class FakeAsyncMediaRecorder {
+  static created: FakeAsyncMediaRecorder[] = []
+  ondataavailable: Listener | null = null
+  onstop: (() => void) | null = null
+  state = "inactive"
+  constructor(
+    public stream: FakeStream,
+    public opts: { mimeType?: string; videoBitsPerSecond?: number },
+  ) {
+    FakeAsyncMediaRecorder.created.push(this)
+  }
+  start(_timeslice: number) {
+    this.state = "recording"
+  }
+  stop() {
+    this.state = "inactive"
+    setTimeout(() => {
+      this.ondataavailable?.({ data: new Blob(["chunk"], { type: "video/webm" }) })
+      this.onstop?.()
+    }, 0)
+  }
+}
+
+function asyncDeps(stream: FakeStream) {
+  return {
+    getDisplayMedia: async () => stream as unknown as MediaStream, // FakeStream implements the used surface
+    createMediaRecorder: (s: MediaStream, o: MediaRecorderOptions) =>
+      new FakeAsyncMediaRecorder(s as unknown as FakeStream, o) as unknown as MediaRecorder,
+  }
+}
+
 test("constants match the spec", () => {
   expect(MAX_RECORDING_MS).toBe(300_000)
   expect(RECORDING_VIDEO_BPS).toBe(2_500_000)
@@ -145,4 +182,55 @@ test("returns null when getDisplayMedia rejects", async () => {
     onEnd: () => {},
   })
   expect(session).toBeNull()
+})
+
+test("first-trigger-wins: cancel() arriving after auto-stop's recorder.stop() does not relabel the result", async () => {
+  const stream = new FakeStream()
+  let endedCalls = 0
+  let ended: { result: unknown; reason: string } | null = null
+  const session = await startScreenRecording({
+    ...asyncDeps(stream),
+    maxMs: 40,
+    onEnd: (result, reason) => {
+      endedCalls++
+      ended = { result, reason }
+    },
+  })
+  expect(session).not.toBeNull()
+  // Deterministically land in the spec's synchronous-state/async-event gap:
+  // wrap the fake recorder's stop() so that the moment auto-stop's tick calls
+  // it (state flips to "inactive" synchronously) we immediately fire a second
+  // termination trigger, still before the queued onstop/ondataavailable run.
+  const rec = FakeAsyncMediaRecorder.created.at(-1)!
+  const originalStop = rec.stop.bind(rec)
+  rec.stop = () => {
+    originalStop()
+    session!.cancel()
+  }
+  await Bun.sleep(700) // TICK_MS is 500; one tick past maxMs must fire auto-stop
+  await Bun.sleep(10)
+  expect(endedCalls).toBe(1)
+  expect(ended!.reason).toBe("auto")
+  const result = ended!.result as { blob: Blob; mime: string; durationMs: number } | null
+  expect(result).not.toBeNull()
+  expect(result!.blob.size).toBeGreaterThan(0)
+})
+
+test("first-trigger-wins: stop() arriving right after cancel() does not resurrect the recording", async () => {
+  const stream = new FakeStream()
+  let endedCalls = 0
+  let ended: { result: unknown; reason: string } | null = null
+  const session = await startScreenRecording({
+    ...asyncDeps(stream),
+    onEnd: (result, reason) => {
+      endedCalls++
+      ended = { result, reason }
+    },
+  })
+  expect(session).not.toBeNull()
+  session!.cancel()
+  session!.stop()
+  await Bun.sleep(10)
+  expect(endedCalls).toBe(1)
+  expect(ended).toEqual({ result: null, reason: "cancelled" })
 })
