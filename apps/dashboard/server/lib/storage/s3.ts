@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3"
@@ -74,8 +75,14 @@ export class S3Adapter implements StorageAdapter {
   private readonly client: S3Client
   private readonly bucket: string
 
-  constructor() {
+  // `client` param is a test-only injection seam so getStream's Head-fallback logic
+  // can be exercised against a mocked S3Client instead of a live endpoint.
+  constructor(client?: S3Client) {
     this.bucket = env.S3_BUCKET
+    if (client) {
+      this.client = client
+      return
+    }
     const endpoint = env.S3_ENDPOINT ? validateS3Endpoint(env.S3_ENDPOINT) : undefined
     this.client = new S3Client({
       ...(endpoint ? { endpoint } : {}),
@@ -119,7 +126,19 @@ export class S3Adapter implements StorageAdapter {
 
     if (range) {
       const match = res.ContentRange ? /\/(\d+)$/.exec(res.ContentRange) : null
-      const totalBytes = match ? Number(match[1]) : (res.ContentLength ?? 0)
+      let totalBytes: number
+      if (match) {
+        totalBytes = Number(match[1])
+      } else {
+        // Some S3-compatibles (e.g. certain MinIO/Garage configs) omit ContentRange on
+        // 206 responses. res.ContentLength there is only the partial byte count, which
+        // would violate StorageStream.totalBytes' "full object size" contract and corrupt
+        // downstream Content-Range headers. Fetch the true size via HEAD instead.
+        const head = await this.client.send(
+          new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+        )
+        totalBytes = head.ContentLength ?? 0
+      }
       return {
         stream,
         contentType,
