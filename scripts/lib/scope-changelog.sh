@@ -41,12 +41,28 @@ filter_changelog_by_paths() {
   # awk filter: each line either has a [shorthash] commit ref OR doesn't.
   # If it has one, keep the line iff the SHA is in our kept set. Lines
   # without a ref (headers, blanks, "compare changes" links) pass through.
+  #
+  # Crucially this only applies to the section changelogen just prepended —
+  # everything from the SECOND `## ` heading down is previously-released
+  # history and is copied through untouched.
+  #
+  # It used to filter the whole file. The keep-set only covers FROM..HEAD, so
+  # every past release's bullets referenced SHAs outside the range and were
+  # silently deleted — each release eroding the changelog a bit more.
+  # packages/core/CHANGELOG.md lost its sdk-v0.4.0 entry down from 257 bullets
+  # to 2 that way, and that gutted file is what ships to npm and gets pasted
+  # into the GitHub Release.
+  #
+  # `## ` matches version headings only: `### Fixes` has no space in the third
+  # column, so subsection headings don't increment the counter.
   awk -v sha_file="$sha_file" '
     BEGIN {
       while ((getline line < sha_file) > 0) keep[line] = 1
       close(sha_file)
     }
+    /^## / { sections++ }
     {
+      if (sections >= 2) { print; next }
       if (match($0, /\[[a-f0-9]{7,12}\]/) > 0) {
         sha = substr($0, RSTART + 1, RLENGTH - 2)
         if (!(sha in keep)) next
