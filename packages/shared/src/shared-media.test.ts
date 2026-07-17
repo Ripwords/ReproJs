@@ -1,5 +1,11 @@
 import { test, expect } from "bun:test"
-import { AttachmentKind, MediaMetaInput, ShareMintResponse, SharedMediaDTO } from "./index"
+import {
+  AttachmentKind,
+  MediaMetaEntry,
+  MediaMetaInput,
+  ShareMintResponse,
+  SharedMediaDTO,
+} from "./index"
 
 test("AttachmentKind accepts media", () => {
   expect(AttachmentKind.parse("media")).toBe("media")
@@ -20,6 +26,41 @@ test("MediaMetaInput enforces max 3 entries and trim shape", () => {
     ]),
   ).toThrow()
   expect(() => MediaMetaInput.parse([{ kind: "gif", mime: "image/gif" }])).toThrow()
+})
+
+test("MediaMetaEntry: kind and mime family must agree (both directions)", () => {
+  // Valid: kind matches the mime family.
+  expect(MediaMetaEntry.safeParse({ kind: "video", mime: "video/webm" }).success).toBe(true)
+  expect(MediaMetaEntry.safeParse({ kind: "image", mime: "image/png" }).success).toBe(true)
+  // Invalid: video kind with a non-video mime (would claim the 100MB video
+  // budget for an image payload).
+  expect(MediaMetaEntry.safeParse({ kind: "video", mime: "image/png" }).success).toBe(false)
+  // Invalid: image kind with a video mime.
+  expect(MediaMetaEntry.safeParse({ kind: "image", mime: "video/webm" }).success).toBe(false)
+})
+
+test("MediaMetaEntry: trim endMs must be strictly greater than startMs", () => {
+  expect(
+    MediaMetaEntry.safeParse({
+      kind: "video",
+      mime: "video/webm",
+      trim: { startMs: 1000, endMs: 1000 },
+    }).success,
+  ).toBe(false)
+  expect(
+    MediaMetaEntry.safeParse({
+      kind: "video",
+      mime: "video/webm",
+      trim: { startMs: 2000, endMs: 1000 },
+    }).success,
+  ).toBe(false)
+  expect(
+    MediaMetaEntry.safeParse({
+      kind: "video",
+      mime: "video/webm",
+      trim: { startMs: 1000, endMs: 2000 },
+    }).success,
+  ).toBe(true)
 })
 
 test("ShareMintResponse roundtrip", () => {

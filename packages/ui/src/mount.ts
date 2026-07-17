@@ -81,6 +81,7 @@ export interface MountOptions {
 }
 
 const MAX_RECORDING_MS = 300_000
+const RECORDING_BUSY_MSG = "Recording in progress — stop or cancel it first"
 
 // Internal record sub-phase (mode is "record" while filming, "trim" while
 // trimming + choosing an outcome).
@@ -233,6 +234,10 @@ function App() {
     if (action === "report") {
       returnToReportRef.current = false
       if (newIdValue) setPreselect(newIdValue)
+      // Reset the dwell clock on every entry into report mode — otherwise the
+      // wizard measures dwell from a stale (or zero) openedAt after a
+      // capture/record round-trip, corrupting the anti-abuse dwell signal.
+      setOpenedAt(performance.now())
       setMode("report")
       return
     }
@@ -240,6 +245,7 @@ function App() {
     if (returnToReportRef.current) {
       returnToReportRef.current = false
       if (newIdValue) setPreselect(newIdValue)
+      setOpenedAt(performance.now())
       setMode("report")
     } else {
       showToast("Saved to gallery")
@@ -250,6 +256,7 @@ function App() {
   function afterMediaDiscarded() {
     if (returnToReportRef.current) {
       returnToReportRef.current = false
+      setOpenedAt(performance.now())
       setMode("report")
     } else {
       setMode("closed")
@@ -268,6 +275,12 @@ function App() {
 
   async function startRecord() {
     if (!opts) return
+    // Belt-and-braces: cancel any still-live session before starting a fresh
+    // one so we never leak a second getDisplayMedia stream (the imperative-API
+    // guard below already blocks re-entry while a recording is active, but
+    // internal callers must stay safe too).
+    sessionRef.current?.cancel()
+    sessionRef.current = null
     detachPagehide()
     setRecord({ phase: "recording", elapsedMs: 0 })
     setMode("record")
@@ -325,23 +338,43 @@ function App() {
     // Cancelled, empty, or errored — return to the menu (with a hint on error).
     if (reason === "error") showToast("Recording failed")
     setRecord(null)
-    setMode(returnToReportRef.current ? "report" : "menu")
-    if (returnToReportRef.current) returnToReportRef.current = false
+    if (returnToReportRef.current) {
+      returnToReportRef.current = false
+      setOpenedAt(performance.now())
+      setMode("report")
+    } else {
+      setMode("menu")
+    }
   }
+
+  // A screen recording is actively filming — mode switches must be blocked so
+  // the user can't navigate away and silently abandon (and leak) the capture.
+  const recordingActive = mode === "record" && record?.phase === "recording"
 
   // Wire the module-level imperative API to this render's setters.
   _api = {
-    openMenu: () => setMode("menu"),
+    openMenu: () => {
+      if (recordingActive) return showToast(RECORDING_BUSY_MSG)
+      setMode("menu")
+    },
     openCapture: () => {
+      if (recordingActive) return showToast(RECORDING_BUSY_MSG)
       returnToReportRef.current = false
       setMode("capture")
     },
     openRecord: () => {
+      if (recordingActive) return showToast(RECORDING_BUSY_MSG)
       returnToReportRef.current = false
       void startRecord()
     },
-    openGalleryMode: () => setMode("gallery"),
-    openReport: () => openReportMode(false),
+    openGalleryMode: () => {
+      if (recordingActive) return showToast(RECORDING_BUSY_MSG)
+      setMode("gallery")
+    },
+    openReport: () => {
+      if (recordingActive) return showToast(RECORDING_BUSY_MSG)
+      openReportMode(false)
+    },
     close: () => {
       sessionRef.current?.cancel()
       sessionRef.current = null
@@ -401,8 +434,13 @@ function App() {
       onConfirm: (trim: TrimRange | undefined) => setRecord({ phase: "outcome", result, trim }),
       onCancel: () => {
         setRecord(null)
-        setMode(returnToReportRef.current ? "report" : "menu")
-        if (returnToReportRef.current) returnToReportRef.current = false
+        if (returnToReportRef.current) {
+          returnToReportRef.current = false
+          setOpenedAt(performance.now())
+          setMode("report")
+        } else {
+          setMode("menu")
+        }
       },
     })
   } else if (mode === "trim" && record?.phase === "outcome") {

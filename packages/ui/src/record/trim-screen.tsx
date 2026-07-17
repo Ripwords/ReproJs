@@ -26,6 +26,10 @@ export function clampTrim(
   const start = Math.min(Math.max(0, snap(t.startMs)), durationMs)
   let end = Math.min(Math.max(0, snap(t.endMs)), durationMs)
   if (end - start < 100) end = Math.min(durationMs, start + 100)
+  // Degenerate: both handles pinned at the clip end (duration an exact multiple
+  // of 100) leaves no room for the min-100ms bump, so start === end. Treat a
+  // non-positive-length range as "no trim" rather than persisting an empty one.
+  if (start >= end) return undefined
   if (start <= 0 && end >= durationMs) return undefined
   return { startMs: start, endMs: end }
 }

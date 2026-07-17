@@ -194,6 +194,14 @@ describe("POST /api/intake/reports — gallery media", () => {
     expect(mediaRow?.storageKey.endsWith("/media/0.webm")).toBe(true)
   })
 
+  test("9: image mime declared as kind='video' → 400 (kind/mime family mismatch)", async () => {
+    const { res } = await postReportWithMedia({
+      media: [{ name: "media-0.png", type: "image/png", bytes: new Uint8Array([1, 2, 3]) }],
+      mediaMeta: [{ kind: "video", mime: "image/png" }],
+    })
+    expect(res.status).toBe(400)
+  })
+
   test("7: duplicate media[0] indices (two parts, same slot) → 400, no rows persisted", async () => {
     const form = new FormData()
     form.append("report", reportBlob())

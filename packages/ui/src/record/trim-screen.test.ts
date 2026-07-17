@@ -85,6 +85,15 @@ test("clampTrim keeps at least 100ms of clip", () => {
   })
 })
 
+test("clampTrim collapses a degenerate range with no room left to undefined", () => {
+  // Both handles dragged to the very end of a clip whose duration is an exact
+  // multiple of 100: clamping pins start = end = durationMs and the min-100ms
+  // bump can't grow past durationMs, leaving a zero-length range. That must be
+  // treated as "no trim", not persisted as an empty startMs===endMs range.
+  expect(clampTrim({ startMs: 10_000, endMs: 10_000 }, 10_000)).toBeUndefined()
+  expect(clampTrim({ startMs: 10_000, endMs: 9_999 }, 10_000)).toBeUndefined()
+})
+
 describe("TrimScreen", () => {
   test("renders Confirm/Cancel and fires callbacks exactly once", async () => {
     const win = setupDom()

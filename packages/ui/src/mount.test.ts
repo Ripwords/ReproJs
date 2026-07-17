@@ -97,6 +97,56 @@ describe("mount mode machine", () => {
     expect(root.textContent).not.toContain("Report a bug")
   })
 
+  test("openMenu() while recording is a no-op — mode stays, busy toast shown", async () => {
+    setupDom()
+    const root = createShadowHost()
+    const fakeSession: RecordingSessionLike = {
+      stop: () => {},
+      cancel: () => {},
+      snapshot: () => null,
+    }
+    mount(makeOpts({ startRecording: async () => fakeSession }))
+
+    openRecord()
+    await flush()
+    expect(root.textContent).toContain("Stop") // record control bar is up
+
+    openMenu()
+    await flush()
+    // Still recording — the menu did NOT replace the record UI.
+    expect(root.textContent).toContain("Stop")
+    expect(root.textContent).not.toContain("Record screen") // menu item absent
+    expect(root.textContent).toContain("Recording in progress")
+  })
+
+  test("openRecord() while already recording does not start a second session", async () => {
+    setupDom()
+    createShadowHost()
+    let startCalls = 0
+    const fakeSession: RecordingSessionLike = {
+      stop: () => {},
+      cancel: () => {},
+      snapshot: () => null,
+    }
+    mount(
+      makeOpts({
+        startRecording: async () => {
+          startCalls++
+          return fakeSession
+        },
+      }),
+    )
+
+    openRecord()
+    await flush()
+    expect(startCalls).toBe(1)
+
+    openRecord()
+    await flush()
+    // Blocked by the recording-active guard — startRecording not invoked again.
+    expect(startCalls).toBe(1)
+  })
+
   test("unmount() while recording cancels the session and detaches the pagehide listener", async () => {
     const win = setupDom()
     const root = createShadowHost()

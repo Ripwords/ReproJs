@@ -3,6 +3,7 @@ import {
   createError,
   defineEventHandler,
   getHeader,
+  getRequestIP,
   getRequestURL,
   readMultipartFormData,
 } from "h3"
@@ -16,7 +17,7 @@ import {
   isOriginAllowed,
 } from "../../lib/intake-cors"
 import { env } from "../../lib/env"
-import { getShareMintLimiter } from "../../lib/rate-limit"
+import { getIpLimiter, getShareMintLimiter } from "../../lib/rate-limit"
 import { getStorage } from "../../lib/storage"
 import { rollbackPuts } from "../../lib/storage/rollback"
 
@@ -77,6 +78,10 @@ export default defineEventHandler(async (event) => {
     rawOrigin.length > 0 && rawOrigin.startsWith("chrome-extension://")
       ? (getHeader(event, "x-repro-origin") ?? "")
       : rawOrigin
+  // TRUST_XFF is OFF by default — a public deployment must not be trivially
+  // rate-limit-bypassed via a spoofed X-Forwarded-For header. Same rationale
+  // as reports.ts.
+  const ip = getRequestIP(event, { xForwardedFor: env.TRUST_XFF }) ?? "unknown"
 
   // Pre-buffer size gate: readMultipartFormData below buffers the ENTIRE body
   // into RAM before any other check runs, so an oversized (or maliciously huge)
@@ -171,14 +176,26 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const limiter = await getShareMintLimiter()
-  const take = await limiter.take(`share:${project.id}`)
-  if (!take.allowed) {
-    event.node.res.setHeader("Retry-After", Math.ceil(take.retryAfterMs / 1000).toString())
-    throw createError({
-      statusCode: 429,
-      statusMessage: "Too many share links minted for this project",
-    })
+  // Fire the per-project mint limiter and the per-IP limiter in parallel
+  // (mirrors reports.ts). The per-IP take stops one project key from being
+  // used to hammer mints from a single host even while the project quota has
+  // room, and vice-versa.
+  const shareLimiter = await getShareMintLimiter()
+  const ipLimiter = await getIpLimiter()
+  const [shareTake, ipTake] = await Promise.all([
+    shareLimiter.take(`share:${project.id}`),
+    ipLimiter.take(`ip:${ip}`),
+  ])
+  if (!shareTake.allowed || !ipTake.allowed) {
+    const retryAfterMs = Math.max(
+      shareTake.allowed ? 0 : shareTake.retryAfterMs,
+      ipTake.allowed ? 0 : ipTake.retryAfterMs,
+    )
+    event.node.res.setHeader("Retry-After", Math.ceil(retryAfterMs / 1000).toString())
+    const message = !shareTake.allowed
+      ? "Too many share links minted for this project"
+      : "Too many share links minted from this IP"
+    throw createError({ statusCode: 429, statusMessage: message })
   }
 
   if (filePart.data.length > env.INTAKE_MEDIA_VIDEO_MAX_BYTES) {
