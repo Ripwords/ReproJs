@@ -55,20 +55,41 @@ filter_changelog_by_paths() {
   #
   # `## ` matches version headings only: `### Fixes` has no space in the third
   # column, so subsection headings don't increment the counter.
+  # Subsections are buffered rather than streamed, so that a `### 🏡 Chore`
+  # whose every bullet got filtered out is dropped along with its bullets.
+  # Otherwise the heading survives (it carries no [sha] to match on) and the
+  # published changelog shows empty sections — packages/core/CHANGELOG.md had
+  # 14 of 38 subsections empty that way.
   awk -v sha_file="$sha_file" '
+    function flush() {
+      if (nbuf > 0 && kept_bullets > 0) for (i = 1; i <= nbuf; i++) print buf[i]
+      nbuf = 0; kept_bullets = 0
+    }
+    function sha_dropped(line,   sha) {
+      if (match(line, /\[[a-f0-9]{7,12}\]/) == 0) return 0
+      sha = substr(line, RSTART + 1, RLENGTH - 2)
+      return (sha in keep) ? 0 : 1
+    }
     BEGIN {
       while ((getline line < sha_file) > 0) keep[line] = 1
       close(sha_file)
     }
     /^## / { sections++ }
     {
-      if (sections >= 2) { print; next }
-      if (match($0, /\[[a-f0-9]{7,12}\]/) > 0) {
-        sha = substr($0, RSTART + 1, RLENGTH - 2)
-        if (!(sha in keep)) next
+      # Everything from the second `## ` down is released history: flush any
+      # pending subsection, then copy through verbatim.
+      if (sections >= 2) { flush(); print; next }
+      if (/^### /) { flush(); buf[++nbuf] = $0; next }
+      if (nbuf > 0) {
+        if (sha_dropped($0)) next
+        buf[++nbuf] = $0
+        if (/^- /) kept_bullets++
+        next
       }
+      if (sha_dropped($0)) next
       print
     }
+    END { flush() }
   ' "$CHANGELOG" > "${CHANGELOG}.tmp"
   mv "${CHANGELOG}.tmp" "$CHANGELOG"
   rm -f "$sha_file"
