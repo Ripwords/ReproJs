@@ -175,6 +175,25 @@ describe("POST /api/intake/reports — gallery media", () => {
     expect(screenshotRow?.storageKey.endsWith("/screenshot.png")).toBe(true)
   })
 
+  test("8: parameterized codec mime (video/webm;codecs=vp9) → 201, stored contentType is bare", async () => {
+    const { res, reportId } = await postReportWithMedia({
+      media: [
+        { name: "clip.webm", type: "video/webm;codecs=vp9", bytes: new Uint8Array([1, 2, 3, 4]) },
+      ],
+      mediaMeta: [{ kind: "video", mime: "video/webm;codecs=vp9", durationMs: 3000 }],
+    })
+    expect(res.status).toBe(201)
+    expect(reportId).toBeString()
+    const rows = await db
+      .select()
+      .from(reportAttachments)
+      .where(eq(reportAttachments.reportId, reportId as string))
+    const mediaRow = rows.find((r) => r.kind === "media")
+    expect(mediaRow).toBeDefined()
+    expect(mediaRow?.contentType).toBe("video/webm")
+    expect(mediaRow?.storageKey.endsWith("/media/0.webm")).toBe(true)
+  })
+
   test("7: duplicate media[0] indices (two parts, same slot) → 400, no rows persisted", async () => {
     const form = new FormData()
     form.append("report", reportBlob())

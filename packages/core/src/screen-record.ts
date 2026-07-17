@@ -30,7 +30,12 @@ export interface ScreenRecordOptions extends ScreenRecordDeps {
   onEnd: (result: RecordingResult | null, reason: RecordingEndReason) => void
 }
 
-function pickMime(): string {
+// Returns the full candidate string (possibly parameterized, e.g.
+// "video/webm;codecs=vp9") to pass to the MediaRecorder constructor. Callers
+// must derive the bare container mime (see `containerMime` below) for anything
+// that flows downstream — the parameterized form is not a valid content-type
+// for the intake allowlists and 415'd report submit / copy-link in Chrome.
+export function pickMime(): string {
   const MR = globalThis.MediaRecorder as typeof MediaRecorder | undefined
   if (!MR || typeof MR.isTypeSupported !== "function") return "video/webm"
   return MIME_CANDIDATES.find((m) => MR.isTypeSupported(m)) ?? "video/webm"
@@ -56,6 +61,12 @@ export async function startScreenRecording(
   }
 
   const mime = pickMime()
+  // The MediaRecorder constructor wants the full (possibly parameterized)
+  // candidate, but every downstream consumer — RecordingResult.mime →
+  // GalleryItem → mediaMeta → multipart content-type → server allowlists — must
+  // see the bare container mime. Keeping `;codecs=vp9` here 415'd report submit
+  // and copy-link in Chrome.
+  const containerMime = mime.split(";")[0] ?? mime
   const createRecorder =
     opts.createMediaRecorder ??
     ((s: MediaStream, o: MediaRecorderOptions) => new MediaRecorder(s, o))
@@ -77,7 +88,11 @@ export async function startScreenRecording(
   const assemble = (): RecordingResult | null =>
     chunks.length === 0
       ? null
-      : { blob: new Blob(chunks, { type: mime }), mime, durationMs: elapsed() }
+      : {
+          blob: new Blob(chunks, { type: containerMime }),
+          mime: containerMime,
+          durationMs: elapsed(),
+        }
 
   const teardown = () => {
     clearInterval(timer)

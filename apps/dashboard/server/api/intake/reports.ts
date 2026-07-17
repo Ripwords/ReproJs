@@ -29,6 +29,12 @@ const DENIED_USER_FILE_EXTS = [".exe", ".bat", ".cmd", ".com", ".scr", ".sh", ".
 // recordings from the SDK's own capture/annotation flow, distinct from
 // arbitrary user-picked `attachment[N]` files.
 const MEDIA_PART_RE = /^media\[(\d+)\]$/
+// Strip any `;codecs=...`/`;charset=...` parameters so a browser-emitted
+// content-type like `video/webm;codecs=vp9` (Chrome's MediaRecorder default)
+// is validated and stored as the bare `video/webm` the allowlist expects.
+function bareMime(m: string): string {
+  return m.split(";")[0]?.trim() ?? m
+}
 const ALLOWED_MEDIA_MIMES = new Set([
   "image/png",
   "image/jpeg",
@@ -311,7 +317,9 @@ export default defineEventHandler(async (event) => {
   const mediaParts = parts.flatMap((p) => {
     const m = p.name?.match(MEDIA_PART_RE)
     if (!m || !p.data || p.data.length === 0) return []
-    return [{ idx: Number(m[1]), data: p.data, mime: p.type ?? "application/octet-stream" }]
+    return [
+      { idx: Number(m[1]), data: p.data, mime: bareMime(p.type ?? "application/octet-stream") },
+    ]
   })
 
   interface MediaScanMeta {
@@ -396,7 +404,10 @@ export default defineEventHandler(async (event) => {
           statusMessage: `mediaMeta entry missing for media[${idx}]`,
         })
       }
-      if (!ALLOWED_MEDIA_MIMES.has(mime) || mime !== m.mime) {
+      // Normalize the declared mediaMeta mime the same way as the part mime so
+      // a parameterized codec string on either side (part content-type or the
+      // sidecar meta) still matches and stays on the bare allowlist.
+      if (!ALLOWED_MEDIA_MIMES.has(mime) || mime !== bareMime(m.mime)) {
         throw createError({
           statusCode: 415,
           statusMessage: `Media type not allowed: media[${idx}]`,

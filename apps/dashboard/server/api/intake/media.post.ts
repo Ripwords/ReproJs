@@ -20,11 +20,24 @@ import { getShareMintLimiter } from "../../lib/rate-limit"
 import { getStorage } from "../../lib/storage"
 import { rollbackPuts } from "../../lib/storage/rollback"
 
+// Strip any `;codecs=...` parameters so a browser-emitted content-type like
+// `video/webm;codecs=vp9` (Chrome's MediaRecorder default) is validated and
+// stored as the bare `video/webm` the allowlist expects.
+function bareMime(m: string): string {
+  return m.split(";")[0]?.trim() ?? m
+}
+
 // v1 supports minting share links for gallery recordings only — no images.
 const MintMeta = z.object({
   projectKey: z.string().regex(/^rp_pk_[A-Za-z0-9]{24}$/),
   kind: z.literal("video"),
-  mime: z.enum(["video/webm", "video/mp4"]),
+  // Normalize BEFORE the enum so a parameterized codec string still validates
+  // (and is persisted bare). A still-unsupported mime keeps the `mime` issue
+  // path, preserving the 415 mapping below.
+  mime: z
+    .string()
+    .transform(bareMime)
+    .pipe(z.enum(["video/webm", "video/mp4"])),
   durationMs: z.number().int().nonnegative().optional(),
   trim: z
     .object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() })
@@ -138,7 +151,7 @@ export default defineEventHandler(async (event) => {
   // Defense-in-depth: the actual uploaded part's content-type must agree
   // with the mime the caller declared in meta (which is already restricted
   // to the video-only allowlist by the zod schema above).
-  const fileMime = filePart.type ?? ""
+  const fileMime = bareMime(filePart.type ?? "")
   if (fileMime !== meta.mime) {
     throw createError({
       statusCode: 415,

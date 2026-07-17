@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { Window } from "happy-dom"
-import { startScreenRecording, MAX_RECORDING_MS, RECORDING_VIDEO_BPS } from "./screen-record"
+import {
+  pickMime,
+  startScreenRecording,
+  MAX_RECORDING_MS,
+  RECORDING_VIDEO_BPS,
+} from "./screen-record"
 
 let win: Window
 beforeAll(() => {
@@ -109,6 +114,50 @@ function asyncDeps(stream: FakeStream) {
 test("constants match the spec", () => {
   expect(MAX_RECORDING_MS).toBe(300_000)
   expect(RECORDING_VIDEO_BPS).toBe(2_500_000)
+})
+
+test("pickMime returns the full parameterized candidate the browser supports", () => {
+  const g = globalThis as unknown as Record<string, unknown>
+  const prev = g.MediaRecorder
+  g.MediaRecorder = {
+    isTypeSupported: (m: string) => m === "video/webm;codecs=vp9" || m === "video/webm",
+  }
+  try {
+    expect(pickMime()).toBe("video/webm;codecs=vp9")
+  } finally {
+    if (prev === undefined) delete g.MediaRecorder
+    else g.MediaRecorder = prev
+  }
+})
+
+test("RecordingResult.mime is the bare container mime, never a parameterized codec string", async () => {
+  const g = globalThis as unknown as Record<string, unknown>
+  const prev = g.MediaRecorder
+  // Force pickMime to select the parameterized vp9 candidate — the real-world
+  // Chrome case that produced a `video/webm;codecs=vp9` mime and 415'd intake.
+  g.MediaRecorder = {
+    isTypeSupported: (m: string) => m === "video/webm;codecs=vp9" || m === "video/webm",
+  }
+  try {
+    const stream = new FakeStream()
+    let ended: { result: unknown; reason: string } | null = null
+    const session = await startScreenRecording({
+      ...deps(stream),
+      onEnd: (result, reason) => {
+        ended = { result, reason }
+      },
+    })
+    expect(session).not.toBeNull()
+    session!.stop()
+    await Bun.sleep(10)
+    const result = ended!.result as { blob: Blob; mime: string; durationMs: number }
+    expect(result.mime).toBe("video/webm")
+    expect(result.mime).not.toContain(";")
+    expect(result.blob.type).toBe("video/webm")
+  } finally {
+    if (prev === undefined) delete g.MediaRecorder
+    else g.MediaRecorder = prev
+  }
 })
 
 test("stop() assembles chunks, reports duration, stops tracks", async () => {

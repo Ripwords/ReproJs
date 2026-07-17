@@ -105,6 +105,15 @@ describe("POST /api/intake/media", () => {
     expect(res.status).toBe(403)
   })
 
+  test("parameterized codec mime (video/webm;codecs=vp9) → 201, stored mime is bare", async () => {
+    const res = await postMint({ mime: "video/webm;codecs=vp9", fileType: "video/webm;codecs=vp9" })
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    const parsed = ShareMintResponse.parse(body)
+    const [row] = await db.select().from(sharedMedia).where(eq(sharedMedia.id, parsed.id))
+    expect(row?.mime).toBe("video/webm")
+  })
+
   test("wrong mime (image/png) → 415", async () => {
     const res = await postMint({ mime: "image/png", fileType: "image/png" })
     expect(res.status).toBe(415)
