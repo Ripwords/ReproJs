@@ -1,5 +1,25 @@
 # Changelog
 
+## expo-v0.3.1
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.0...expo-v0.3.1)
+
+### 🚀 Enhancements
+
+- **shared:** Add volume series to AdminOverviewDTO ([c0e3a70](https://github.com/Ripwords/ReproJs/commit/c0e3a70))
+
+### 🩹 Fixes
+
+- **changelog:** Restore history eroded by the path filter ([a0a5b91](https://github.com/Ripwords/ReproJs/commit/a0a5b91))
+
+### 💅 Refactors
+
+- **comments:** Move CreateCommentBody schema to @reprojs/shared ([0d14acd](https://github.com/Ripwords/ReproJs/commit/0d14acd))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## expo-v0.3.0
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.2.0...expo-v0.3.0)
