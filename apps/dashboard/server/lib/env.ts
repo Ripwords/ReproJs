@@ -132,6 +132,11 @@ const Schema = z.object({
   // typed by hand; a runaway loop hits the cap before burning SMTP quota.
   INVITE_RATE_PER_ADMIN: intString(5),
 
+  // Share-link mint limiter — caps how many share links a single project
+  // can mint per minute (POST /api/intake/media). Low default: minting is a
+  // deliberate reporter action (export a clip), not a high-frequency call.
+  SHARE_MINTS_PER_MINUTE: intString(2),
+
   RATE_LIMIT_STORE: z.enum(["memory", "postgres"]).default("memory"),
   TRUST_XFF: boolString.default(false),
   SDK_PATH: z.string().optional().default(""),

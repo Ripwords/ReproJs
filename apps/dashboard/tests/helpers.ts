@@ -154,6 +154,10 @@ export async function truncateGithub() {
   await db.execute(sql`TRUNCATE report_sync_jobs, github_integrations RESTART IDENTITY CASCADE`)
 }
 
+export async function truncateSharedMedia() {
+  await db.execute(sql`TRUNCATE shared_media RESTART IDENTITY CASCADE`)
+}
+
 export async function truncateGithubApp() {
   await db.execute(sql`TRUNCATE github_app RESTART IDENTITY CASCADE`)
 }

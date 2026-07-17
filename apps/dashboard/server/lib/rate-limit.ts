@@ -72,6 +72,7 @@ let _keyLimiter: RateLimiter | null = null
 let _ipLimiter: RateLimiter | null = null
 let _anonKeyLimiter: RateLimiter | null = null
 let _inviteLimiter: RateLimiter | null = null
+let _shareMintLimiter: RateLimiter | null = null
 
 async function buildLimiter(perMinute: number): Promise<RateLimiter> {
   if (env.RATE_LIMIT_STORE === "postgres") {
@@ -113,4 +114,17 @@ export async function getInviteLimiter(): Promise<RateLimiter> {
     _inviteLimiter = await buildLimiter(env.INVITE_RATE_PER_ADMIN)
   }
   return _inviteLimiter
+}
+
+/**
+ * Limiter for the public share-link mint endpoint (POST /api/intake/media).
+ * Keyed per-project (`share:${project.id}`) so one project minting share
+ * links can't burn another project's quota. Low default (2/min) since
+ * minting is a deliberate reporter action, not a high-frequency call.
+ */
+export async function getShareMintLimiter(): Promise<RateLimiter> {
+  if (!_shareMintLimiter) {
+    _shareMintLimiter = await buildLimiter(env.SHARE_MINTS_PER_MINUTE)
+  }
+  return _shareMintLimiter
 }

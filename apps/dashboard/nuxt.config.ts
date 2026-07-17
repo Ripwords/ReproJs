@@ -159,6 +159,9 @@ export default defineNuxtConfig({
         requestSizeLimiter: false,
       },
     },
+    "/api/intake/media": {
+      security: { corsHandler: false, xssValidator: false, requestSizeLimiter: false },
+    },
     // GitHub webhook — nuxt-security's per-IP rate limiter would block
     // GitHub's exponential-backoff delivery retries during restarts /
     // deployments. The webhook handler enforces its own defence-in-depth
