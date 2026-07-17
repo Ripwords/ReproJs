@@ -4,6 +4,14 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { LocalDiskAdapter } from "./local-disk"
 
+async function collect(stream: NodeJS.ReadableStream): Promise<Uint8Array> {
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  return new Uint8Array(Buffer.concat(chunks))
+}
+
 let root: string
 const roots: string[] = []
 
@@ -48,5 +56,41 @@ describe("LocalDiskAdapter", () => {
     await adapter.delete("x.bin")
     await expect(adapter.get("x.bin")).rejects.toThrow()
     await adapter.delete("x.bin") // second delete no-op
+  })
+
+  test("getStream with a range returns exactly the requested bytes", async () => {
+    const adapter = new LocalDiskAdapter(root)
+    const key = "attachments/range/ten.bin"
+    const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    await adapter.put(key, bytes, "application/octet-stream")
+
+    const result = await adapter.getStream(key, { start: 2, end: 5 })
+    const got = await collect(result.stream as NodeJS.ReadableStream)
+
+    expect(Array.from(got)).toEqual([2, 3, 4, 5])
+    expect(result.totalBytes).toBe(10)
+    expect(result.start).toBe(2)
+    expect(result.end).toBe(5)
+    expect(result.contentType).toBe("application/octet-stream")
+  })
+
+  test("getStream with no range returns the full object", async () => {
+    const adapter = new LocalDiskAdapter(root)
+    const key = "attachments/range/full.bin"
+    const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    await adapter.put(key, bytes, "application/octet-stream")
+
+    const result = await adapter.getStream(key)
+    const got = await collect(result.stream as NodeJS.ReadableStream)
+
+    expect(Array.from(got)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(result.totalBytes).toBe(10)
+    expect(result.start).toBe(0)
+    expect(result.end).toBe(9)
+  })
+
+  test("getStream on a missing key rejects", async () => {
+    const adapter = new LocalDiskAdapter(root)
+    await expect(adapter.getStream("nope.bin")).rejects.toThrow()
   })
 })
