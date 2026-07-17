@@ -57,16 +57,10 @@ filter_changelog_by_paths() {
   mv "${CHANGELOG}.tmp" "$CHANGELOG"
   rm -f "$sha_file"
 }
-
-# Amend the just-created release commit + recreate the tag at the new HEAD.
-# changelogen creates the commit + tag atomically inside `--release`, so the
-# only way to inject a CHANGELOG post-process is to amend after the fact and
-# move the tag forward.
-amend_release_commit_and_retag() {
-  local TAG="$1"
-  git add -A
-  if ! git diff --cached --quiet; then
-    git commit --amend --no-edit --no-verify >/dev/null
-  fi
-  git tag -f "$TAG" >/dev/null
-}
+# NOTE: amend_release_commit_and_retag() used to live here. It amended
+# changelogen's commit and re-tagged with `git tag -f` — a LIGHTWEIGHT tag.
+# Every release script then told you to run `git push --follow-tags`, which
+# pushes annotated tags only, so those pushes silently no-op'd: no tag on the
+# remote, no publish workflow, no error. release.sh now passes --no-commit
+# --no-tag to changelogen and creates annotated tags itself, so there's
+# nothing to amend.

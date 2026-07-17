@@ -130,16 +130,27 @@ reprojs/
 Releases are driven by [changelogen](https://github.com/unjs/changelogen) from Conventional Commits. Dashboard, SDK, and the tester extension release on independent tag prefixes so they can version independently.
 
 ```bash
-bun run release           # dashboard — patch bump
-bun run release:minor     # dashboard — minor
-bun run release:major     # dashboard — major
-bun run release:sdk       # SDK packages (tag prefix: sdk-v)
-bun run release:extension # tester extension (tag prefix: extension-v) — builds + zips artifacts
-bun run release:all       # SDK + extension together (set BUMP=minor|major to override)
-bun run postrelease       # push tags to GitHub
+bun run release             # patch every affected artifact
+bun run release --minor     # level applies to all affected
+bun run release --dry-run   # print the plan, change nothing
+bun run release --only sdk  # restrict (comma-separated); --skip is the inverse
+bun run release --yes       # skip the confirm prompt
 ```
 
-The `prerelease` hook runs lint, format:check, SDK build, and SDK tests. Pushing a `v*.*.*` tag triggers `publish-docker` which builds the multi-arch image and pushes to `ripwords/reprojs-dashboard`. Pushing an `sdk-v*.*.*` tag triggers `publish-npm` which publishes `@reprojs/core` with provenance. Pushing an `extension-v*.*.*` tag triggers `publish-extension` which uploads to the Chrome Web Store **and** creates a GitHub Release with the `repro-tester.zip` attached (what testers install unpacked while Web Store review is pending).
+`scripts/release.sh` decides what's affected from what each artifact is *built from*, including bundled workspace packages:
+
+| Artifact | Tag prefix | Built from |
+| --- | --- | --- |
+| sdk | `sdk-v` | `packages/{core,ui,sdk-utils,shared,recorder}` |
+| dashboard | `v` | `apps/dashboard`, `packages/integrations` **+ bundles the SDK** |
+| extension | `extension-v` | `apps/extension` **+ bundles the SDK** |
+| expo | `expo-v` | `packages/expo`, `packages/{sdk-utils,shared}` |
+
+Propagation needs no special rule: the dashboard bakes the SDK IIFE into its image and the extension syncs it via `sync-sdk.ts`, so listing the SDK as a source is what makes a `packages/ui` fix release all three. Expo deliberately omits `packages/ui` — it ships its own React Native UI. Release commits are excluded from detection, otherwise a release's own version bump would make the next one look necessary forever.
+
+Everything lands in **one commit** with one tag per artifact, gated once on green CI. Tags are annotated — lightweight tags are silently skipped by `git push --follow-tags`, which previously meant a tag never reached the remote and its publish workflow never fired. Tags are pushed one at a time because GitHub won't start workflow runs for tags beyond the third in a single push.
+
+Pushing a `v*.*.*` tag triggers `publish-docker` which builds the multi-arch image and pushes to `ripwords/reprojs-dashboard`. Pushing an `sdk-v*.*.*` tag triggers `publish-npm` which publishes `@reprojs/core` with provenance. Pushing an `extension-v*.*.*` tag triggers `publish-extension` which uploads to the Chrome Web Store **and** creates a GitHub Release with the `repro-tester.zip` attached (what testers install unpacked while Web Store review is pending).
 
 ## Where to file bugs / ideas
 

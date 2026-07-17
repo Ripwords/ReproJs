@@ -211,17 +211,27 @@ bun run test:sdk          # SDK tests only (no Postgres required)
 
 Releases are driven by [changelogen](https://github.com/unjs/changelogen) from Conventional Commits.
 
+One command releases everything affected by what's on `main`:
+
 ```bash
-bun run release           # patch (default) — dashboard
-bun run release:minor     # minor — dashboard
-bun run release:major     # major — dashboard
-bun run release:sdk       # release the SDK packages
-bun run release:extension # release the Chrome extension (builds + zips for the release page)
-bun run release:all       # release SDK + extension together (BUMP=minor to override)
-bun run postrelease       # push tags to GitHub
+bun run release             # patch every affected artifact
+bun run release --minor     # level applies to all affected
+bun run release --dry-run   # print the plan, change nothing
+bun run release --only sdk  # restrict (comma-separated); --skip is the inverse
 ```
 
-The `prerelease` hook runs lint, format:check, SDK build, and SDK tests. CI runs the full gate (including the dashboard integration tests against a real Postgres) on every PR and push to `main`.
+It works out which artifacts are affected by asking what each one is *built from* — including the SDK bundle that the dashboard bakes into its image and the extension syncs at build time. So a `packages/ui` fix releases the SDK, dashboard **and** extension together, while a dashboard-only change releases just the dashboard. It shows the plan, asks once, then makes a single commit, tags each artifact, and pushes.
+
+Version lines stay independent (`sdk-v0.4.2` / `v0.6.5` / `extension-v0.1.4`), so a dashboard change never forces a churn republish of `@reprojs/core`.
+
+Mixed bump levels compose with `--only`:
+
+```bash
+bun run release --minor --only sdk
+bun run release --only dashboard,extension
+```
+
+The command runs lint, format:check, SDK build and SDK tests itself, and refuses to tag unless CI is already green on `main`. CI runs the full gate (including the dashboard integration tests against a real Postgres) on every PR and push to `main`.
 
 ---
 
