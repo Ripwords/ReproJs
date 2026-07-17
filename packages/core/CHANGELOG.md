@@ -1,24 +1,39 @@
 # Changelog
 
+## sdk-v0.4.2
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.4.1...sdk-v0.4.2)
+
+### 🩹 Fixes
+
+- **sdk-ui:** Decode screenshots via createImageBitmap so host CSPs can't block capture ([00c23a6](https://github.com/Ripwords/ReproJs/commit/00c23a6))
+
+### 🏡 Chore
+
+
+### ✅ Tests
+
+- **sdk-ui:** Add a strict-CSP route to the demo playground ([b57883a](https://github.com/Ripwords/ReproJs/commit/b57883a))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## sdk-v0.4.1
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.4.0...sdk-v0.4.1)
 
 ### 🚀 Enhancements
 
-- **shared:** Add volume series to AdminOverviewDTO ([c0e3a70](https://github.com/Ripwords/ReproJs/commit/c0e3a70))
 
 ### 🔥 Performance
 
 
 ### 🩹 Fixes
 
-- **release:** Scope each package's CHANGELOG to its own paths ([b1bb22c](https://github.com/Ripwords/ReproJs/commit/b1bb22c))
-- **sdk-ui:** Stop annotation shortcuts firing while typing text labels ([4ff661f](https://github.com/Ripwords/ReproJs/commit/4ff661f))
 
 ### 💅 Refactors
 
-- **comments:** Move CreateCommentBody schema to @reprojs/shared ([0d14acd](https://github.com/Ripwords/ReproJs/commit/0d14acd))
 
 ### 📖 Documentation
 
