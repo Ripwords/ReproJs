@@ -1,5 +1,5 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  const publicPaths = ["/auth/sign-in"]
+  const publicPaths = ["/auth/sign-in", "/s/"]
   if (publicPaths.some((p) => to.path.startsWith(p))) return
 
   // useRequestFetch() forwards the incoming request's cookie during SSR.

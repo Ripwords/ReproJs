@@ -105,6 +105,7 @@ export default defineNuxtConfig({
     headers: {
       contentSecurityPolicy: {
         "img-src": ["'self'", "data:", "blob:", "https:"],
+        "media-src": ["'self'"],
       },
     },
   },
