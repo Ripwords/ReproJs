@@ -7,10 +7,11 @@ import { clear, redo, shapes, tool, undo, viewport } from "../annotation/store"
 import { ToolPicker } from "../annotation/tool-picker"
 import type { Tool } from "@reprojs/sdk-utils"
 import { fitTransform } from "../annotation/viewport"
+import { sourceHeight, sourceWidth, type ImageSource } from "../decode-image"
 import { PrimaryButton, SecondaryButton, WizardHeader } from "./controls"
 
 interface Props {
-  bg: HTMLImageElement
+  bg: ImageSource
   steps: readonly string[]
   currentStep: number
   onSkip: () => void
@@ -42,9 +43,12 @@ export function StepAnnotate({ bg, steps, currentStep, onSkip, onNext, onCancel 
         case "cancel.draft":
           return
         case "resetView": {
-          const w = (bg as unknown as { naturalWidth?: number }).naturalWidth ?? bg.width
-          const hh = (bg as unknown as { naturalHeight?: number }).naturalHeight ?? bg.height
-          viewport.value = fitTransform(w, hh, window.innerWidth, window.innerHeight)
+          viewport.value = fitTransform(
+            sourceWidth(bg),
+            sourceHeight(bg),
+            window.innerWidth,
+            window.innerHeight,
+          )
           return
         }
       }

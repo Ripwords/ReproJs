@@ -3,6 +3,7 @@ import { effect } from "@preact/signals"
 import { h } from "preact"
 import { useEffect, useRef, useState } from "preact/hooks"
 import { render as renderAll } from "./render"
+import { sourceHeight, sourceWidth, type ImageSource } from "../decode-image"
 import { color, commit, draft, shapes, strokeW, tool, viewport } from "./store"
 import { arrowTool, highlightTool, penTool, rectTool, textTool } from "@reprojs/sdk-utils"
 import type { ToolHandler } from "@reprojs/sdk-utils"
@@ -18,13 +19,11 @@ const HANDLERS: Record<Tool, ToolHandler> = {
 }
 
 export interface CanvasProps {
-  bg: HTMLImageElement
+  bg: ImageSource
 }
 
-function naturalDims(bg: HTMLImageElement): { w: number; h: number } {
-  const imgW = (bg as unknown as { naturalWidth?: number }).naturalWidth ?? bg.width
-  const imgH = (bg as unknown as { naturalHeight?: number }).naturalHeight ?? bg.height
-  return { w: imgW, h: imgH }
+function naturalDims(bg: ImageSource): { w: number; h: number } {
+  return { w: sourceWidth(bg), h: sourceHeight(bg) }
 }
 
 export function Canvas({ bg }: CanvasProps) {

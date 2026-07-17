@@ -1,5 +1,5 @@
 import { h } from "preact"
-import { useEffect, useState } from "preact/hooks"
+import { BlobImage } from "../blob-image"
 import { FieldLabel } from "./controls"
 import { AttachmentList } from "./attachment-list"
 import {
@@ -33,19 +33,8 @@ export function StepDetails({
   onAttachmentsAdd,
   onAttachmentRemove,
 }: Props) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  useEffect(() => {
-    if (!annotatedBlob) {
-      setPreviewUrl(null)
-      return
-    }
-    const url = URL.createObjectURL(annotatedBlob)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [annotatedBlob])
-
-  const preview = previewUrl
-    ? h("img", { src: previewUrl, alt: "Annotated screenshot" })
+  const preview = annotatedBlob
+    ? h(BlobImage, { blob: annotatedBlob, alt: "Annotated screenshot" })
     : h("div", { class: "ft-wizard-details-preview-empty" }, "No screenshot")
 
   return h(
