@@ -1,6 +1,7 @@
 import { h } from "preact"
 import { useEffect, useMemo, useRef, useState } from "preact/hooks"
 import { reset, shapes } from "./annotation/store"
+import { closeSource, decodeImage, type ImageSource } from "./decode-image"
 import { DEFAULT_ATTACHMENT_LIMITS, validateAttachments, type Attachment } from "@reprojs/sdk-utils"
 import { StepAnnotate } from "./wizard/step-annotate"
 import { StepDetails } from "./wizard/step-details"
@@ -32,7 +33,7 @@ type StepName = "annotate" | "details" | "review"
 const STEP_INDEX: Record<StepName, number> = { annotate: 0, details: 1, review: 2 }
 
 export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterProps) {
-  const [bg, setBg] = useState<HTMLImageElement | null>(null)
+  const [bg, setBg] = useState<ImageSource | null>(null)
   const [annotatedBlob, setAnnotatedBlob] = useState<Blob | null>(null)
   const [rawScreenshot, setRawScreenshot] = useState<Blob | null>(null)
   const [step, setStep] = useState<StepName>("annotate")
@@ -44,47 +45,36 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
   const hpRef = useRef<HTMLInputElement>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [attachmentErrors, setAttachmentErrors] = useState<string[]>([])
-  const attachmentsRef = useRef<Attachment[]>([])
   useEffect(() => {
-    attachmentsRef.current = attachments
-  }, [attachments])
-
-  useEffect(() => {
-    return () => {
-      for (const a of attachmentsRef.current) {
-        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    let revoked = false
-    let url: string | null = null
-    const revokeOnce = () => {
-      if (url) {
-        URL.revokeObjectURL(url)
-        url = null
-      }
-    }
+    let cancelled = false
+    let decoded: ImageSource | null = null
     ;(async () => {
       const blob = await onCapture()
       if (!blob) {
-        if (!revoked) onClose()
+        if (!cancelled) onClose()
         return
       }
       setRawScreenshot(blob)
-      url = URL.createObjectURL(blob)
-      const img = new Image()
-      img.addEventListener("load", () => {
-        if (!revoked) setBg(img)
-        revokeOnce()
-      })
-      img.addEventListener("error", revokeOnce)
-      img.src = url
+      // Decode without minting a blob: URL — host pages whose CSP omits
+      // `blob:` from img-src would refuse to load it. See decode-image.ts.
+      decoded = await decodeImage(blob)
+      if (cancelled) {
+        closeSource(decoded)
+        return
+      }
+      if (!decoded) {
+        // Never leave the wizard gated on a screenshot that will never
+        // arrive — the loading overlay would hang with the page scroll
+        // locked behind it.
+        console.warn("[repro] could not decode the screenshot; closing the reporter")
+        onClose()
+        return
+      }
+      setBg(decoded)
     })()
     return () => {
-      revoked = true
-      revokeOnce()
+      cancelled = true
+      closeSource(decoded)
       reset()
     }
   }, [])
@@ -115,11 +105,11 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
   function handleAttachmentsAdd(files: File[]) {
     const result = validateAttachments(files, attachments, DEFAULT_ATTACHMENT_LIMITS)
     if (result.accepted.length > 0) {
-      const withPreviews = result.accepted.map((a) => ({
-        ...a,
-        previewUrl: a.isImage ? URL.createObjectURL(a.blob) : undefined,
-      }))
-      setAttachments((prev) => [...prev, ...withPreviews])
+      // No previewUrl on web: thumbnails render straight from the blob via
+      // BlobImage, since a blob: URL in <img src> is refused by host CSPs
+      // that omit `blob:` from img-src. (The Expo SDK still populates
+      // previewUrl with a file:// uri — see @reprojs/expo provider.)
+      setAttachments((prev) => [...prev, ...result.accepted])
     }
     if (result.rejected.length > 0) {
       setAttachmentErrors(
@@ -144,11 +134,7 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
   }
 
   function handleAttachmentRemove(id: string) {
-    setAttachments((prev) => {
-      const target = prev.find((a) => a.id === id)
-      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
-      return prev.filter((a) => a.id !== id)
-    })
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
   }
 
   // Paste-to-attach: while the user is on the Details step, intercept paste

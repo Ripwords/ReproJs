@@ -1,9 +1,10 @@
 import { render } from "./render"
+import { sourceHeight, sourceWidth, type ImageSource } from "../decode-image"
 import { IDENTITY_TRANSFORM, type Shape } from "@reprojs/sdk-utils"
 
-export async function flatten(bg: HTMLImageElement, shapes: Shape[]): Promise<Blob> {
-  const width = bg.naturalWidth ?? bg.width
-  const height = bg.naturalHeight ?? bg.height
+export async function flatten(bg: ImageSource, shapes: Shape[]): Promise<Blob> {
+  const width = sourceWidth(bg)
+  const height = sourceHeight(bg)
 
   const canvas = document.createElement("canvas")
   canvas.width = width

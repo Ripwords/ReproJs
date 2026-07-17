@@ -1,9 +1,10 @@
 import { wrapText } from "./text-wrap"
+import type { ImageSource } from "../decode-image"
 import type { Shape, Transform } from "@reprojs/sdk-utils"
 
 export function render(
   ctx: CanvasRenderingContext2D,
-  bg: HTMLImageElement | HTMLCanvasElement,
+  bg: ImageSource | HTMLCanvasElement,
   shapes: Shape[],
   t: Transform,
 ): void {

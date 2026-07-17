@@ -1,5 +1,6 @@
 import { h } from "preact"
-import { useEffect, useRef, useState } from "preact/hooks"
+import { useRef, useState } from "preact/hooks"
+import { BlobImage } from "../blob-image"
 import type { Attachment, AttachmentLimits } from "@reprojs/sdk-utils"
 
 interface Props {
@@ -27,13 +28,6 @@ export function AttachmentList({ attachments, limits, errors, onAdd, onRemove }:
   const totalBytes = attachments.reduce((n, a) => n + a.size, 0)
   const atCap = attachments.length >= limits.maxCount
   const shortcut = isMacLike() ? "⌘V" : "Ctrl+V"
-
-  // Revoke object URLs on unmount.
-  useEffect(() => {
-    return () => {
-      for (const a of attachments) if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
-    }
-  }, [])
 
   function openPicker() {
     if (atCap) return
@@ -84,8 +78,8 @@ export function AttachmentList({ attachments, limits, errors, onAdd, onRemove }:
                 },
                 "✕",
               ),
-              a.isImage && a.previewUrl
-                ? h("img", { class: "ft-attach-thumb", src: a.previewUrl, alt: a.filename })
+              a.isImage
+                ? h(BlobImage, { class: "ft-attach-thumb", blob: a.blob, alt: a.filename })
                 : h("div", { class: "ft-attach-icon" }, "📄"),
               h("div", { class: "ft-attach-name", title: a.filename }, a.filename),
               h("div", { class: "ft-attach-meta" }, formatBytes(a.size)),

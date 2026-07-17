@@ -117,11 +117,14 @@ describe("AttachmentList", () => {
     expect(removedId).toBe("remove-me")
   })
 
+  // Thumbnails must render straight from the blob, never via a blob: object
+  // URL in <img src> — host CSPs with `img-src 'self' data:` refuse those, so
+  // previewUrl is deliberately absent here to prove it isn't relied on.
   test("renders thumbnail for image attachments and icon for non-images", () => {
     const win = setupDom()
     const root = win.document.createElement("div")
     win.document.body.appendChild(root as unknown as Node)
-    const imageAtt = makeAttachment({ id: "img-1", isImage: true, previewUrl: "blob:preview" })
+    const imageAtt = makeAttachment({ id: "img-1", isImage: true, previewUrl: undefined })
     const fileAtt = makeAttachment({
       id: "file-1",
       filename: "doc.pdf",
@@ -140,6 +143,7 @@ describe("AttachmentList", () => {
     )
     const thumb = walkForClass(root as unknown as Element, "ft-attach-thumb")
     expect(thumb).toBeTruthy()
+    expect(thumb?.tagName?.toLowerCase()).toBe("canvas")
     const icon = walkForClass(root as unknown as Element, "ft-attach-icon")
     expect(icon).toBeTruthy()
   })

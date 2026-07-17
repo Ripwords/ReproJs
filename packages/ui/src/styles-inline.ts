@@ -157,7 +157,11 @@ export default String.raw`:host,
   align-items: flex-start;
   justify-content: center;
 }
-.ft-wizard-details-preview img {
+/* The preview renders as a <canvas> (BlobImage) rather than an <img>: host
+   CSPs that omit blob: from img-src refuse a blob: object URL. Both are
+   matched so the constraint survives either element. */
+.ft-wizard-details-preview img,
+.ft-wizard-details-preview canvas {
   max-width: 100%;
   max-height: calc(100vh - 220px);
   border: 1px solid var(--ft-color-border);
@@ -189,7 +193,8 @@ export default String.raw`:host,
   .ft-wizard-details-preview {
     position: static;
   }
-  .ft-wizard-details-preview img {
+  .ft-wizard-details-preview img,
+  .ft-wizard-details-preview canvas {
     max-height: 40vh;
   }
 }
