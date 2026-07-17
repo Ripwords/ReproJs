@@ -246,7 +246,10 @@ export function GalleryView({
     setCopyErrors((s) => ({ ...s, [item.id]: "" }))
     // Already minted (e.g. re-opening the gallery after a prior copy) — reuse
     // the cached link instead of burning another upload + rate-limit slot.
-    if (item.shareUrl) {
+    // expiresAt is stored so the UI can offer re-mint for expired links.
+    const live =
+      item.shareUrl && (!item.shareExpiresAt || Date.parse(item.shareExpiresAt) > Date.now())
+    if (live) {
       try {
         await navigator.clipboard.writeText(item.shareUrl)
         setCopyStates((s) => ({ ...s, [item.id]: "copied" }))

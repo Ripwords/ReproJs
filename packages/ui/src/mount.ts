@@ -60,6 +60,7 @@ export interface MountOptions {
   }) => Promise<RecordingSessionLike | null>
   // Mints a short-lived share link for a video. Undefined until Task 15 — the
   // gallery renders with sharing disabled while it's absent.
+  // Success shape includes token so the UI can persist it for revocation and debugging.
   mintShareLink?: (
     item: PendingShareInput,
   ) => Promise<{ url: string; token: string; expiresAt: string } | { error: string }>

@@ -233,6 +233,70 @@ describe("GalleryView", () => {
     }
   })
 
+  test("re-mints an expired shareUrl instead of copying the dead link", async () => {
+    const win = setupDom()
+    const root = win.document.createElement("div")
+    win.document.body.appendChild(root as unknown as Node)
+    const store = await seedStore()
+    // Seed a video item with an expired shareUrl (past expiry time)
+    await store.update("vid-1", {
+      shareUrl: "https://example.test/s/expired-token",
+      shareToken: "expired-token",
+      shareExpiresAt: "2000-01-01T00:00:00.000Z",
+    })
+
+    const navigatorObj = (globalThis as { navigator: Navigator }).navigator
+    const originalDescriptor = Object.getOwnPropertyDescriptor(navigatorObj, "clipboard")
+    const writes: string[] = []
+    Object.defineProperty(navigatorObj, "clipboard", {
+      value: {
+        writeText: async (text: string) => {
+          writes.push(text)
+        },
+      },
+      configurable: true,
+    })
+
+    let onCopyLinkCalls = 0
+    try {
+      render(
+        h(GalleryView, {
+          store,
+          canShare: true,
+          onCopyLink: async () => {
+            onCopyLinkCalls++
+            return { url: "https://example.test/s/fresh-token" }
+          },
+          onReportWith: noop,
+          onClose: noop,
+        }),
+        root as unknown as Element,
+      )
+      await waitFor(
+        () => walkAllByClass(root as unknown as Element, "ft-gallery-tile").length === 2,
+      )
+
+      const tiles = walkAllByClass(root as unknown as Element, "ft-gallery-tile")
+      const videoTile = tiles.find((t) => t.getAttribute("data-kind") === "video") as Element
+      const copyBtn = (walkAllByTag(videoTile, "button") as unknown as HTMLElement[]).find((b) =>
+        b.textContent?.includes("Copy link"),
+      )
+      expect(copyBtn).toBeTruthy()
+      copyBtn?.click()
+
+      await waitFor(() => writes.length > 0)
+      // Should call onCopyLink to re-mint, and copy the fresh URL
+      expect(writes).toEqual(["https://example.test/s/fresh-token"])
+      expect(onCopyLinkCalls).toBe(1)
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(navigatorObj, "clipboard", originalDescriptor)
+      } else {
+        delete (navigatorObj as { clipboard?: unknown }).clipboard
+      }
+    }
+  })
+
   test("delete removes the tile from the DOM after settling", async () => {
     const win = setupDom()
     const root = win.document.createElement("div")
