@@ -788,7 +788,7 @@ export default String.raw`:host,
   max-height: 50vh;
   border: 1px solid var(--ft-color-border);
   border-radius: var(--ft-radius-md);
-  background: #000;
+  background: #000; /* letterbox black — intentional, not a theme token */
 }
 .ft-trim-fallback {
   display: flex;

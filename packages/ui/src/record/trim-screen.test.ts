@@ -9,6 +9,11 @@ import { clampTrim, TrimScreen } from "./trim-screen"
 // (bun:test shares one globalThis across all files unless restored).
 const realDocument = globalThis.document
 const realWindow = globalThis.window
+// TrimScreen's mount/cleanup effect calls the *global* URL.createObjectURL /
+// revokeObjectURL (not window.URL) — happy-dom's Window swap above never
+// touches it, so stubbing/restoring it is independent of setupDom/afterEach.
+const realCreateObjectURL = URL.createObjectURL
+const realRevokeObjectURL = URL.revokeObjectURL
 
 function setupDom() {
   const win = new Window()
@@ -24,7 +29,27 @@ afterEach(() => {
   globalThis.document = realDocument
   // @ts-expect-error
   globalThis.window = realWindow
+  URL.createObjectURL = realCreateObjectURL
+  URL.revokeObjectURL = realRevokeObjectURL
 })
+
+// A single `setTimeout(r, 0)` tick (the pattern used elsewhere in this file)
+// is enough to flush a regular state update — Preact's core render queue is
+// microtask-based (`Promise.resolve().then(process)`), which always drains
+// before a macrotask callback runs. It is NOT enough to flush a passive
+// `useEffect` mount/cleanup callback: this bun+happy-dom environment has no
+// global `requestAnimationFrame`, so `preact/hooks` falls back to
+// `setTimeout(callback, 35)` (see `RAF_TIMEOUT` in
+// node_modules/preact/hooks/src/index.js) before even scheduling the actual
+// effect run. Poll instead of guessing a fixed delay, so this stays correct
+// (and fast on a quick machine) regardless of exact scheduler timing.
+async function waitFor(predicate: () => boolean, timeoutMs = 500): Promise<void> {
+  const start = Date.now()
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) return // let the caller's own `expect` fail with a clear diff
+    await new Promise((r) => setTimeout(r, 5))
+  }
+}
 
 // Walk DOM tree collecting every element matching the class, since
 // querySelector/querySelectorAll throw in this happy-dom + bun setup (see
@@ -116,5 +141,114 @@ describe("TrimScreen", () => {
     // let that effect flush too before the test ends.
     render(null, root as unknown as Element)
     await new Promise((r) => setTimeout(r, 0))
+  })
+
+  test("falls back to a message when the video errors (CSP-blocked preview), sliders stay usable", async () => {
+    const win = setupDom()
+    const root = win.document.createElement("div")
+    win.document.body.appendChild(root as unknown as Node)
+
+    let confirmCount = 0
+    let confirmedTrim: unknown
+
+    render(
+      h(TrimScreen, {
+        blob: new Blob(["fake"], { type: "video/webm" }),
+        durationMs: 10_000,
+        onConfirm: (trim) => {
+          confirmCount++
+          confirmedTrim = trim
+        },
+        onCancel: () => {},
+      }),
+      root as unknown as Element,
+    )
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    const video = walkAllByClass(root as unknown as Element, "ft-trim-video")[0] as
+      | HTMLElement
+      | undefined
+    expect(video).toBeTruthy()
+
+    // Simulate a CSP `media-src`/`blob:` refusal: the <video> fires `error`,
+    // never `loadeddata`.
+    video?.dispatchEvent(new win.Event("error", { bubbles: true }))
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    const fallback = walkAllByClass(root as unknown as Element, "ft-trim-fallback")[0]
+    expect(fallback).toBeTruthy()
+    expect(fallback?.textContent).toBe("Preview unavailable on this site — the recording is intact")
+    // The <video> itself is gone once the fallback renders (mutually
+    // exclusive branches in TrimScreen's render).
+    expect(walkAllByClass(root as unknown as Element, "ft-trim-video").length).toBe(0)
+
+    const sliders = walkAllByClass(
+      root as unknown as Element,
+      "ft-trim-slider",
+    ) as HTMLInputElement[]
+    expect(sliders.length).toBe(2)
+
+    const startSlider = sliders[0] as HTMLInputElement
+    startSlider.value = "2000"
+    startSlider.dispatchEvent(new win.Event("input", { bubbles: true }))
+
+    // Flush the resulting setStartMs before reading the Confirm button:
+    // without this tick, Confirm's onClick closure still captures the
+    // pre-update state from the last completed render.
+    await new Promise((r) => setTimeout(r, 0))
+
+    const confirmBtn = walkAllByClass(root as unknown as Element, "ft-btn-primary")[0] as
+      | HTMLElement
+      | undefined
+    confirmBtn?.click()
+
+    expect(confirmCount).toBe(1)
+    expect(confirmedTrim).toEqual({ startMs: 2_000, endMs: 10_000 })
+
+    render(null, root as unknown as Element)
+    await new Promise((r) => setTimeout(r, 0))
+  })
+
+  test("revokes exactly the created object URL, exactly once, on unmount", async () => {
+    const win = setupDom()
+    const root = win.document.createElement("div")
+    win.document.body.appendChild(root as unknown as Node)
+
+    const created: string[] = []
+    const revoked: string[] = []
+    URL.createObjectURL = ((_blob: Blob) => {
+      const url = `blob:trim-screen-test-${created.length}`
+      created.push(url)
+      return url
+    }) as typeof URL.createObjectURL
+    URL.revokeObjectURL = ((url: string) => {
+      revoked.push(url)
+    }) as typeof URL.revokeObjectURL
+
+    render(
+      h(TrimScreen, {
+        blob: new Blob(["fake"], { type: "video/webm" }),
+        durationMs: 10_000,
+        onConfirm: () => {},
+        onCancel: () => {},
+      }),
+      root as unknown as Element,
+    )
+
+    // Poll rather than a fixed tick: this is the passive mount effect (see
+    // waitFor's doc comment above), which needs ~35ms+ to flush here, not 0.
+    await waitFor(() => created.length > 0)
+    expect(created).toEqual(["blob:trim-screen-test-0"])
+    expect(revoked).toEqual([])
+
+    // Cleanup runs synchronously as part of Preact's unmount lifecycle (not
+    // the deferred passive-effect queue), so no extra wait is needed here —
+    // but flush a tick anyway for parity with this file's other tests.
+    render(null, root as unknown as Element)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(revoked).toEqual(["blob:trim-screen-test-0"])
   })
 })
