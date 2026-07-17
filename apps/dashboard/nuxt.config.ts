@@ -208,6 +208,8 @@ export default defineNuxtConfig({
       [process.env.NODE_ENV === "production" ? "*/1 * * * *" : "*/10 * * * * *"]: ["github:sync"],
       // Daily at 03:00 UTC — cleans up any unconsumed expired write-lock rows.
       "0 3 * * *": ["github:cleanup-write-locks"],
+      // Daily at 04:00 UTC — purges expired/revoked shared_media rows + blobs.
+      "0 4 * * *": ["media:purge"],
     },
     routeRules: {
       // Baseline security headers for every dashboard response.
