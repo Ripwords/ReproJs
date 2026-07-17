@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { clampPlayback } from "~/utils/clamp-playback"
+
 // Public share page — no dashboard chrome, no session fetch. Reachable by
 // anyone holding the link (see auth.global.ts publicPaths), so this must
 // never call the session endpoint or render any authenticated UI.
@@ -41,12 +43,17 @@ function clampToTrim() {
   const v = video.value
   const m = meta.value
   if (!v || !m) return
-  const startS = (m.trimStartMs ?? 0) / 1000
-  const endS = m.trimEndMs != null ? m.trimEndMs / 1000 : Number.POSITIVE_INFINITY
-  if (v.currentTime < startS) v.currentTime = startS
-  if (v.currentTime >= endS) {
+  const action = clampPlayback({
+    currentTime: v.currentTime,
+    duration: v.duration,
+    trimStartMs: m.trimStartMs,
+    trimEndMs: m.trimEndMs,
+  })
+  if (action.type === "seek") {
+    v.currentTime = action.to
+  } else if (action.type === "pause-and-reset") {
     v.pause()
-    v.currentTime = startS
+    v.currentTime = action.to
   }
 }
 </script>
