@@ -244,6 +244,18 @@ export function GalleryView({
   async function handleCopyLink(item: GalleryItem) {
     setCopyStates((s) => ({ ...s, [item.id]: "pending" }))
     setCopyErrors((s) => ({ ...s, [item.id]: "" }))
+    // Already minted (e.g. re-opening the gallery after a prior copy) — reuse
+    // the cached link instead of burning another upload + rate-limit slot.
+    if (item.shareUrl) {
+      try {
+        await navigator.clipboard.writeText(item.shareUrl)
+        setCopyStates((s) => ({ ...s, [item.id]: "copied" }))
+      } catch {
+        setCopyStates((s) => ({ ...s, [item.id]: "error" }))
+        setCopyErrors((s) => ({ ...s, [item.id]: "Couldn't copy to clipboard" }))
+      }
+      return
+    }
     const result = await onCopyLink(item)
     if ("url" in result) {
       try {

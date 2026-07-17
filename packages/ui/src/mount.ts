@@ -62,7 +62,7 @@ export interface MountOptions {
   // gallery renders with sharing disabled while it's absent.
   mintShareLink?: (
     item: PendingShareInput,
-  ) => Promise<{ url: string; expiresAt: string } | { error: string }>
+  ) => Promise<{ url: string; token: string; expiresAt: string } | { error: string }>
   onSubmit: (payload: {
     title: string
     description: string
@@ -456,7 +456,11 @@ function App() {
           ...(item.trim ? { trim: item.trim } : {}),
         })
         if ("url" in res) {
-          await gallery?.update(item.id, { shareUrl: res.url, shareExpiresAt: res.expiresAt })
+          await gallery?.update(item.id, {
+            shareUrl: res.url,
+            shareToken: res.token,
+            shareExpiresAt: res.expiresAt,
+          })
           return { url: res.url }
         }
         return { error: res.error }

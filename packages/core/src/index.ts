@@ -17,6 +17,7 @@ import { attachHotkey } from "./hotkey"
 import { postReport } from "./intake-client"
 import { capture as captureScreenshot } from "./screenshot"
 import { startScreenRecording } from "./screen-record"
+import { mintShareLink } from "./share-client"
 
 let _config: ResolvedConfig | null = null
 let _reporter: ReporterIdentity | null = null
@@ -70,6 +71,10 @@ export function init(options: InitOptions): FeedbackHandle {
     // Resume on close so the next bug report still has a hot buffer.
     onOpen: () => _collectors?.pauseReplay(),
     onClose: () => _collectors?.resumeReplay(),
+    mintShareLink: async (item) => {
+      const r = await mintShareLink(cfg, item)
+      return r.ok ? { url: r.url, token: r.token, expiresAt: r.expiresAt } : { error: r.message }
+    },
     onSubmit: async ({ title, description, media, attachments, dwellMs, honeypot }) => {
       if (!_config || !_collectors) return { ok: false, message: "Not initialized" }
       const snap = _collectors.snapshotAll()

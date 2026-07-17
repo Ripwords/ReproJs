@@ -166,6 +166,73 @@ describe("GalleryView", () => {
     expect(allButtonsNoShare.some((b) => b.textContent?.includes("Copy link"))).toBe(false)
   })
 
+  test("reuses an already-minted shareUrl without calling onCopyLink again", async () => {
+    const win = setupDom()
+    const root = win.document.createElement("div")
+    win.document.body.appendChild(root as unknown as Node)
+    const store = await seedStore()
+    await store.update("vid-1", {
+      shareUrl: "https://example.test/s/cached-token",
+      shareToken: "cached-token",
+      shareExpiresAt: "2099-01-01T00:00:00.000Z",
+    })
+
+    // Other test files in this bun:test process (e.g. collectors/index.test.ts)
+    // swap globalThis.navigator for a happy-dom Navigator whose `clipboard` is
+    // a getter-only accessor — plain assignment throws "readonly property" if
+    // that pollution lands first. Object.defineProperty always shadows it with
+    // an own property, regardless of the prototype's accessor.
+    const navigatorObj = (globalThis as { navigator: Navigator }).navigator
+    const originalDescriptor = Object.getOwnPropertyDescriptor(navigatorObj, "clipboard")
+    const writes: string[] = []
+    Object.defineProperty(navigatorObj, "clipboard", {
+      value: {
+        writeText: async (text: string) => {
+          writes.push(text)
+        },
+      },
+      configurable: true,
+    })
+
+    let onCopyLinkCalls = 0
+    try {
+      render(
+        h(GalleryView, {
+          store,
+          canShare: true,
+          onCopyLink: async () => {
+            onCopyLinkCalls++
+            return { url: "https://example.test/s/freshly-minted" }
+          },
+          onReportWith: noop,
+          onClose: noop,
+        }),
+        root as unknown as Element,
+      )
+      await waitFor(
+        () => walkAllByClass(root as unknown as Element, "ft-gallery-tile").length === 2,
+      )
+
+      const tiles = walkAllByClass(root as unknown as Element, "ft-gallery-tile")
+      const videoTile = tiles.find((t) => t.getAttribute("data-kind") === "video") as Element
+      const copyBtn = (walkAllByTag(videoTile, "button") as unknown as HTMLElement[]).find((b) =>
+        b.textContent?.includes("Copy link"),
+      )
+      expect(copyBtn).toBeTruthy()
+      copyBtn?.click()
+
+      await waitFor(() => writes.length > 0)
+      expect(writes).toEqual(["https://example.test/s/cached-token"])
+      expect(onCopyLinkCalls).toBe(0)
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(navigatorObj, "clipboard", originalDescriptor)
+      } else {
+        delete (navigatorObj as { clipboard?: unknown }).clipboard
+      }
+    }
+  })
+
   test("delete removes the tile from the DOM after settling", async () => {
     const win = setupDom()
     const root = win.document.createElement("div")
