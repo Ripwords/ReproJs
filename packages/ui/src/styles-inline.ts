@@ -137,66 +137,13 @@ export default String.raw`:host,
   gap: 20px;
 }
 
-/* Details uses a 2-column layout: annotated screenshot on the left,
-   form fields on the right. The screenshot column carries the visual
-   weight on wide viewports so the form column doesn't float in empty
-   space. Below 900px we stack the columns. */
-.ft-wizard-details-grid {
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
-  gap: 32px;
-  align-items: start;
-}
-.ft-wizard-details-preview {
-  position: sticky;
-  top: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-}
-/* The preview renders as a <canvas> (BlobImage) rather than an <img>: host
-   CSPs that omit blob: from img-src refuse a blob: object URL. Both are
-   matched so the constraint survives either element. */
-.ft-wizard-details-preview img,
-.ft-wizard-details-preview canvas {
-  max-width: 100%;
-  max-height: calc(100vh - 220px);
-  border: 1px solid var(--ft-color-border);
-  border-radius: var(--ft-radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-  background: var(--ft-color-surface-soft);
-}
-.ft-wizard-details-preview-empty {
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  border: 1px dashed var(--ft-color-border);
-  border-radius: var(--ft-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ft-color-text-faint);
-  font-size: 13px;
-  background: var(--ft-color-surface-soft);
-}
+/* Details is a single stacked column now that the annotate step (and its
+   sticky screenshot preview) is gone — title, description, media, and
+   attachments all live in one form column. */
 .ft-wizard-details-form {
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-@media (max-width: 900px) {
-  .ft-wizard-details-grid {
-    grid-template-columns: 1fr;
-  }
-  .ft-wizard-details-preview {
-    position: static;
-  }
-  .ft-wizard-details-preview img,
-  .ft-wizard-details-preview canvas {
-    max-height: 40vh;
-  }
 }
 
 .ft-wizard-footer {
@@ -700,6 +647,110 @@ export default String.raw`:host,
   font-variant-numeric: tabular-nums;
 }
 .ft-attach-error {
+  font-size: 12px;
+  color: var(--ft-color-danger);
+}
+
+/* === Media picker (Details step) — mirrors .ft-attach-*'s layout, but
+   chips are togglable selections from the gallery rather than an upload
+   list, so each chip is a <button aria-pressed> instead of a static item
+   with a separate remove control. */
+.ft-media {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ft-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.ft-media-item {
+  position: relative;
+  background: var(--ft-color-surface-soft);
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ft-color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ft-media-item.selected {
+  border-color: var(--ft-color-primary);
+  background: var(--ft-color-primary-soft);
+}
+.ft-media-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-surface);
+  overflow: hidden;
+}
+.ft-media-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ft-media-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+.ft-media-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--ft-radius-pill);
+  background: var(--ft-color-primary);
+  color: #ffffff;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ft-media-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ft-color-text-muted);
+}
+.ft-media-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ft-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ft-media-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  border: 1px dashed var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  color: var(--ft-color-text-faint);
+  font-size: 13px;
+  background: var(--ft-color-surface-soft);
+}
+.ft-media-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ft-media-error {
   font-size: 12px;
   color: var(--ft-color-danger);
 }

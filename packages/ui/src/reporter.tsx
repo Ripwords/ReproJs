@@ -1,9 +1,12 @@
 import { h } from "preact"
 import { useEffect, useMemo, useRef, useState } from "preact/hooks"
-import { reset, shapes } from "./annotation/store"
-import { closeSource, decodeImage, type ImageSource } from "./decode-image"
-import { DEFAULT_ATTACHMENT_LIMITS, validateAttachments, type Attachment } from "@reprojs/sdk-utils"
-import { StepAnnotate } from "./wizard/step-annotate"
+import {
+  DEFAULT_ATTACHMENT_LIMITS,
+  validateAttachments,
+  validateMediaSelection,
+  type Attachment,
+} from "@reprojs/sdk-utils"
+import type { GalleryItem, GalleryStore } from "./gallery/store"
 import { StepDetails } from "./wizard/step-details"
 import { StepReview, type SummaryLine } from "./wizard/step-review"
 import { SubmitToast } from "./wizard/submit-toast"
@@ -16,27 +19,35 @@ export interface ReporterSubmitResult {
 
 interface ReporterProps {
   onClose: () => void
-  onCapture: () => Promise<Blob | null>
   onSubmit: (payload: {
     title: string
     description: string
-    screenshot: Blob | null
+    media: GalleryItem[]
     attachments: Attachment[]
     dwellMs: number
     honeypot: string
   }) => Promise<ReporterSubmitResult>
   openedAt: number
+  gallery: GalleryStore | null
+  preselectedId?: string
+  onCaptureNow: () => void
+  onRecordNow: () => void
 }
 
-const STEPS = ["Annotate", "Details", "Review"] as const
-type StepName = "annotate" | "details" | "review"
-const STEP_INDEX: Record<StepName, number> = { annotate: 0, details: 1, review: 2 }
+const STEPS = ["Details", "Review"] as const
+type StepName = "details" | "review"
+const STEP_INDEX: Record<StepName, number> = { details: 0, review: 1 }
 
-export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterProps) {
-  const [bg, setBg] = useState<ImageSource | null>(null)
-  const [annotatedBlob, setAnnotatedBlob] = useState<Blob | null>(null)
-  const [rawScreenshot, setRawScreenshot] = useState<Blob | null>(null)
-  const [step, setStep] = useState<StepName>("annotate")
+export function Reporter({
+  onClose,
+  onSubmit,
+  openedAt,
+  gallery,
+  preselectedId,
+  onCaptureNow,
+  onRecordNow,
+}: ReporterProps) {
+  const [step, setStep] = useState<StepName>("details")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -45,39 +56,25 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
   const hpRef = useRef<HTMLInputElement>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [attachmentErrors, setAttachmentErrors] = useState<string[]>([])
+  const [mediaItems, setMediaItems] = useState<GalleryItem[]>([])
+  const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>(() =>
+    preselectedId ? [preselectedId] : [],
+  )
+  const [mediaErrors, setMediaErrors] = useState<string[]>([])
+
+  // Gallery may be null (IndexedDB unavailable) — fail open by leaving
+  // mediaItems empty rather than throwing. The picker hides its grid but
+  // keeps the Capture now / Record now buttons visible either way.
   useEffect(() => {
     let cancelled = false
-    let decoded: ImageSource | null = null
     ;(async () => {
-      const blob = await onCapture()
-      if (!blob) {
-        if (!cancelled) onClose()
-        return
-      }
-      setRawScreenshot(blob)
-      // Decode without minting a blob: URL — host pages whose CSP omits
-      // `blob:` from img-src would refuse to load it. See decode-image.ts.
-      decoded = await decodeImage(blob)
-      if (cancelled) {
-        closeSource(decoded)
-        return
-      }
-      if (!decoded) {
-        // Never leave the wizard gated on a screenshot that will never
-        // arrive — the loading overlay would hang with the page scroll
-        // locked behind it.
-        console.warn("[repro] could not decode the screenshot; closing the reporter")
-        onClose()
-        return
-      }
-      setBg(decoded)
+      const items = (await gallery?.list()) ?? []
+      if (!cancelled) setMediaItems(items)
     })()
     return () => {
       cancelled = true
-      closeSource(decoded)
-      reset()
     }
-  }, [])
+  }, [gallery])
 
   useEffect(() => {
     document.body.style.overflow = "hidden"
@@ -86,20 +83,32 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
     }
   }, [])
 
-  function handleNextFromAnnotate(blob: Blob) {
-    setAnnotatedBlob(blob)
-    setStep("details")
-  }
-  function handleSkipFromAnnotate() {
-    setAnnotatedBlob(rawScreenshot)
-    setStep("details")
-  }
   function handleBack() {
     if (step === "review") setStep("details")
-    else if (step === "details") setStep("annotate")
   }
   function handleContinueFromDetails() {
     setStep("review")
+  }
+
+  // Runs validateMediaSelection on the would-be selection (not the current
+  // one) so an over-limit toggle is rejected outright — the selection never
+  // transiently exceeds the limit. Deselecting always shrinks the set, so it
+  // can never be blocked; that's how a later valid toggle clears mediaErrors.
+  function handleMediaToggle(id: string) {
+    const isSelected = selectedMediaIds.includes(id)
+    const nextIds = isSelected
+      ? selectedMediaIds.filter((selectedId) => selectedId !== id)
+      : [...selectedMediaIds, id]
+    const chosen = mediaItems.filter((item) => nextIds.includes(item.id))
+    const result = validateMediaSelection(
+      chosen.map((item) => ({ kind: item.kind, sizeBytes: item.sizeBytes })),
+    )
+    if (!result.ok) {
+      setMediaErrors(result.errors)
+      return
+    }
+    setMediaErrors([])
+    setSelectedMediaIds(nextIds)
   }
 
   function handleAttachmentsAdd(files: File[]) {
@@ -171,10 +180,11 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
     if (!title.trim() || submitting || success) return
     setSubmitting(true)
     setSubmitError(null)
+    const media = mediaItems.filter((item) => selectedMediaIds.includes(item.id))
     const res = await onSubmit({
       title: title.trim(),
       description: description.trim(),
-      screenshot: annotatedBlob,
+      media,
       attachments,
       dwellMs: Math.max(0, Math.round(performance.now() - openedAt)),
       honeypot: hpRef.current?.value ?? "",
@@ -190,11 +200,8 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
 
   const summary = useMemo<SummaryLine[]>(() => {
     const lines: SummaryLine[] = [{ label: "Title & description" }]
-    if (annotatedBlob) {
-      lines.push({
-        label: shapes.value.length > 0 ? "Annotated screenshot" : "Screenshot",
-        hint: shapes.value.length > 0 ? String(shapes.value.length) : undefined,
-      })
+    if (selectedMediaIds.length > 0) {
+      lines.push({ label: "Media", hint: `${selectedMediaIds.length} selected` })
     }
     lines.push({ label: "Console, network & breadcrumbs" })
     lines.push({ label: "Environment info" })
@@ -202,22 +209,7 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
       lines.push({ label: "Additional attachments", hint: String(attachments.length) })
     }
     return lines
-  }, [annotatedBlob, attachments.length])
-
-  if (!bg) {
-    return h("div", { class: "ft-wizard-loading" }, "Capturing…")
-  }
-
-  if (step === "annotate") {
-    return h(StepAnnotate, {
-      bg,
-      steps: STEPS,
-      currentStep: STEP_INDEX.annotate,
-      onSkip: handleSkipFromAnnotate,
-      onNext: handleNextFromAnnotate,
-      onCancel: onClose,
-    })
-  }
+  }, [selectedMediaIds, attachments.length])
 
   const headerProps = {
     eyebrow: "Repro",
@@ -234,11 +226,16 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
           description,
           attachments,
           attachmentErrors,
-          annotatedBlob,
+          mediaItems,
+          selectedMediaIds,
+          mediaErrors,
           onTitleChange: setTitle,
           onDescriptionChange: setDescription,
           onAttachmentsAdd: handleAttachmentsAdd,
           onAttachmentRemove: handleAttachmentRemove,
+          onMediaToggle: handleMediaToggle,
+          onCaptureNow,
+          onRecordNow,
         })
       : h(StepReview, { summary, error: success ? null : submitError })
 
@@ -265,7 +262,11 @@ export function Reporter({ onClose, onCapture, onSubmit, openedAt }: ReporterPro
     h(
       "footer",
       { class: "ft-wizard-footer" },
-      h(SecondaryButton, { label: "Back", onClick: handleBack, disabled: submitting }),
+      h(SecondaryButton, {
+        label: "Back",
+        onClick: handleBack,
+        disabled: submitting || step === "details",
+      }),
       h("input", {
         ref: hpRef,
         name: "website",
