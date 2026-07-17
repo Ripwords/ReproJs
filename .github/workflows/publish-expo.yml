@@ -69,9 +69,12 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
-      - run: npm install -g npm@latest
+      # Pinned to a major, not `latest` — see the equivalent step in
+      # publish-npm.yml: npm 12 raised its Node floor and broke that publish
+      # with EBADENGINE. npm >= 11.5.1 is the Trusted Publishing requirement.
+      - run: npm install -g npm@11
       - run: bun install --frozen-lockfile
       - run: bun run expo:build
       - name: Check tag matches package version

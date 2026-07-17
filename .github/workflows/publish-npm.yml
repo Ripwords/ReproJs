@@ -82,15 +82,21 @@ jobs:
       # version that understands --provenance.
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      # Node 20 ships with npm 10.8.x, which signs provenance fine but
-      # can't complete the OIDC handshake for Trusted Publishing on the
-      # publish PUT — npm registry returns a misleading 404. TP auth on
-      # the CLI side landed in npm 11.5.1. Pin an explicit recent npm so
-      # this doesn't regress when Node 20's bundled npm drifts.
-      - run: npm install -g npm@latest
+      # The bundled npm signs provenance fine but can't complete the OIDC
+      # handshake for Trusted Publishing on the publish PUT — the npm registry
+      # returns a misleading 404. TP auth on the CLI side landed in npm 11.5.1,
+      # so anything >= that works.
+      #
+      # Pinned to a major on purpose. This was `npm@latest`, which is the
+      # opposite of a pin: npm 12 shipped requiring Node ^22.22.2 || ^24.15.0
+      # || >=26, and the job was on Node 20, so every publish died with
+      # EBADENGINE before reaching `npm publish` — leaving a pushed sdk-v* tag
+      # with no package behind it. Bumping the floor is a breaking npm major's
+      # prerogative, so track majors deliberately rather than implicitly.
+      - run: npm install -g npm@11
 
       - run: bun install --frozen-lockfile
 
