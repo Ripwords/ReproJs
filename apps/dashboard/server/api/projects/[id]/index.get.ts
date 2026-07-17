@@ -25,5 +25,7 @@ export default defineEventHandler(async (event) => {
     allowedOrigins: p.allowedOrigins,
     dailyReportCap: p.dailyReportCap,
     replayEnabled: p.replayEnabled,
+    shareLinksEnabled: p.shareLinksEnabled,
+    shareRetentionDays: p.shareRetentionDays,
   }
 })
