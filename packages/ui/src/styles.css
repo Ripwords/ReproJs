@@ -858,3 +858,226 @@
 .ft-outcome-discard:hover {
   color: var(--ft-color-danger);
 }
+.ft-outcome-body {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--ft-color-surface-soft);
+}
+.ft-outcome-preview {
+  max-width: 100%;
+  max-height: calc(100vh - 220px);
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  background: var(--ft-color-surface-soft);
+}
+
+/* === Launcher menu === */
+.ft-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483641;
+  background: transparent;
+}
+.ft-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  padding: 8px;
+  gap: 2px;
+  background: var(--ft-color-bg);
+  color: var(--ft-color-text);
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-lg);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.25);
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+/* Anchored above/aside the launcher — same corner the launcher itself sits
+   in, offset by its 56px + margin so the popover never overlaps it. */
+.ft-menu.pos-bottom-right {
+  right: 24px;
+  bottom: 92px;
+}
+.ft-menu.pos-bottom-left {
+  left: 24px;
+  bottom: 92px;
+}
+.ft-menu.pos-top-right {
+  right: 24px;
+  top: 92px;
+}
+.ft-menu.pos-top-left {
+  left: 24px;
+  top: 92px;
+}
+.ft-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--ft-radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ft-menu-row:hover {
+  background: var(--ft-color-surface-soft);
+}
+.ft-menu-icon {
+  flex: none;
+  width: 24px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1;
+}
+.ft-menu-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ft-menu-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.ft-menu-hint {
+  font-size: 12px;
+  color: var(--ft-color-text-muted);
+}
+.ft-menu-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--ft-color-border);
+}
+
+/* === Gallery === */
+.ft-gallery-header {
+  justify-content: space-between;
+}
+.ft-gallery-body {
+  flex-direction: column;
+  overflow: auto;
+  padding: 20px;
+}
+.ft-gallery-loading,
+.ft-gallery-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--ft-color-text-faint);
+  font-size: 14px;
+}
+.ft-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+.ft-gallery-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-lg);
+  background: var(--ft-color-surface);
+}
+.ft-gallery-thumb {
+  aspect-ratio: 16 / 10;
+  border-radius: var(--ft-radius-md);
+  overflow: hidden;
+  background: var(--ft-color-surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ft-gallery-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ft-gallery-thumb-placeholder {
+  font-size: 28px;
+}
+.ft-gallery-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ft-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ft-gallery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ft-gallery-action {
+  padding: 6px 10px;
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-pill);
+  background: var(--ft-color-bg);
+  color: var(--ft-color-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ft-gallery-action:hover {
+  background: var(--ft-color-surface-soft);
+}
+.ft-gallery-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.ft-gallery-action-primary {
+  background: var(--ft-color-primary);
+  color: var(--ft-color-bg);
+  border-color: transparent;
+  margin-left: auto;
+}
+.ft-gallery-action-primary:hover {
+  background: color-mix(in oklch, var(--ft-color-primary) 85%, black);
+}
+.ft-gallery-copy-error {
+  color: var(--ft-color-danger);
+  font-size: 12px;
+}
+.ft-gallery-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-surface-soft);
+}
+.ft-gallery-preview-image,
+.ft-gallery-preview-video {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--ft-radius-md);
+}
+.ft-gallery-preview-video {
+  background: #000; /* letterbox black — intentional, not a theme token, matches .ft-trim-video */
+}
+.ft-gallery-preview-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--ft-color-border);
+  border-radius: var(--ft-radius-md);
+  background: var(--ft-color-surface-soft);
+  color: var(--ft-color-text-muted);
+  font-size: 13px;
+}
