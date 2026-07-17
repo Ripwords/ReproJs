@@ -1,14 +1,22 @@
 <!-- apps/dashboard/app/components/report-drawer/attachments-tab.vue -->
 <script setup lang="ts">
 import type { AttachmentDTO } from "@reprojs/shared"
+import TrimVideo from "~/components/report-drawer/trim-video.vue"
 
 const props = defineProps<{
   attachments: AttachmentDTO[]
 }>()
 
+// The tab covers two attachment kinds: "user-file" (generic uploads, shown
+// as Images/Files below) and "media" (widget gallery screenshots + trimmed
+// recordings, shown in their own Media section further down).
 const userFiles = computed(() => props.attachments.filter((a) => a.kind === "user-file"))
 const images = computed(() => userFiles.value.filter((a) => a.contentType.startsWith("image/")))
 const others = computed(() => userFiles.value.filter((a) => !a.contentType.startsWith("image/")))
+
+const media = computed(() => props.attachments.filter((a) => a.kind === "media"))
+const mediaImages = computed(() => media.value.filter((a) => a.contentType.startsWith("image/")))
+const mediaVideos = computed(() => media.value.filter((a) => a.contentType.startsWith("video/")))
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
@@ -66,9 +74,58 @@ function scanBadge(file: AttachmentDTO): ScanBadge {
 
 <template>
   <div class="space-y-6 p-4">
-    <p v-if="userFiles.length === 0" class="text-sm text-muted italic">
+    <p v-if="userFiles.length === 0 && media.length === 0" class="text-sm text-muted italic">
       No additional attachments on this report.
     </p>
+
+    <section v-if="mediaImages.length > 0 || mediaVideos.length > 0" class="space-y-3">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">
+        Media ({{ media.length }})
+      </h3>
+      <div v-if="mediaImages.length > 0" class="grid grid-cols-3 gap-3">
+        <div v-for="img in mediaImages" :key="img.id" class="space-y-1.5">
+          <a
+            :href="img.url"
+            target="_blank"
+            rel="noopener"
+            class="block aspect-square overflow-hidden rounded-md border border-default bg-elevated/40"
+            :title="img.filename ?? ''"
+          >
+            <img
+              :src="img.url"
+              :alt="img.filename ?? 'attachment'"
+              class="h-full w-full object-cover"
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            />
+          </a>
+          <div
+            class="flex items-center gap-1 text-[11px]"
+            :class="scanBadge(img).tone === 'success' ? 'text-success' : 'text-muted'"
+            :title="scanBadge(img).detail"
+          >
+            <UIcon
+              :name="
+                scanBadge(img).status === 'clean'
+                  ? 'i-heroicons-shield-check'
+                  : 'i-heroicons-shield-exclamation'
+              "
+              class="size-3 shrink-0"
+            />
+            <span class="truncate">{{ scanBadge(img).label }}</span>
+          </div>
+        </div>
+      </div>
+      <div v-if="mediaVideos.length > 0" class="space-y-4">
+        <TrimVideo
+          v-for="vid in mediaVideos"
+          :key="vid.id"
+          :src="vid.url"
+          :trim-start-ms="vid.trimStartMs"
+          :trim-end-ms="vid.trimEndMs"
+          :download-name="vid.filename ?? 'recording'"
+        />
+      </div>
+    </section>
 
     <section v-if="images.length > 0" class="space-y-3">
       <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">

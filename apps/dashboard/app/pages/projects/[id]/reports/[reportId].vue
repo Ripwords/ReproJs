@@ -87,7 +87,9 @@ const consoleHasData = computed(
 const networkHasData = computed(() => logs.value !== null && logs.value.network.length > 0)
 const cookiesHasData = computed(() => (report.value?.context?.cookies?.length ?? 0) > 0)
 const userFileCount = computed(
-  () => (report.value?.attachments ?? []).filter((a) => a.kind === "user-file").length,
+  () =>
+    (report.value?.attachments ?? []).filter((a) => a.kind === "user-file" || a.kind === "media")
+      .length,
 )
 
 const tabs = computed(() => {
