@@ -178,7 +178,11 @@ export default defineNuxtConfig({
       },
     },
     "/api/shared/**": {
-      headers: { "cache-control": "public, max-age=3600" },
+      // 5-minute ceiling, not longer: shared caches (CDN/proxies) hold these
+      // public recordings, and a revoked link must stop resolving within
+      // minutes — an hour of post-revoke availability was ruled unacceptable
+      // for session recordings that can contain on-screen PII.
+      headers: { "cache-control": "public, max-age=300" },
     },
   },
   nitro: {

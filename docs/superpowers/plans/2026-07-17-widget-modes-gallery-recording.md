@@ -1777,7 +1777,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ```ts
 "/api/shared/**": {
-  headers: { "cache-control": "public, max-age=3600" },  // overrides the /api/** private,no-store rule
+  headers: { "cache-control": "public, max-age=300" },  // 5-min ceiling: revoked links must die fast in shared caches (user decision 2026-07-17)
 },
 ```
 
