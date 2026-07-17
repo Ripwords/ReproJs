@@ -13,7 +13,7 @@
     "dev:docker": "docker compose -f apps/dashboard/docker/docker-compose.dev.yml up -d",
     "dev:stop": "docker compose -f apps/dashboard/docker/docker-compose.dev.yml down",
     "build": "bun --filter dashboard build",
-    "sdk:build": "bun run packages/ui/build-css.ts && NODE_OPTIONS=--max-old-space-size=6144 bun --filter @reprojs/core build",
+    "sdk:build": "bun run packages/ui/build-css.ts && NODE_OPTIONS=--max-old-space-size=8192 bun --filter @reprojs/core build",
     "sdk:watch": "bun --filter @reprojs/core dev",
     "expo:build": "NODE_OPTIONS=--max-old-space-size=6144 bun --filter @reprojs/expo build",
     "expo:pack": "bun run scripts/pack-expo-local.ts",

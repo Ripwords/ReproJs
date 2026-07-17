@@ -1132,3 +1132,35 @@
   color: var(--ft-color-text-muted);
   font-size: 13px;
 }
+
+/* === Mode toast === */
+/* Transient status message anchored bottom-center of the widget layer:
+   eviction notices, "Saved to gallery", "Screen recording unavailable". */
+.ft-mode-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: 360px;
+  padding: 10px 16px;
+  background: var(--ft-color-text);
+  color: var(--ft-color-bg);
+  border-radius: var(--ft-radius-md);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: center;
+  z-index: 2147483647;
+  animation: ft-mode-toast-in 180ms ease-out;
+}
+@keyframes ft-mode-toast-in {
+  from {
+    transform: translate(-50%, 8px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}

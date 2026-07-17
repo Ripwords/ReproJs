@@ -1,19 +1,40 @@
-import type { IntakeResponse, LogsAttachment, ReportContext } from "@reprojs/shared"
-import type { Attachment } from "@reprojs/sdk-utils"
+import type { IntakeResponse, LogsAttachment, MediaMetaEntry, ReportContext } from "@reprojs/shared"
+import type { Attachment, TrimRange } from "@reprojs/sdk-utils"
 import type { ResolvedConfig } from "./config"
+
+/** A single gallery media item selected for a report. Serialized as a
+ * `media[i]` multipart part plus one aligned entry in the `mediaMeta` JSON. */
+export interface IntakeMediaItem {
+  blob: Blob
+  mime: string
+  kind: "image" | "video"
+  durationMs?: number
+  trim?: TrimRange
+}
 
 export interface IntakeInput {
   title: string
   description: string
   context: ReportContext
   metadata?: Record<string, string | number | boolean>
-  screenshot: Blob | null
+  media?: IntakeMediaItem[]
   attachments?: Attachment[]
   logs?: LogsAttachment | null
   /** Raw gzipped replay bytes (application/gzip); omitted when replay disabled or unavailable. */
   replayBytes?: Uint8Array | null
   dwellMs?: number
   honeypot?: string
+}
+
+// Maps a media mime type to the file extension used in the multipart part
+// filename (`media-${i}.${ext}`). The server keys attachments off the meta
+// mime, not the filename, so an unknown mime falling back to "bin" is safe.
+const MEDIA_EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "video/webm": "webm",
+  "video/mp4": "mp4",
 }
 
 export interface IntakeResult {
@@ -50,7 +71,6 @@ export async function postReport(
       { type: "application/json" },
     ),
   )
-  if (input.screenshot) body.set("screenshot", input.screenshot, "screenshot.png")
   if (input.logs) {
     body.set(
       "logs",
@@ -72,6 +92,21 @@ export async function postReport(
         att.blob instanceof File ? att.blob : new File([att.blob], att.filename, { type: att.mime })
       body.set(`attachment[${i}]`, file, att.filename)
     })
+  }
+
+  if (input.media && input.media.length > 0) {
+    const meta: MediaMetaEntry[] = input.media.map((item, i) => {
+      const ext = MEDIA_EXT[item.mime] ?? "bin"
+      const file = new File([item.blob], `media-${i}.${ext}`, { type: item.mime })
+      body.set(`media[${i}]`, file, file.name)
+      return {
+        kind: item.kind,
+        mime: item.mime,
+        ...(item.durationMs !== undefined ? { durationMs: item.durationMs } : {}),
+        ...(item.trim ? { trim: item.trim } : {}),
+      }
+    })
+    body.set("mediaMeta", new Blob([JSON.stringify(meta)], { type: "application/json" }))
   }
 
   try {

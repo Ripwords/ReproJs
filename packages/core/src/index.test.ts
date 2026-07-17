@@ -19,6 +19,10 @@ mock.module("@reprojs/ui", () => ({
   },
   unmount: () => {},
   open: () => {},
+  openMenu: () => {},
+  openCapture: () => {},
+  openRecord: () => {},
+  openGallery: () => {},
   close: () => {},
   registerAllCollectors: () => {
     registerCalls++

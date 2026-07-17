@@ -4,19 +4,25 @@ import {
   close as uiClose,
   mount,
   open as uiOpen,
+  openCapture as uiOpenCapture,
+  openMenu as uiOpenMenu,
+  openRecord as uiOpenRecord,
   registerAllCollectors,
   unmount,
   type BreadcrumbLevel,
 } from "@reprojs/ui"
 import { resolveConfig, type InitOptions, type ResolvedConfig } from "./config"
 import { gatherContext } from "./context"
+import { attachHotkey } from "./hotkey"
 import { postReport } from "./intake-client"
-import { capture } from "./screenshot"
+import { capture as captureScreenshot } from "./screenshot"
+import { startScreenRecording } from "./screen-record"
 
 let _config: ResolvedConfig | null = null
 let _reporter: ReporterIdentity | null = null
 let _mounted = false
 let _collectors: ReturnType<typeof registerAllCollectors> | null = null
+let _detachHotkey: (() => void) | null = null
 
 export interface FeedbackHandle {
   pauseReplay: () => void
@@ -47,30 +53,39 @@ export function init(options: InitOptions): FeedbackHandle {
   mount({
     config: { position: cfg.position, launcher: cfg.launcher },
     capture: () =>
-      capture({
+      captureScreenshot({
         method: cfg.screenshot?.method,
         excludeSelectors: cfg.screenshot?.excludeSelectors,
       }),
-    // Pause the rolling replay buffer the moment the wizard opens. Without
-    // this, the buffer keeps overwriting itself with the user's annotation
-    // work, so by submit time the original 30s of pre-click activity is
-    // gone and only the report flow itself remains. Resume on close so the
-    // next bug report still has a hot buffer to draw from.
+    // Bridge the UI's mode-aware recording flow to core's screen recorder.
+    // Returns null (fail open) when getDisplayMedia is denied/unavailable.
+    startRecording: (cb) =>
+      startScreenRecording({
+        onTick: cb.onTick,
+        onEnd: cb.onEnd,
+      }),
+    // Pause the rolling replay buffer the moment the widget opens. Without
+    // this, the buffer keeps overwriting itself with the user's report flow,
+    // so by submit time the original 30s of pre-click activity is gone.
+    // Resume on close so the next bug report still has a hot buffer.
     onOpen: () => _collectors?.pauseReplay(),
     onClose: () => _collectors?.resumeReplay(),
-    onSubmit: async ({ title, description, screenshot, attachments, dwellMs, honeypot }) => {
+    onSubmit: async ({ title, description, media, attachments, dwellMs, honeypot }) => {
       if (!_config || !_collectors) return { ok: false, message: "Not initialized" }
       const snap = _collectors.snapshotAll()
       const context = gatherContext(_reporter, _config.metadata, {
         systemInfo: snap.systemInfo,
         cookies: snap.cookies,
       })
+      // Media now flows from the gallery selection, not a single screenshot —
+      // beforeSend still runs over the textual report; its screenshot field is
+      // retained (always null here) purely to satisfy the PendingReport shape.
       const pending = {
         title,
         description,
         context,
         logs: snap.logs,
-        screenshot,
+        screenshot: null,
       }
       const final = _collectors.applyBeforeSend(pending)
       if (final === null) return { ok: false, message: "aborted by beforeSend" }
@@ -80,7 +95,13 @@ export function init(options: InitOptions): FeedbackHandle {
         description: final.description,
         context: final.context,
         metadata: _config.metadata,
-        screenshot: final.screenshot,
+        media: media.map((g) => ({
+          blob: g.blob,
+          mime: g.mime,
+          kind: g.kind,
+          durationMs: g.durationMs,
+          trim: g.trim,
+        })),
         attachments,
         logs: final.logs,
         replayBytes: replay.bytes,
@@ -94,6 +115,10 @@ export function init(options: InitOptions): FeedbackHandle {
     },
   })
   _mounted = true
+  // Attach the open-menu hotkey when configured. attachHotkey fails open on an
+  // unparseable spec (returns a no-op detach), so a bad value can't break init.
+  _detachHotkey?.()
+  _detachHotkey = cfg.hotkey ? attachHotkey(cfg.hotkey, () => uiOpenMenu()) : null
   return {
     pauseReplay: () => collectors.pauseReplay(),
     resumeReplay: () => collectors.resumeReplay(),
@@ -103,6 +128,21 @@ export function init(options: InitOptions): FeedbackHandle {
 export function open(): void {
   if (!_config) throw new Error("Repro.open called before init")
   uiOpen()
+}
+
+export function openMenu(): void {
+  if (!_config) throw new Error("Repro.openMenu called before init")
+  uiOpenMenu()
+}
+
+export function capture(): void {
+  if (!_config) throw new Error("Repro.capture called before init")
+  uiOpenCapture()
+}
+
+export function record(): void {
+  if (!_config) throw new Error("Repro.record called before init")
+  uiOpenRecord()
 }
 
 export function close(): void {
@@ -132,6 +172,8 @@ export function resumeReplay(): void {
 export function _unmount(): void {
   if (_mounted) unmount()
   if (_collectors) _collectors.stopAll()
+  _detachHotkey?.()
+  _detachHotkey = null
   _mounted = false
   _config = null
   _reporter = null
