@@ -176,6 +176,9 @@ export default defineNuxtConfig({
         xssValidator: false,
       },
     },
+    "/api/shared/**": {
+      headers: { "cache-control": "public, max-age=3600" },
+    },
   },
   nitro: {
     experimental: {
