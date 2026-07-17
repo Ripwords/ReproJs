@@ -28,6 +28,7 @@ const MintMeta = z.object({
   durationMs: z.number().int().nonnegative().optional(),
   trim: z
     .object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() })
+    .refine((t) => t.endMs > t.startMs, "endMs must be after startMs")
     .optional(),
 })
 

@@ -124,4 +124,13 @@ describe("POST /api/intake/media", () => {
     const res = await postMint({ includeFile: false })
     expect(res.status).toBe(400)
   })
+
+  test("invalid trim (endMs < startMs) → 400, no row created", async () => {
+    const res = await postMint({ extraMeta: { trim: { startMs: 2000, endMs: 1000 } } })
+    expect(res.status).toBe(400)
+
+    // Assert no shared_media row was created for this mint attempt
+    const rows = await db.select().from(sharedMedia)
+    expect(rows.length).toBe(0)
+  })
 })
