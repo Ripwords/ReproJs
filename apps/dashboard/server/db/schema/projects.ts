@@ -25,6 +25,8 @@ export const projects = pgTable(
       .default(sql`'{}'::text[]`),
     dailyReportCap: integer("daily_report_cap").notNull().default(1000),
     replayEnabled: boolean("replay_enabled").notNull().default(true),
+    shareLinksEnabled: boolean("share_links_enabled").notNull().default(true),
+    shareRetentionDays: integer("share_retention_days").notNull().default(30),
     publicKeyRegeneratedAt: timestamp("public_key_regenerated_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
