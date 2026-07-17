@@ -127,6 +127,12 @@ function App() {
   const pagehideRef = useRef<((e: Event) => void) | null>(null)
   const returnToReportRef = useRef(false)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Flipped false first thing in the mount-lifetime cleanup below, before
+  // sessionRef.current?.cancel() runs. Guards callbacks (onTick/onEnd) that
+  // may still fire — synchronously from cancel() itself, or asynchronously
+  // once the underlying MediaRecorder actually stops — after the tree has
+  // already been torn down.
+  const mountedRef = useRef(true)
 
   // Load the gallery store once. openGallery() resolves null when IndexedDB is
   // unavailable — fail open (Reporter / GalleryView render an empty grid).
@@ -172,6 +178,26 @@ function App() {
       pagehideRef.current = null
     }
   }
+
+  // Mount-lifetime cleanup. init() re-mounts by calling unmount() when the
+  // widget is already mounted (see core's init()), so an active recording
+  // session's MediaRecorder/getDisplayMedia stream and the pagehide listener
+  // must be torn down here — otherwise the browser keeps showing "sharing
+  // your screen" after the widget is gone and the listener leaks a stale
+  // closure. cancel() is a no-op once a session has already ended (session's
+  // first-trigger-wins semantics), so this is safe to call unconditionally.
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      sessionRef.current?.cancel()
+      sessionRef.current = null
+      detachPagehide()
+      if (toastTimer.current) {
+        clearTimeout(toastTimer.current)
+        toastTimer.current = null
+      }
+    }
+  }, [])
 
   async function saveToGallery(item: PendingMediaItem): Promise<string | null> {
     if (!gallery) {
@@ -245,9 +271,23 @@ function App() {
     setRecord({ phase: "recording", elapsedMs: 0 })
     setMode("record")
     const session = await opts.startRecording({
-      onTick: (ms) => setRecord({ phase: "recording", elapsedMs: ms }),
-      onEnd: (result, reason) => handleRecordEnd(result, reason),
+      onTick: (ms) => {
+        if (!mountedRef.current) return
+        setRecord({ phase: "recording", elapsedMs: ms })
+      },
+      onEnd: (result, reason) => {
+        if (!mountedRef.current) return
+        handleRecordEnd(result, reason)
+      },
     })
+    if (!mountedRef.current) {
+      // Unmounted while the getDisplayMedia prompt was pending. The
+      // mount-lifetime cleanup already ran (and found no session to cancel),
+      // so release this newly-started stream ourselves — otherwise it never
+      // gets cancelled and the browser keeps showing "sharing your screen".
+      session?.cancel()
+      return
+    }
     if (!session) {
       // Denied or unavailable — fail open back to the menu with a hint.
       showToast("Screen recording unavailable")

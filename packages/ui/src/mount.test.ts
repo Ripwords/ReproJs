@@ -1,7 +1,16 @@
 /** @jsxImportSource preact */
 import { afterEach, describe, expect, test } from "bun:test"
 import { Window } from "happy-dom"
-import { close, mount, open, openMenu, unmount, type MountOptions } from "./mount"
+import {
+  close,
+  mount,
+  open,
+  openMenu,
+  openRecord,
+  unmount,
+  type MountOptions,
+  type RecordingSessionLike,
+} from "./mount"
 import { createShadowHost } from "./shadow"
 
 const realDocument = globalThis.document
@@ -86,5 +95,55 @@ describe("mount mode machine", () => {
     await flush()
     expect(closes).toBe(1)
     expect(root.textContent).not.toContain("Report a bug")
+  })
+
+  test("unmount() while recording cancels the session and detaches the pagehide listener", async () => {
+    const win = setupDom()
+    const root = createShadowHost()
+
+    let cancelCalls = 0
+    const fakeSession: RecordingSessionLike = {
+      stop: () => {},
+      cancel: () => {
+        cancelCalls++
+      },
+      snapshot: () => null,
+    }
+
+    // Snapshot/restore addEventListener + removeEventListener on the fresh
+    // happy-dom window so we can track "pagehide" listener count without
+    // touching global hygiene for other listener types.
+    const realAdd = win.addEventListener.bind(win)
+    const realRemove = win.removeEventListener.bind(win)
+    let pagehideListenerCount = 0
+    // @ts-expect-error patching happy-dom window for the spy
+    win.addEventListener = (type: string, ...rest: unknown[]) => {
+      if (type === "pagehide") pagehideListenerCount++
+      // @ts-expect-error forwarding to happy-dom's real implementation
+      return realAdd(type, ...rest)
+    }
+    // @ts-expect-error patching happy-dom window for the spy
+    win.removeEventListener = (type: string, ...rest: unknown[]) => {
+      if (type === "pagehide") pagehideListenerCount--
+      // @ts-expect-error forwarding to happy-dom's real implementation
+      return realRemove(type, ...rest)
+    }
+
+    mount(
+      makeOpts({
+        startRecording: async () => fakeSession,
+      }),
+    )
+
+    openRecord()
+    await flush()
+    expect(root.textContent).toContain("Stop")
+    expect(pagehideListenerCount).toBe(1)
+
+    unmount()
+    await flush()
+
+    expect(cancelCalls).toBe(1)
+    expect(pagehideListenerCount).toBe(0)
   })
 })
