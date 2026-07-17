@@ -2,7 +2,7 @@ import { setup } from "../nuxt-setup"
 import { afterEach, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { eq } from "drizzle-orm"
 import { db } from "../../server/db"
-import { reportAttachments } from "../../server/db/schema"
+import { reportAttachments, reports } from "../../server/db/schema"
 import { createUser, seedProject, truncateDomain, truncateReports } from "../helpers"
 
 await setup({ server: true, port: 3000, host: "localhost" })
@@ -173,5 +173,45 @@ describe("POST /api/intake/reports — gallery media", () => {
     const screenshotRow = rows.find((r) => r.kind === "screenshot")
     expect(screenshotRow).toBeDefined()
     expect(screenshotRow?.storageKey.endsWith("/screenshot.png")).toBe(true)
+  })
+
+  test("7: duplicate media[0] indices (two parts, same slot) → 400, no rows persisted", async () => {
+    const form = new FormData()
+    form.append("report", reportBlob())
+    // Two parts both claim index 0, with divergent byte lengths — the
+    // second `storage.put` would silently overwrite the first blob at
+    // `${report.id}/media/0.<ext>` if this weren't rejected up front.
+    form.append(
+      "media[0]",
+      new File([new Uint8Array([1, 2, 3])], "media-0-a.png", { type: "image/png" }),
+    )
+    form.append(
+      "media[0]",
+      new File([new Uint8Array([4, 5, 6, 7, 8, 9])], "media-0-b.png", { type: "image/png" }),
+    )
+    form.append(
+      "mediaMeta",
+      new Blob(
+        [
+          JSON.stringify([
+            { kind: "image", mime: "image/png" },
+            { kind: "image", mime: "image/png" },
+          ]),
+        ],
+        { type: "application/json" },
+      ),
+    )
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
+      method: "POST",
+      headers: { Origin: ORIGIN },
+      body: form,
+    })
+    expect(res.status).toBe(400)
+    // Validation must precede the report insert entirely — not just the
+    // media attachment writes.
+    const allReports = await db.select().from(reports)
+    const allAttachments = await db.select().from(reportAttachments)
+    expect(allReports).toHaveLength(0)
+    expect(allAttachments).toHaveLength(0)
   })
 })

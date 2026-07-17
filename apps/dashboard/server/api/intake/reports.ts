@@ -324,6 +324,26 @@ export default defineEventHandler(async (event) => {
   const mediaMetaByIdx = new Map<number, MediaMetaEntry>()
 
   if (mediaParts.length > 0) {
+    // Indices must form the exact unique contiguous set 0..mediaParts.length-1.
+    // Without this, duplicate media[N] parts (e.g. two media[0]s) both pass
+    // the mediaMeta length check below, both resolve the same mediaMeta
+    // entry, and both persist to the SAME storage key
+    // `${report.id}/media/N.<ext>` — the second `storage.put` silently
+    // overwrites the first blob while two attachment rows end up pointing at
+    // one key with divergent sizes. Gaps/out-of-range indices (e.g. a lone
+    // media[7]) are equally malformed and are now caught here too, instead
+    // of surfacing as a less specific "mediaMeta entry missing" error later.
+    const seenMediaIdx = new Set<number>()
+    for (const { idx } of mediaParts) {
+      if (idx >= mediaParts.length || seenMediaIdx.has(idx)) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "media part indices must be unique and contiguous",
+        })
+      }
+      seenMediaIdx.add(idx)
+    }
+
     const mediaMetaPart = parts.find((p) => p.name === "mediaMeta")
     if (!mediaMetaPart?.data) {
       throw createError({ statusCode: 400, statusMessage: "Missing 'mediaMeta' part" })
