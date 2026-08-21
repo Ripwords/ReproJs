@@ -51,3 +51,24 @@ test("scrubString redacts known secret shapes", () => {
   expect(out).not.toContain("abc123def456")
   expect(out).toContain("REDACTED")
 })
+
+// CodeQL js/polynomial-redos. The JWT redactor's `[A-Za-z0-9_-]+\.` could be
+// entered at every offset of a long `eyJeyJeyJ…` run, each attempt scanning to
+// the end before failing — quadratic. Measured before the fix: 6k chars 8ms,
+// 24k chars 112ms, 60k chars 655ms. Console args are host-app data, and the
+// Expo collector now runs these redactors on every logged argument.
+test("JWT redactor stays linear on adversarial repetition", () => {
+  const evil = "eyJ".repeat(20_000)
+  const started = performance.now()
+  const out = scrubString(evil, DEFAULT_STRING_REDACTORS)
+  const elapsed = performance.now() - started
+  expect(out).toBe(evil) // nothing to redact — there is no JWT here
+  expect(elapsed).toBeLessThan(50)
+})
+
+test("JWT redactor still redacts real tokens", () => {
+  const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc123_def"
+  expect(scrubString(`token: ${jwt}`, DEFAULT_STRING_REDACTORS)).toBe("token: REDACTED")
+  expect(scrubString(`{"t":"${jwt}"}`, DEFAULT_STRING_REDACTORS)).toContain("REDACTED")
+  expect(scrubString(`{"t":"${jwt}"}`, DEFAULT_STRING_REDACTORS)).not.toContain("eyJhbGci")
+})

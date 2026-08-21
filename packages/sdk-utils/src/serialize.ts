@@ -7,7 +7,14 @@
 // collector layers `truncate` on top).
 
 export const DEFAULT_STRING_REDACTORS: readonly RegExp[] = [
-  /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.?[A-Za-z0-9_.+/=-]*/g,
+  // The leading \b and the bounded quantifiers are load-bearing, not style.
+  // Unanchored `eyJ[A-Za-z0-9_-]+\.` can be entered at every offset of a long
+  // `eyJeyJeyJ…` run, and each attempt scans to the end before failing to find
+  // the `.` — quadratic (CodeQL js/polynomial-redos; 60k chars took 655ms).
+  // \b collapses those start positions to the one real word boundary, and the
+  // upper bounds cap the work at any single position. JWT segments are far
+  // below 4000 chars in practice.
+  /\beyJ[A-Za-z0-9_-]{1,4000}\.[A-Za-z0-9_-]{1,4000}\.?[A-Za-z0-9_.+/=-]{0,4000}/g,
   /gh[ps]_[A-Za-z0-9]{36,}/g,
   /xox[abp]-[A-Za-z0-9-]+/g,
   /AKIA[0-9A-Z]{16}/g,
