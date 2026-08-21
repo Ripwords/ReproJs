@@ -119,7 +119,14 @@ describe("logs intake", () => {
     expect(atts.map((a) => a.kind)).toEqual(["screenshot"])
   })
 
-  test("malformed logs payload returns 400 and no report row", async () => {
+  // Contract change: logs are auto-collected diagnostic decoration, while the
+  // report is the user's actual work. Discarding a hand-written bug report
+  // because a sidecar blob was malformed is the wrong trade — and it is what
+  // silently swallowed every Expo/iOS report in production (a non-string
+  // console arg serialized to `null`, failing LogsAttachment). We now keep the
+  // report, drop only the logs, and say so via `logsStored: false` — the same
+  // success-with-signal shape already used for `replayStored`/`replayDisabled`.
+  test("unparseable logs payload still stores the report, minus the logs", async () => {
     const admin = await createUser("admin@example.com", "admin")
     await seedProject({ name: "Demo", publicKey: PK, allowedOrigins: [ORIGIN], createdBy: admin })
     const res = await fetch("http://localhost:3000/api/intake/reports", {
@@ -131,9 +138,58 @@ describe("logs intake", () => {
         logs: new Blob(["{not json"], { type: "application/json" }),
       }),
     })
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { id: string; logsStored?: boolean }
+    expect(body.logsStored).toBe(false)
     const rows = await db.select().from(reports)
-    expect(rows.length).toBe(0)
+    expect(rows.length).toBe(1)
+    const atts = await db
+      .select()
+      .from(reportAttachments)
+      .where(sql`report_id = ${body.id}`)
+    // Screenshot survives; no logs row is written.
+    expect(atts.map((a) => a.kind)).toEqual(["screenshot"])
+  })
+
+  // The exact production shape: valid JSON, but console[].args contains a
+  // non-string because the Expo serializer emitted `undefined`.
+  test("schema-invalid logs payload still stores the report, minus the logs", async () => {
+    const admin = await createUser("admin@example.com", "admin")
+    await seedProject({ name: "Demo", publicKey: PK, allowedOrigins: [ORIGIN], createdBy: admin })
+    const poisoned = {
+      ...buildLogs(),
+      console: [{ level: "log", ts: Date.now(), args: [null] }],
+    }
+    const res = await fetch("http://localhost:3000/api/intake/reports", {
+      method: "POST",
+      headers: { Origin: ORIGIN },
+      body: buildFormData({
+        reportJson: buildReportJSON(PK),
+        screenshot: makePngBlob(),
+        logs: new Blob([JSON.stringify(poisoned)], { type: "application/json" }),
+      }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { id: string; logsStored?: boolean }
+    expect(body.logsStored).toBe(false)
+    expect((await db.select().from(reports)).length).toBe(1)
+  })
+
+  test("valid logs report logsStored: true", async () => {
+    const admin = await createUser("admin@example.com", "admin")
+    await seedProject({ name: "Demo", publicKey: PK, allowedOrigins: [ORIGIN], createdBy: admin })
+    const res = await fetch("http://localhost:3000/api/intake/reports", {
+      method: "POST",
+      headers: { Origin: ORIGIN },
+      body: buildFormData({
+        reportJson: buildReportJSON(PK),
+        screenshot: makePngBlob(),
+        logs: new Blob([JSON.stringify(buildLogs())], { type: "application/json" }),
+      }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { logsStored?: boolean }
+    expect(body.logsStored).toBe(true)
   })
 
   test("intake hardcodes Content-Type per kind; client-supplied MIME is ignored", async () => {

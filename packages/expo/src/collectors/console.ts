@@ -1,4 +1,9 @@
-import { RingBuffer } from "@reprojs/sdk-utils"
+import {
+  RingBuffer,
+  safeStringify,
+  scrubString,
+  DEFAULT_STRING_REDACTORS,
+} from "@reprojs/sdk-utils"
 
 export interface ConsoleEntry {
   level: "log" | "info" | "warn" | "error" | "debug"
@@ -10,13 +15,21 @@ export interface ConsoleEntry {
 const LEVELS = ["log", "info", "warn", "error", "debug"] as const
 const SENTINEL = "__reprojs_patched"
 
+// Cap each argument by characters, not bytes: `truncate` from sdk-utils uses
+// TextEncoder, which Hermes does not provide.
+const MAX_ARG_CHARS = 1024
+
 function stringifyArg(v: unknown): string {
-  if (typeof v === "string") return v
-  try {
-    return JSON.stringify(v)
-  } catch {
-    return String(v)
-  }
+  // safeStringify is total by contract — it never returns a non-string.
+  // The previous implementation here returned the JS value `undefined` for
+  // undefined / function / symbol args, which JSON.stringify turned into
+  // `null` on the wire. The intake API validates console[].args as
+  // z.array(z.string()), answered 400 "Invalid logs payload", and the queue
+  // flusher then discarded the report as a non-retryable client error — so
+  // the wizard showed success and the report never arrived.
+  const raw = safeStringify(v)
+  const capped = raw.length > MAX_ARG_CHARS ? `${raw.slice(0, MAX_ARG_CHARS)}…` : raw
+  return scrubString(capped, DEFAULT_STRING_REDACTORS)
 }
 
 export interface ConsoleCollector {

@@ -18,6 +18,8 @@ export interface ReproConfigInput {
     maxReports?: number
     maxBytes?: number
     backoffMs?: number[]
+    /** Retries before a report is given up on and `onDrop` fires. */
+    maxAttempts?: number
   }
   redact?: {
     headerDenylist?: string[]
@@ -41,6 +43,7 @@ export interface ReproConfig {
     maxReports: number
     maxBytes: number
     backoffMs: number[]
+    maxAttempts: number
   }
   redact: {
     headerDenylist: string[]
@@ -86,6 +89,7 @@ export function normalizeConfig(input: ReproConfigInput): ReproConfig | null {
       maxReports: input.queue?.maxReports ?? 5,
       maxBytes: input.queue?.maxBytes ?? 10 * 1024 * 1024,
       backoffMs: input.queue?.backoffMs ?? [1000, 5000, 30000, 120000],
+      maxAttempts: input.queue?.maxAttempts ?? 10,
     },
     redact: {
       headerDenylist: input.redact?.headerDenylist ?? DEFAULT_HEADER_DENYLIST,

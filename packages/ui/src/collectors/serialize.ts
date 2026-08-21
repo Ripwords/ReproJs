@@ -1,56 +1,16 @@
 // packages/ui/src/collectors/serialize.ts
+//
+// The value→string core now lives in @reprojs/sdk-utils so the web and Expo
+// console collectors share ONE implementation. They previously had separate
+// copies, and the Expo copy was missing the undefined/function/symbol guards —
+// which took down Expo report intake entirely. Re-exported here so existing
+// web import paths keep working.
 
 import { truncate } from "@reprojs/sdk-utils"
+import { safeStringify, scrubString } from "@reprojs/sdk-utils"
 
-export const DEFAULT_STRING_REDACTORS: readonly RegExp[] = [
-  /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.?[A-Za-z0-9_.+/=-]*/g,
-  /gh[ps]_[A-Za-z0-9]{36,}/g,
-  /xox[abp]-[A-Za-z0-9-]+/g,
-  /AKIA[0-9A-Z]{16}/g,
-  /Bearer\s+[A-Za-z0-9._~+/=-]+/gi,
-]
-
-export function scrubString(s: string, patterns: readonly RegExp[]): string {
-  let out = s
-  for (const re of patterns) out = out.replace(re, "REDACTED")
-  return out
-}
+export { DEFAULT_STRING_REDACTORS, scrubString } from "@reprojs/sdk-utils"
 
 export function serializeArg(v: unknown, maxBytes: number, redactors: readonly RegExp[]): string {
-  let raw: string
-  try {
-    raw = safeStringify(v)
-  } catch {
-    raw = "[Unserializable]"
-  }
-  return scrubString(truncate(raw, maxBytes), redactors)
-}
-
-function safeStringify(v: unknown): string {
-  if (v === undefined) return "undefined"
-  if (v === null) return "null"
-  if (typeof v === "function") return "[Function]"
-  if (typeof v === "number") {
-    if (Number.isNaN(v)) return "NaN"
-    if (!Number.isFinite(v)) return v > 0 ? "Infinity" : "-Infinity"
-    return String(v)
-  }
-  if (typeof v === "string") return JSON.stringify(v)
-  if (typeof v === "boolean" || typeof v === "bigint") return String(v)
-  if (v instanceof Error) {
-    return `${v.name}: ${v.message}${v.stack ? `\n${v.stack}` : ""}`
-  }
-  if (ArrayBuffer.isView(v)) {
-    return `[${v.constructor.name} byteLength=${v.byteLength}]`
-  }
-  const seen = new WeakSet<object>()
-  return JSON.stringify(v, (_key, value: unknown) => {
-    if (typeof value === "object" && value !== null) {
-      if (seen.has(value)) return "[Circular]"
-      seen.add(value)
-    }
-    if (typeof value === "function") return "[Function]"
-    if (typeof value === "bigint") return String(value)
-    return value
-  })
+  return scrubString(truncate(safeStringify(v), maxBytes), redactors)
 }
