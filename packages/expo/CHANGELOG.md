@@ -1,5 +1,26 @@
 # Changelog
 
+## expo-v0.3.2
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.1...expo-v0.3.2)
+
+### 🚀 Enhancements
+
+- **shared:** Media attachment kind, media-meta contract, share-link DTOs ([128ad93](https://github.com/Ripwords/ReproJs/commit/128ad93))
+- **sdk-utils:** Shared formatBytes and media selection limits ([6e5eb6e](https://github.com/Ripwords/ReproJs/commit/6e5eb6e))
+
+### 🩹 Fixes
+
+- Close media validation and widget re-entry gaps from final review ([1c1c1cf](https://github.com/Ripwords/ReproJs/commit/1c1c1cf))
+- **expo:** Serialize console args to strings so intake stops rejecting reports ([fc639e8](https://github.com/Ripwords/ReproJs/commit/fc639e8))
+- **intake:** Keep the report when the logs part is invalid ([1433286](https://github.com/Ripwords/ReproJs/commit/1433286))
+- **expo:** Retry queued reports on a backoff timer and surface failures ([a3e3ae1](https://github.com/Ripwords/ReproJs/commit/a3e3ae1))
+- **sdk-utils:** Make the JWT redactor linear on adversarial input ([3ac6637](https://github.com/Ripwords/ReproJs/commit/3ac6637))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## expo-v0.3.1
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.0...expo-v0.3.1)

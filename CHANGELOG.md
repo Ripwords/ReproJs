@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.6.6
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.5...v0.6.6)
+
+### 🚀 Enhancements
+
+- **shared:** Media attachment kind, media-meta contract, share-link DTOs ([128ad93](https://github.com/Ripwords/ReproJs/commit/128ad93))
+- **sdk-utils:** Shared formatBytes and media selection limits ([6e5eb6e](https://github.com/Ripwords/ReproJs/commit/6e5eb6e))
+- **core:** Screen recording session with auto-stop, cancel and snapshot ([da08221](https://github.com/Ripwords/ReproJs/commit/da08221))
+- **ui:** IndexedDB gallery store with quota eviction and thumbnail helper ([793ec71](https://github.com/Ripwords/ReproJs/commit/793ec71))
+- **ui:** Recording control bar, metadata trim screen and outcome bar ([906d77c](https://github.com/Ripwords/ReproJs/commit/906d77c))
+- **ui:** Launcher menu, capture flow with outcome bar, gallery view ([917e7b0](https://github.com/Ripwords/ReproJs/commit/917e7b0))
+- **ui:** Two-step report wizard fed by the gallery media picker ([d3592c2](https://github.com/Ripwords/ReproJs/commit/d3592c2))
+- **dashboard:** Schema for media attachments, share settings and shared_media ([cd4eb23](https://github.com/Ripwords/ReproJs/commit/cd4eb23))
+- **intake:** Accept gallery media parts with trim metadata ([0e6d10e](https://github.com/Ripwords/ReproJs/commit/0e6d10e))
+- **storage:** Range-aware getStream on local-disk and s3 adapters ([1d25f51](https://github.com/Ripwords/ReproJs/commit/1d25f51))
+- **dashboard:** Public share-link mint endpoint for gallery recordings ([5960f6e](https://github.com/Ripwords/ReproJs/commit/5960f6e))
+- **dashboard:** Public shared-media meta and range-streaming blob routes ([b70c7d3](https://github.com/Ripwords/ReproJs/commit/b70c7d3))
+- **dashboard:** Public /s/:token share page with trim-aware playback and OG tags ([b6fa2f5](https://github.com/Ripwords/ReproJs/commit/b6fa2f5))
+- **sdk:** 3-mode launcher menu, recording flow wiring, media intake parts and open-menu hotkey ([7011629](https://github.com/Ripwords/ReproJs/commit/7011629))
+- **sdk:** Mint share links from the gallery with graceful old-server fallback ([1ab1bcb](https://github.com/Ripwords/ReproJs/commit/1ab1bcb))
+- **dashboard:** Render report media attachments with trim-aware playback ([d9ae9d9](https://github.com/Ripwords/ReproJs/commit/d9ae9d9))
+- **dashboard:** Sharing settings tab with shared-link list and revoke ([e2e4ced](https://github.com/Ripwords/ReproJs/commit/e2e4ced))
+- **dashboard:** Nightly purge of expired and revoked shared media ([3d5ebbd](https://github.com/Ripwords/ReproJs/commit/3d5ebbd))
+
+### 🩹 Fixes
+
+- **changelog:** Restore history eroded by the path filter ([a0a5b91](https://github.com/Ripwords/ReproJs/commit/a0a5b91))
+- **core:** Fix first-termination-trigger race in screen recorder ([dbc6406](https://github.com/Ripwords/ReproJs/commit/dbc6406))
+- **intake:** Stop 413ing video attachments the widget itself accepts ([b7db239](https://github.com/Ripwords/ReproJs/commit/b7db239))
+- **ui:** Prune stale preselected media ids from the report wizard ([80879c0](https://github.com/Ripwords/ReproJs/commit/80879c0))
+- **intake:** Reject duplicate or non-contiguous media part indices ([298d009](https://github.com/Ripwords/ReproJs/commit/298d009))
+- **storage:** Resolve full object size when s3 backends omit ContentRange ([f671e01](https://github.com/Ripwords/ReproJs/commit/f671e01))
+- **dashboard:** Enforce endMs after startMs on share-mint trim ([80e39f2](https://github.com/Ripwords/ReproJs/commit/80e39f2))
+- **dashboard:** Cap shared-media cache at 5 minutes so revocation propagates ([ea036ae](https://github.com/Ripwords/ReproJs/commit/ea036ae))
+- **dashboard:** Make share-page trim clamping loop-proof against malformed trim rows ([e846a4a](https://github.com/Ripwords/ReproJs/commit/e846a4a))
+- **ui:** Release recording stream and listeners on widget unmount ([e14767c](https://github.com/Ripwords/ReproJs/commit/e14767c))
+- **ui:** Re-mint expired share links instead of copying dead URLs ([cc39d2d](https://github.com/Ripwords/ReproJs/commit/cc39d2d))
+- **sdk:** Report container mime from screen recordings ([48ed3e9](https://github.com/Ripwords/ReproJs/commit/48ed3e9))
+- **intake:** Cap request bodies before buffering ([0b22810](https://github.com/Ripwords/ReproJs/commit/0b22810))
+- Close media validation and widget re-entry gaps from final review ([1c1c1cf](https://github.com/Ripwords/ReproJs/commit/1c1c1cf))
+- **expo:** Serialize console args to strings so intake stops rejecting reports ([fc639e8](https://github.com/Ripwords/ReproJs/commit/fc639e8))
+- **intake:** Keep the report when the logs part is invalid ([1433286](https://github.com/Ripwords/ReproJs/commit/1433286))
+- **sdk-utils:** Make the JWT redactor linear on adversarial input ([3ac6637](https://github.com/Ripwords/ReproJs/commit/3ac6637))
+
+### ✅ Tests
+
+- **ui:** Cover trim-screen CSP fallback and objectURL revoke ([eba439b](https://github.com/Ripwords/ReproJs/commit/eba439b))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## v0.6.5
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.4...v0.6.5)
