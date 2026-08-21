@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AppState, View } from "react-native"
 import { ReproContext, type ReproInternalContext } from "./context"
 import { normalizeConfig, type ReproConfig, type ReproConfigInput } from "./config"
@@ -89,13 +89,34 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     createQueueStorage({ maxReports: config.queue.maxReports, maxBytes: config.queue.maxBytes }),
   )
   const clientRef = useRef(createIntakeClient({ intakeUrl: config.intakeUrl }))
+  // Bumped after every flush so `useRepro().queue` re-renders with the real
+  // pending count / last error instead of a frozen snapshot.
+  const [queueTick, setQueueTick] = useState(0)
   const flusherRef = useRef(
     createQueueFlusher({
       queue: queueRef.current,
       client: clientRef.current,
       backoffMs: config.queue.backoffMs,
+      maxAttempts: config.queue.maxAttempts,
+      onDrop: ({ id, status, message }) => {
+        // A discarded report is data loss. It must never be silent again —
+        // this is precisely how a 400 on the logs part swallowed every iOS
+        // report while the wizard kept reporting success.
+        console.error(
+          `[repro] report ${id} was rejected by the intake API (HTTP ${status}) and discarded: ${message}`,
+        )
+      },
     }),
   )
+
+  const runFlush = useCallback(() => {
+    flusherRef.current
+      .flush()
+      .catch((err: unknown) => {
+        console.warn("[repro] queue flush failed", err)
+      })
+      .finally(() => setQueueTick((n) => n + 1))
+  }, [])
 
   useEffect(() => {
     if (config.collectors.console) consoleRef.current.start()
@@ -110,18 +131,19 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
 
   useEffect(() => {
     const net = createConnectivityListener()
-    const unsubscribe = net.subscribe(() => {
-      flusherRef.current.flush().catch(() => undefined)
-    })
+    const unsubscribe = net.subscribe(runFlush)
     const appSub = AppState.addEventListener("change", (state) => {
-      if (state === "active") flusherRef.current.flush().catch(() => undefined)
+      if (state === "active") runFlush()
     })
-    flusherRef.current.flush().catch(() => undefined)
+    runFlush()
+    const flusher = flusherRef.current
     return () => {
       unsubscribe()
       appSub.remove()
+      // Cancel any scheduled retry so an unmounted provider can't keep firing.
+      flusher.stop()
     }
-  }, [])
+  }, [runFlush])
 
   async function openWizard(opts?: { initialTitle?: string; initialDescription?: string }) {
     setWizardInit(opts ?? {})
@@ -225,9 +247,10 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     })
     setWizardOpen(false)
     setScreenshot(null)
-    flusherRef.current.flush().catch(() => undefined)
+    runFlush()
   }
 
+  void queueTick
   const ctx: ReproInternalContext = {
     config,
     getReporter: () => reporter,
@@ -242,7 +265,10 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       return { ...shot, width: rootSize.w, height: rootSize.h }
     },
     snapshotBreadcrumbs: () => breadcrumbsRef.current.snapshot(),
-    queueStatus: () => ({ pending: 0, lastError: null }),
+    // Reads the flusher's real snapshot. This used to be a hardcoded
+    // `{ pending: 0, lastError: null }`, so `useRepro().queue` reported a
+    // healthy empty queue no matter what was actually happening.
+    queueStatus: () => flusherRef.current.status(),
     flushQueue: () => flusherRef.current.flush(),
   }
 
