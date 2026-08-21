@@ -229,11 +229,29 @@ export default defineEventHandler(async (event) => {
 
   const logsPart = parts.find((p) => p.name === "logs")
   let parsedLogs: ReturnType<typeof LogsAttachment.parse> | null = null
+  // A malformed logs part must NOT discard the report. Logs are auto-collected
+  // decoration; the report is the reporter's actual work. Rejecting the whole
+  // submission over a bad sidecar is how an SDK serializer bug (a non-string
+  // console arg landing as `null`) silently swallowed every Expo/iOS report in
+  // production — the SDK saw a non-retryable 400 and deleted the queued
+  // report, while this branch logged nothing. Drop the logs, keep the report,
+  // and signal it back via `logsStored` (same success-with-signal shape as
+  // `replayStored`/`replayDisabled`).
+  let logsRejected = false
   if (logsPart?.data && logsPart.data.length > 0) {
     try {
       parsedLogs = LogsAttachment.parse(JSON.parse(logsPart.data.toString("utf8")))
-    } catch {
-      throw createError({ statusCode: 400, statusMessage: "Invalid logs payload" })
+    } catch (err) {
+      logsRejected = true
+      parsedLogs = null
+      const issues =
+        err && typeof err === "object" && "issues" in err
+          ? (err as { issues: unknown }).issues
+          : String(err)
+      console.warn(
+        `[intake] dropping invalid logs part for project ${project.id} (source=${parsed.context.source})`,
+        JSON.stringify(issues, null, 2),
+      )
     }
   }
 
@@ -711,5 +729,6 @@ export default defineEventHandler(async (event) => {
     id: report.id,
     scanEnabled: env.INTAKE_USER_FILE_SCAN_ENABLED,
     ...(replayPart ? { replayStored, replayDisabled } : {}),
+    ...(logsPart ? { logsStored: !logsRejected && logsData !== null } : {}),
   }
 })

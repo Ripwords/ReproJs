@@ -300,5 +300,9 @@ export const IntakeResponse = z.object({
   /** True when the server silently dropped the replay part (per-project or per-deployment disable). */
   replayStored: z.boolean().optional(),
   replayDisabled: z.boolean().optional(),
+  /** False when a `logs` part was sent but rejected (unparseable or
+   *  schema-invalid). The report itself is still stored — see the logs
+   *  handling in server/api/intake/reports.ts. */
+  logsStored: z.boolean().optional(),
 })
 export type IntakeResponse = z.infer<typeof IntakeResponse>
