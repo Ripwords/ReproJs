@@ -104,7 +104,7 @@
     },
     "packages/expo": {
       "name": "@reprojs/expo",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "dependencies": {
         "@expo/config-plugins": "^8.0.0",
       },
