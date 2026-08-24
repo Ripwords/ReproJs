@@ -41,6 +41,9 @@ const DISABLED_CONTEXT: ReproInternalContext = {
   flushQueue: async () => undefined,
 }
 
+/** Must stay >= the dashboard's INTAKE_MIN_DWELL_MS default (1500). */
+const MIN_DWELL_MS = 1500
+
 function DisabledProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSingletonHandle(DISABLED_CONTEXT)
@@ -195,10 +198,14 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       ? await collectSystemInfo({ pageUrl: "app://current" })
       : undefined
     const now = new Date().toISOString()
-    // Anti-abuse gate on intake requires a dwell > INTAKE_MIN_DWELL_MS (1000 by default).
-    // Measure from wizard open → submit. Clamp so clock skew / null resets don't send 0.
+    // Anti-abuse gate on intake rejects _dwellMs < INTAKE_MIN_DWELL_MS, whose
+    // server default is 1500 (apps/dashboard/server/lib/env.ts). The floor here
+    // must clear that default: it previously clamped to 1000, so the very
+    // fallback meant to survive clock skew / a null reset produced a value the
+    // server could never accept.
     const dwellStart = wizardOpenedAtRef.current
-    const dwellMs = dwellStart !== null ? Math.max(1000, Date.now() - dwellStart) : 1000
+    const dwellMs =
+      dwellStart !== null ? Math.max(MIN_DWELL_MS, Date.now() - dwellStart) : MIN_DWELL_MS
     const input: ReportIntakeInput = {
       projectKey: config.projectKey,
       title: res.title,
