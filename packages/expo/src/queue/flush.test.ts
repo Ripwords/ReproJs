@@ -233,3 +233,56 @@ test("stop() cancels a pending retry timer", async () => {
   await new Promise((r) => setTimeout(r, 60))
   expect(calls).toBe(1)
 })
+
+test("a fatal client error is dropped immediately, not retried", async () => {
+  memory.clear()
+  const q = createQueueStorage({ maxReports: 10, maxBytes: 1024 })
+  await q.enqueue(fakeItem("fatal"))
+  const dropped: Array<{ status: number }> = []
+  const client: IntakeClient = {
+    submit: async () => {
+      throw Object.assign(new Error("intakeUrl did not return JSON"), {
+        status: 0,
+        retryable: false,
+        fatal: true,
+      })
+    },
+  }
+  const flusher = createQueueFlusher({
+    queue: q,
+    client,
+    backoffMs: [1, 2],
+    maxAttempts: 10,
+    onDrop: (info) => dropped.push({ status: info.status }),
+  })
+  await flusher.flush()
+  expect(dropped).toHaveLength(1)
+  expect(await q.all()).toEqual([])
+  flusher.stop()
+})
+
+// Guards the offline queue: a network failure while offline throws with no
+// status and no `fatal` flag. It must be retried, never discarded — otherwise
+// the fatal-error fix would silently break offline reporting.
+test("a plain network failure (offline) stays retryable", async () => {
+  memory.clear()
+  const q = createQueueStorage({ maxReports: 10, maxBytes: 1024 })
+  await q.enqueue(fakeItem("offline"))
+  const dropped: unknown[] = []
+  const client: IntakeClient = {
+    submit: async () => {
+      throw new TypeError("Network request failed")
+    },
+  }
+  const flusher = createQueueFlusher({
+    queue: q,
+    client,
+    backoffMs: [1, 2],
+    maxAttempts: 10,
+    onDrop: (info) => dropped.push(info),
+  })
+  await flusher.flush()
+  expect(dropped).toHaveLength(0)
+  expect(await q.all()).toHaveLength(1)
+  flusher.stop()
+})
