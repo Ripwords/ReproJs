@@ -7,8 +7,71 @@
 ### 🩹 Fixes
 
 - **expo:** Send attachments in the shape the active fetch supports ([c4fb89a](https://github.com/Ripwords/ReproJs/commit/c4fb89a))
+
+  **Symptom.** Every report carrying a screenshot was silently lost on Expo SDK >= 56.
+  The launcher appeared, the wizard reported success, and nothing arrived — with no
+  server-side trace, because the request never reached the server. iOS and Android
+  alike. Reports with *no* attachment were unaffected, which made it read as an
+  intermittent backend fault.
+
+  **Cause.** From SDK 56 Expo installs its WinterCG `fetch` as the global `fetch`
+  (`install('fetch', ...)` in `expo/src/winter/runtime.native.ts`; opt out with
+  `EXPO_PUBLIC_USE_RN_FETCH=1`). Its `convertFormDataAsync` accepts only a string, a
+  real `Blob`, or an object exposing `bytes()` — its own doc comment states *"`uri` is
+  not supported for React Native's FormData"* — so this SDK's `{ uri, name, type }`
+  shorthand threw `Unsupported FormDataPart implementation`. Being a throw rather than
+  a response it carried no HTTP status, so the queue flusher read `status: 0`, judged
+  it transient, retried 10x and discarded the report.
+
+  **Why not simply switch to Blob.** The two runtimes need opposite shapes and fail in
+  opposite ways:
+
+  | Runtime                   | Correct part          | Wrong part fails as                          |
+  | ------------------------- | --------------------- | -------------------------------------------- |
+  | Expo WinterCG (SDK >= 56) | real `Blob`           | loud throw                                    |
+  | React Native (SDK <= 55)  | `{ uri, name, type }` | **silent** — `{...value}` in `getParts()` loses the bytes; the attachment vanishes and intake still answers 201 |
+
+  A Blob-everywhere fix would trade a loud bug on SDK >= 56 for a silent one on <= 55.
+  The runtime is therefore detected via `Symbol.for('expo.builtin')`, which Expo stamps
+  on every global it installs, and the body built accordingly — with a one-shot retry
+  using Blob parts if the loud direction is ever mis-detected.
+
+  A `Blob` is used rather than a `File` deliberately: Expo's `installFormDataPatch`
+  assigns `value.name` when `Object.getOwnPropertyDescriptor(value, 'name')` is
+  undefined, and `File.name` is a prototype getter, so that assignment throws
+  `Cannot assign to property 'name' which has only a getter`.
+
+  Verified on an iOS simulator against a live dashboard under **both** runtimes: an
+  identical 204,454-byte screenshot captured, uploaded and persisted each time.
+
+  **Workaround** without upgrading: set `EXPO_PUBLIC_USE_RN_FETCH=1` and rebuild.
+
+- **expo:** Fail fast on a misconfigured `intakeUrl` instead of 10 silent retries ([c4fb89a](https://github.com/Ripwords/ReproJs/commit/c4fb89a))
+
+  An `intakeUrl` missing the `/api/intake` path hits the dashboard's auth redirect.
+  `fetch` follows 3xx by default, so the SDK received a `200` HTML login page, passed
+  the `status >= 400` check, and only failed inside `res.json()` with a `SyntaxError`
+  carrying no status — again 10 retries, then silent loss. Redirects and non-JSON
+  responses are now rejected as fatal with a message naming the likely cause, as is an
+  unreadable attachment.
+
+  Fatal is an explicit flag rather than treating `status === 0` as fatal, so a genuine
+  network failure while offline stays retryable and the offline queue keeps working.
+
 - **expo:** Raise the submit dwell floor to match the server default ([b02088f](https://github.com/Ripwords/ReproJs/commit/b02088f))
+
+  The fallback clamped `_dwellMs` to 1000 when the wizard-open timestamp was missing,
+  but intake rejects anything below `INTAKE_MIN_DWELL_MS`, whose default is **1500** —
+  so the guard meant to survive clock skew produced a value the server could never
+  accept. The in-code comment claiming "1000 by default" was wrong.
+
 - **expo:** Warn in dev when the SDK silently disables itself ([f84c9df](https://github.com/Ripwords/ReproJs/commit/f84c9df))
+
+  Empty `projectKey`/`intakeUrl` disables the SDK by design, but it previously emitted
+  nothing at all: no launcher and no diagnostic, indistinguishable from a broken SDK.
+  Since `EXPO_PUBLIC_*` values are inlined at build time, the usual cause is a variable
+  missing from the EAS environment that the build profile declares. Warned in `__DEV__`
+  only, so production opt-outs stay quiet.
 
 ### 📖 Documentation
 
@@ -17,79 +80,6 @@
 ### ❤️ Contributors
 
 - JJ <teohjjteoh@gmail.com>
-
-## Unreleased
-
-### 🩹 Fixes
-
-- **expo:** send attachments as Blob parts — every report with a screenshot was silently lost on Expo SDK >= 56
-
-  **Symptom.** The launcher appears, the wizard reports success, and the report never
-  arrives. Nothing is logged server-side, because the request never reaches the server.
-  Affects iOS and Android identically. Reports containing *no* attachment were unaffected,
-  which made it look like an intermittent backend problem.
-
-  **Cause.** From Expo SDK 56, Expo installs its WinterCG `fetch` as the global `fetch`
-  (`install('fetch', ...)` in `expo/src/winter/runtime.native.ts`; opt out with
-  `EXPO_PUBLIC_USE_RN_FETCH=1`). Its `convertFormDataAsync` accepts only a string, a real
-  `Blob`, or an object exposing `bytes()` — its own doc comment states *"`uri` is not
-  supported for React Native's FormData"*. This SDK appended attachments using React
-  Native's proprietary `{ uri, name, type }` shorthand, so it threw
-  `Unsupported FormDataPart implementation`.
-
-  Because that is a thrown error rather than an HTTP response, it carried no status. The
-  queue flusher read `status: 0`, classified it as transient, retried the maximum 10 times
-  and then discarded the report — while the wizard had already reported success.
-
-  | Expo SDK | Global `fetch`     | Attachments |
-  | -------- | ------------------ | ----------- |
-  | <= 55    | React Native (XHR) | worked      |
-  | >= 56    | Expo WinterCG      | silent loss |
-
-  **Fix.** Attachments are read into a real `Blob` via `XMLHttpRequest` (always React
-  Native's own, and unlike either `fetch` it reads `file://`), then appended as
-  `form.append(field, blob, filename)`.
-
-  Deliberately a `Blob` and not a `File`: Expo's `installFormDataPatch` runs
-  `value.name = blobFilename` when `Object.getOwnPropertyDescriptor(value, 'name')` is
-  undefined. `File.name` is a prototype getter, so that assignment throws
-  `Cannot assign to property 'name' which has only a getter`. A `Blob` has no `name`, so
-  the patch adds one — which is exactly what `convertFormDataAsync` reads back. This shape
-  works under both fetch implementations.
-
-  Verified end to end on an iOS simulator under Expo's WinterCG fetch: a 202,630-byte
-  screenshot was captured, uploaded and persisted at exactly that size.
-
-  **Workaround** without upgrading: set `EXPO_PUBLIC_USE_RN_FETCH=1` and rebuild.
-
-- **expo:** fail fast on a misconfigured `intakeUrl` instead of burning 10 silent retries
-
-  An `intakeUrl` missing the `/api/intake` path hits the dashboard's auth redirect. `fetch`
-  follows 3xx by default, so the SDK received a `200` HTML login page, passed the
-  `status >= 400` check, and only failed later inside `res.json()` with a `SyntaxError`
-  carrying no status — again 10 retries, then silent loss. Redirects and non-JSON responses
-  are now rejected as fatal, with a message naming the likely cause. An unreadable
-  attachment is fatal for the same reason.
-
-  Fatal errors are tracked with an explicit flag rather than by treating `status === 0` as
-  fatal, so a genuine network failure while offline stays retryable and the offline queue
-  keeps working.
-
-- **expo:** raise the submit dwell floor to 1500 ms to match the server default
-
-  The fallback clamped `_dwellMs` to 1000 when the wizard-open timestamp was missing, but
-  intake rejects anything below `INTAKE_MIN_DWELL_MS`, whose default is **1500** — so the
-  guard meant to survive clock skew produced a value the server could never accept. The
-  in-code comment claiming "1000 by default" was wrong.
-
-- **expo:** warn in dev when the SDK silently disables itself
-
-  Empty `projectKey`/`intakeUrl` disables the SDK by design, but it previously emitted
-  nothing at all: no launcher and no diagnostic, indistinguishable from a broken SDK. Since
-  `EXPO_PUBLIC_*` values are inlined at build time, the usual cause is a variable missing
-  from the EAS environment that the build profile declares. Now warned in `__DEV__` only,
-  so production opt-outs stay quiet.
-
 
 ## expo-v0.3.2
 
