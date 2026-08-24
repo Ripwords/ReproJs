@@ -47,6 +47,18 @@ const MIN_DWELL_MS = 1500
 function DisabledProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSingletonHandle(DISABLED_CONTEXT)
+    // Silent-disable is intentional (it is how hosts switch Repro off per
+    // environment), but it must not be *invisible*: with no launcher rendered
+    // and no diagnostic, a build whose EXPO_PUBLIC_* vars failed to reach it is
+    // indistinguishable from a broken SDK. Warn in dev only, so production
+    // opt-outs stay quiet.
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn(
+        "[repro] disabled: projectKey or intakeUrl resolved empty. EXPO_PUBLIC_* values are " +
+          "inlined at build time — check the variable exists in the EAS environment your build " +
+          "profile declares, then rebuild (an OTA update cannot change a baked-in value).",
+      )
+    }
     return () => clearSingletonHandle()
   }, [])
   return <ReproContext.Provider value={DISABLED_CONTEXT}>{children}</ReproContext.Provider>
