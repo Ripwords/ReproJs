@@ -6,6 +6,32 @@
 
 **Not session replay.** The mobile SDK does not record DOM — it captures a single screenshot + logs. That keeps the bundle small and the privacy story simple. The web SDK ([`@reprojs/core`](./sdk)) is where replay lives.
 
+## Before you install: dashboard setup
+
+The SDK needs two values from your running dashboard. Both come from the project you want reports to land in.
+
+1. **Create a project** — dashboard → **Projects** → **New project**.
+2. **Generate the embed key** — open the project → **Settings** → **Security** tab → **Public SDK key**.
+
+   A brand-new project has **no key yet** — the field reads `(not generated)`. Click **Rotate key** once to mint the first `rp_pk_…` value, then copy it. Only a project **owner** (or an install admin) can do this.
+3. **Leave the origin allowlist empty.** Mobile apps send no `Origin` header, so there is nothing to allowlist. The intake endpoint accepts a report with no origin when its context says `source: "expo"`, which the SDK always sets. Adding web origins later for a browser SDK does not break your Expo app.
+
+The second value is your **intake URL** — your dashboard's origin plus `/api/intake` (the SDK appends `/reports` itself).
+
+## Reaching the dashboard from a device
+
+`localhost` means *the device*, not your laptop, so which host you use depends on where the app runs:
+
+| Running on | `intakeUrl` host |
+| --- | --- |
+| iOS Simulator | `http://localhost:3000` — the simulator shares your Mac's network stack |
+| Android Emulator | `http://10.0.2.2:3000` — the emulator's alias for the host machine |
+| Physical device (iOS or Android) | `http://<your-LAN-IP>:3000`, e.g. `http://10.0.0.42:3000`. Phone and laptop must be on the same network |
+
+Plain `http://` works in **debug/dev builds** on both platforms: Expo's generated iOS `Info.plist` sets `NSAllowsLocalNetworking`, and the generated Android **debug** manifest sets `android:usesCleartextTraffic="true"`.
+
+That flag is **debug-only**. A release build has no cleartext exemption, so a production `intakeUrl` must be `https://`. `normalizeConfig` rejects anything that isn't `http(s)://` outright.
+
 ## Install
 
 ```bash
@@ -92,9 +118,35 @@ EXPO_PUBLIC_REPRO_INTAKE_URL=http://10.0.0.42:3000/api/intake
 
 A typo'd non-empty key (say `rp_pk_shortkey`) still throws a `Repro: invalid projectKey shape` at provider mount, so you don't accidentally ship a silently-disabled build.
 
+### EAS: scope the vars to every environment you build
+
+`EXPO_PUBLIC_*` values are **inlined at build time**, and EAS environment variables are scoped **per environment** (`development` / `preview` / `production`). A variable that exists only in `development` and `preview` is simply *absent* from a build whose profile declares `"environment": "production"` — so the SDK sees an empty string and silently disables itself.
+
+The failure mode is nasty precisely because nothing looks broken: the app builds, ships, and runs, but the launcher never renders and no report is ever sent.
+
+Check what each environment actually has:
+
+```bash
+eas env:list --environment production
+```
+
+and add the pair anywhere it's missing:
+
+```bash
+eas env:create --environment production --name EXPO_PUBLIC_REPRO_INTAKE_URL --value "https://your-dashboard.com/api/intake"
+eas env:create --environment production --name EXPO_PUBLIC_REPRO_PROJECT_KEY --value "rp_pk_..." --sensitive
+```
+
+Map every build profile in `eas.json` to the environment it declares — including profiles that inherit one via `extends` — and confirm the pair exists in each. Because the values are baked into the binary, an OTA update **cannot** repair an already-built app; you need a new build.
+
+Marking the key `sensitive` hides it from EAS build logs, but `EXPO_PUBLIC_*` is compiled into the JS bundle regardless — it ships inside the app. That's fine for this key (intake validates it server-side and rate-limits per project), just don't treat it as a secret.
+
 ## First report
 
 1. `npx expo run:ios` (or `run:android`) — Expo Go is not supported because `react-native-view-shot` needs a dev build.
+
+   This is a **native** build, so the platform toolchain has to be complete: iOS needs Xcode plus its **iOS platform component** (Xcode → Settings → Components) and a matching simulator runtime; Android needs an **AVD** created in Android Studio's Device Manager (a bare `cmdline-tools` SDK ships with no system image). See [Troubleshooting](#troubleshooting) if `run:ios` / `run:android` can't find a device.
+
 2. Tap the flame-orange bug button.
 3. Fill out title + description → **Continue**.
 4. Annotate the captured screenshot with the pen/arrow/rect/highlight/text tools → **Continue**.
@@ -137,6 +189,12 @@ The queue is not encrypted — documented privacy tradeoff for v1. Don't use as 
 - **`Submission too fast` (400)** — the server's dwell gate (default 1000 ms) didn't pass. The SDK clamps to ≥1000 ms so this is only seen if you're running an older SDK build.
 - **Wizard opens but screenshot area is blank** — `react-native-view-shot` returned without an error but produced a black frame. Usually resolved by dismissing the keyboard before opening the wizard.
 - **Annotations don't appear in the submitted PNG** — older SDK bug; update to ≥0.1.0.
+- **`xcodebuild: error: Unable to find a destination matching the provided destination specifier` / `iOS <version> is not installed`** — Xcode is installed but its iOS platform component isn't, so *no* iOS destination is eligible (not even a booted simulator). Install it via Xcode → Settings → Components, or run `xcodebuild -downloadPlatform iOS`. Confirm with `xcodebuild -workspace ios/<app>.xcworkspace -scheme <app> -showdestinations` — if every entry is listed as "Ineligible", the platform is the missing piece, not your config.
+- **`run:android` fails with no emulator** — `emulator -list-avds` printing nothing means no AVD exists. Create one in Android Studio → Device Manager (this downloads a system image), or plug in a physical device with USB debugging on.
+- **Report never arrives and the app logs a network error** — you're almost certainly pointing at the wrong host. Re-check [Reaching the dashboard from a device](#reaching-the-dashboard-from-a-device): an Android emulator cannot resolve `localhost` to your laptop, it needs `10.0.2.2`.
+- **Reports silently never arrive on Expo SDK 56+ (`Unsupported FormDataPart implementation`)** — fixed in the SDK release following 0.3.2. From SDK 56 Expo replaces the global `fetch` with its WinterCG implementation, which rejects React Native's `{ uri, name, type }` file shorthand. Because the failure is a thrown error with no HTTP status, the queue retried 10× and discarded the report while the wizard reported success. Upgrade the SDK, or as a stopgap set `EXPO_PUBLIC_USE_RN_FETCH=1` and rebuild. Reports without attachments were unaffected, which makes this look like a flaky backend.
+- **The launcher never appears in a released build (but works in internal/TestFlight builds)** — the SDK silently disabled itself because `projectKey` or `intakeUrl` came through empty. On EAS this almost always means the variables are scoped to `development`/`preview` but not to the environment your release profile declares. Run `eas env:list --environment production` and see [EAS: scope the vars to every environment you build](#eas-scope-the-vars-to-every-environment-you-build). Rebuild afterwards — an OTA update can't fix a baked-in value.
+- **`(not generated)` where the project key should be** — the project has never had a key minted. Open the project's Settings → Security and click **Rotate key** once.
 
 ## Next
 
