@@ -1,5 +1,23 @@
 # Changelog
 
+## expo-v0.3.3
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.2...expo-v0.3.3)
+
+### 🩹 Fixes
+
+- **expo:** Send attachments in the shape the active fetch supports ([c4fb89a](https://github.com/Ripwords/ReproJs/commit/c4fb89a))
+- **expo:** Raise the submit dwell floor to match the server default ([b02088f](https://github.com/Ripwords/ReproJs/commit/b02088f))
+- **expo:** Warn in dev when the SDK silently disables itself ([f84c9df](https://github.com/Ripwords/ReproJs/commit/f84c9df))
+
+### 📖 Documentation
+
+- **expo:** Document the SDK 56 attachment outage and EAS env scoping ([f439ba0](https://github.com/Ripwords/ReproJs/commit/f439ba0))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## Unreleased
 
 ### 🩹 Fixes

@@ -1,6 +1,6 @@
 {
   "name": "@reprojs/expo",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Expo SDK for Repro — submit annotated screenshots, logs, and device context to the Repro dashboard.",
   "keywords": [
     "bug-report",
