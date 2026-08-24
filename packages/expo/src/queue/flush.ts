@@ -96,9 +96,16 @@ export function createQueueFlusher(opts: {
           await opts.queue.remove(item.id)
         } catch (err) {
           const status = (err as { status?: number }).status ?? 0
-          const retryable = (err as { retryable?: boolean }).retryable ?? status >= 500
+          // `fatal` marks a client-side defect no retry can fix (misconfigured
+          // intakeUrl, unreadable attachment). It is deliberately separate from
+          // "status 0", because a plain network failure while offline also has
+          // no status and MUST stay retryable — that is what the queue is for.
+          const fatal = (err as { fatal?: boolean }).fatal === true
+          const retryable = fatal
+            ? false
+            : ((err as { retryable?: boolean }).retryable ?? status >= 500)
           const message = (err as Error).message
-          const nonRetryableClientError = !retryable && status >= 400 && status !== 429
+          const nonRetryableClientError = fatal || (!retryable && status >= 400 && status !== 429)
           const attempts = item.attempts + 1
           const exhausted = attempts >= maxAttempts
 
