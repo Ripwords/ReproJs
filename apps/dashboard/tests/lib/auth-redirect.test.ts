@@ -96,6 +96,26 @@ describe("authErrorMessage", () => {
       "Sign-in was rejected (some_new_better_auth_code).",
     )
   })
+
+  test("explains the OAuth callback codes better-auth actually emits", () => {
+    // Source of truth: better-auth/dist/api/routes/callback.mjs — every
+    // redirectOnError() call site, which lands on the errorCallbackURL we pin.
+    for (const code of [
+      "no_code",
+      "oauth_provider_not_found",
+      "invalid_code",
+      "unable_to_get_user_info",
+      "no_callback_url",
+      "unable_to_link_account",
+      "account_already_linked_to_different_user",
+      "email_not_found",
+      "email_doesn't_match",
+    ]) {
+      const message = authErrorMessage(code)
+      expect(message).toBeTruthy()
+      expect(message).not.toContain(code)
+    }
+  })
 })
 
 describe("pinMagicLinkRedirects", () => {

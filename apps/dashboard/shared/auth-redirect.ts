@@ -112,6 +112,10 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
   account_not_linked:
     "An account already exists with that email. Sign in the way you did the first time, then link this provider from Settings.",
   unable_to_link_account: "We couldn't link that provider to your account.",
+  account_already_linked_to_different_user:
+    "That provider account is already linked to a different user on this workspace.",
+  "email_doesn't_match": "The provider's email doesn't match the account you're linking it to.",
+  no_callback_url: "The sign-in didn't carry a destination. Start again below.",
   unable_to_create_user:
     "We couldn't create your account. Ask a workspace admin to check the server logs.",
   unable_to_create_session: "We couldn't start your session. Try signing in again.",
