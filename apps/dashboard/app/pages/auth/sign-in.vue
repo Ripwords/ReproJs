@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AuthProviderStatus } from "~~/server/lib/auth-providers"
+import { authErrorMessage, safeNextPath, SIGN_IN_PATH } from "~~/shared/auth-redirect"
 
 definePageMeta({ layout: "auth" })
 useHead({ title: "Sign in" })
@@ -28,18 +29,18 @@ const email = ref("")
 const magicLinkSent = ref(false)
 const sendingLink = ref(false)
 
-// Surface gate rejections from the server-side auth pipeline. The magic-link
-// verify + OAuth callback redirect here with `?error=<reason>` when the
-// workspace domain allowlist or invite gate blocks a sign-in.
-const gateErrorMessages: Record<string, string> = {
-  domain_not_allowed: "Your email domain isn't allowed on this workspace.",
-  not_invited: "Sign-up is invite-only. Ask an admin to invite you first.",
-}
-const gateError = computed(() => {
-  const code = route.query.error
-  if (typeof code !== "string") return null
-  return gateErrorMessages[code] ?? "Sign-in was rejected."
-})
+// Surface every rejection the server-side auth pipeline can bounce back
+// with: our own workspace gates (domain allowlist / invite-only), better-
+// auth's magic-link verify failures, and its OAuth callback failures. All of
+// them arrive here as `?error=<code>` — see shared/auth-redirect.ts for the
+// full code list and where each one is thrown.
+const gateError = computed(() => authErrorMessage(route.query.error))
+
+// Where to land after a successful sign-in. `next` is attacker-influenced
+// (it rides in the URL), and better-auth reuses it as the magic-link error
+// target too, so it is validated down to a renderable same-origin page path
+// before it goes anywhere near `callbackURL`.
+const nextPath = computed(() => safeNextPath(route.query.next))
 
 async function sendMagicLink() {
   if (!email.value) return
@@ -47,10 +48,19 @@ async function sendMagicLink() {
   try {
     // callbackURL is where the browser lands AFTER the token is verified and
     // the session cookie is set. `next` preserves the pre-redirect target.
-    const callbackURL = (route.query.next as string) || "/"
+    //
+    // errorCallbackURL must be set explicitly: better-auth's magic-link
+    // verify falls back to `callbackURL` for its failure redirects
+    // (INVALID_TOKEN / EXPIRED_TOKEN / ATTEMPTS_EXCEEDED), which sends the
+    // user to a post-login page they aren't logged in to — the auth guard
+    // then bounces them to /auth/sign-in and drops the `?error=`, so the
+    // sign-in page reappears with no explanation. Pointing failures straight
+    // at the sign-in page keeps the reason visible. server/lib/auth.ts
+    // enforces the same two values server-side.
     const { error: err } = await signIn.magicLink({
       email: email.value,
-      callbackURL,
+      callbackURL: nextPath.value,
+      errorCallbackURL: SIGN_IN_PATH,
     })
     if (err) {
       toast.add({
@@ -69,7 +79,14 @@ async function sendMagicLink() {
 
 async function oauth(provider: "github" | "google") {
   try {
-    await signIn.social({ provider, callbackURL: (route.query.next as string) || "/" })
+    // Without errorCallbackURL a failed OAuth callback renders better-auth's
+    // bare built-in error page at /api/auth/error; send it back to the
+    // sign-in page so the reason lands next to the retry button.
+    await signIn.social({
+      provider,
+      callbackURL: nextPath.value,
+      errorCallbackURL: SIGN_IN_PATH,
+    })
   } catch (err) {
     toast.add({
       title: `${provider === "github" ? "GitHub" : "Google"} sign-in failed`,

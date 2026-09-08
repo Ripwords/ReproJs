@@ -1,4 +1,11 @@
-import { createError, defineEventHandler, getHeader, getRequestIP, readMultipartFormData } from "h3"
+import {
+  createError,
+  defineEventHandler,
+  getHeader,
+  getRequestIP,
+  readMultipartFormData,
+  setResponseHeader,
+} from "h3"
 import { and, count, eq, gte, sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { LogsAttachment, MediaMetaEntry, ReportIntakeInput } from "@reprojs/shared"
@@ -65,7 +72,16 @@ export default defineEventHandler(async (event) => {
   }
 
   if (event.method !== "POST") {
-    throw createError({ statusCode: 405, statusMessage: "Method not allowed" })
+    // RFC 9110 §15.5.6: a 405 MUST carry Allow. Browsers land here whenever
+    // something navigates to the intake URL (an auth redirect that used it as
+    // a callback target, a pasted link, a link checker), and the bare status
+    // line gives no clue what the endpoint is for.
+    setResponseHeader(event, "allow", "POST, OPTIONS")
+    throw createError({
+      statusCode: 405,
+      statusMessage: "Method not allowed",
+      message: "This endpoint only accepts POST from the Repro SDK.",
+    })
   }
 
   const rawOrigin = getHeader(event, "origin") ?? ""

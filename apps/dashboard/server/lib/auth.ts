@@ -6,6 +6,7 @@ import { magicLink } from "better-auth/plugins/magic-link"
 import { jwt } from "better-auth/plugins/jwt"
 import { oauthProvider } from "@better-auth/oauth-provider"
 import { db } from "../db"
+import { pinMagicLinkRedirects } from "../../shared/auth-redirect"
 import { appSettings, session, user } from "../db/schema"
 import { env, getAuthRateLimitEnabled } from "./env"
 import { renderTemplate } from "./render-template"
@@ -154,6 +155,18 @@ export const auth = betterAuth({
   plugins: [
     magicLink({
       // Tokens expire after 5 minutes by default; tight window is the point.
+      //
+      // allowedAttempts is better-auth's default (1), spelled out because its
+      // failure mode is easy to misread: the verify endpoint increments the
+      // counter on EVERY GET of the link — including the successful one — so
+      // the link is strictly single-use. A mail gateway that prefetches links
+      // (Outlook Safe Links, Proofpoint, most AV scanners) therefore burns
+      // the attempt before the human clicks, and the human sees
+      // ATTEMPTS_EXCEEDED on what looks like their first click. Raising this
+      // trades that away for a link that stays replayable from the inbox for
+      // its full 5-minute window; keep it at 1 unless a deployment's mail
+      // path makes prefetching unavoidable.
+      allowedAttempts: 1,
       sendMagicLink: async ({ email, url }) => {
         const html = await renderTemplate("magic-link", { url })
         await sendMail({
@@ -239,6 +252,25 @@ export const auth = betterAuth({
     },
   },
   hooks: {
+    // Pin the two redirect targets baked into every magic link at mint time.
+    //
+    // better-auth falls back to `callbackURL` for its FAILURE redirects when
+    // no `errorCallbackURL` is supplied, so whatever the client passed as the
+    // post-login destination also becomes where INVALID_TOKEN /
+    // EXPIRED_TOKEN / ATTEMPTS_EXCEEDED land. That produced two live bugs:
+    // an error landing on a signed-out page bounced through the auth guard
+    // and lost its `?error=` (silent return to the login form), and a
+    // `?next=/api/intake/reports` sign-in sent the failure to a POST-only
+    // route, rendering a bare "405 Method not allowed".
+    //
+    // The sign-in page sets both values correctly now; this hook makes it
+    // unconditional, so a cached client bundle or a hand-rolled POST to
+    // /sign-in/magic-link can't reintroduce either failure.
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/sign-in/magic-link") return
+      const body = (ctx.body ?? {}) as Record<string, unknown>
+      return { context: { body: pinMagicLinkRedirects(body) } }
+    }),
     after: createAuthMiddleware(async (ctx) => {
       // SEC1: guard OAuth callbacks AND magic-link verification against the
       // same workspace gates. The user's email isn't known until after the
