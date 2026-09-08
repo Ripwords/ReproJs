@@ -58,6 +58,26 @@ describe("auth error redirects", () => {
     }
   })
 
+  test("the workspace gate codes still render their own copy", async () => {
+    // Regression guard: these two used to live in a local map inside
+    // sign-in.vue that was replaced wholesale by AUTH_ERROR_MESSAGES.
+    const domain = await (await fetch(`${BASE_URL}/auth/sign-in?error=domain_not_allowed`)).text()
+    expect(domain).toContain("domain")
+    const invited = await (await fetch(`${BASE_URL}/auth/sign-in?error=not_invited`)).text()
+    expect(invited).toContain("invite-only")
+  })
+
+  test("a legitimate destination survives the guard with its own query intact", async () => {
+    // `next` is re-encoded on the way out, so the sign-in page must be able
+    // to decode it back to exactly what the user asked for — otherwise the
+    // error-stripping rewrite would quietly corrupt post-login redirects.
+    const res = await fetch(`${BASE_URL}/projects/abc?status=open&tag=ui`, { redirect: "manual" })
+    expect([302, 303]).toContain(res.status)
+
+    const location = new URL(res.headers.get("location") ?? "", BASE_URL)
+    expect(location.searchParams.get("next")).toBe("/projects/abc?status=open&tag=ui")
+  })
+
   test("an unrecognised error code still surfaces rather than rendering silence", async () => {
     const res = await fetch(`${BASE_URL}/auth/sign-in?error=some_future_code`)
     expect(res.status).toBe(200)
