@@ -124,15 +124,31 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
 }
 
 /**
+ * The shape every code above shares, and every code better-auth builds at
+ * runtime (`result.error.split(" ").join("_")` in api/routes/callback.mjs).
+ *
+ * `?error=` is attacker-influenced: anyone can hand a victim a link to
+ * `/auth/sign-in?error=<anything>`. The sign-in page renders that text, and
+ * while Vue escapes it (so this is not XSS), an unclamped echo would let a
+ * crafted link print an attacker's sentence next to the real login form —
+ * "your account is locked, call this number". Codes get echoed; prose does
+ * not.
+ */
+const ERROR_CODE_RE = /^[\w.-]{1,64}$/
+
+/**
  * Human-readable copy for a `?error=` code, or `null` when there is no error.
  *
  * Unknown codes still produce a message — an unexplained bounce back to the
  * login screen is the failure mode this whole change is about, so an
- * unrecognised code is surfaced verbatim rather than swallowed.
+ * unrecognised code is surfaced verbatim rather than swallowed. Anything that
+ * isn't shaped like a code falls back to the generic copy.
  */
 export function authErrorMessage(code: unknown): string | null {
   if (typeof code !== "string" || code.length === 0) return null
-  return AUTH_ERROR_MESSAGES[code] ?? `Sign-in was rejected (${code}).`
+  const known = AUTH_ERROR_MESSAGES[code]
+  if (known) return known
+  return ERROR_CODE_RE.test(code) ? `Sign-in was rejected (${code}).` : "Sign-in was rejected."
 }
 
 /**

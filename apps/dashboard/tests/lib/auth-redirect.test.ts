@@ -116,6 +116,37 @@ describe("authErrorMessage", () => {
       expect(message).not.toContain(code)
     }
   })
+
+  test("does not echo a code that isn't shaped like a code", () => {
+    // The sign-in page renders this string, so `?error=` is attacker-supplied
+    // text reflected onto the login screen. Vue escapes it (no XSS), but a
+    // crafted link could still put a sentence of the attacker's choosing next
+    // to the password-less login form — "call this number to restore access".
+    // Only echo values that look like a real better-auth code; anything else
+    // falls back to the generic copy the page used before.
+    for (const hostile of [
+      "Your account was locked. Call +1-555-0100 to restore access",
+      "<script>alert(1)</script>",
+      "a".repeat(65),
+      "code with spaces",
+      "http://evil.example",
+    ]) {
+      expect(authErrorMessage(hostile)).toBe("Sign-in was rejected.")
+    }
+  })
+
+  test("still echoes the real code shapes better-auth emits", () => {
+    // Guards the clamp against being drawn too tight: every code in the map
+    // plus the shapes better-auth builds at runtime must survive it.
+    expect(authErrorMessage("issuer_mismatch")).toBe("Sign-in was rejected (issuer_mismatch).")
+    expect(authErrorMessage("EMAIL_NOT_VERIFIED")).toBe(
+      "Sign-in was rejected (EMAIL_NOT_VERIFIED).",
+    )
+    // The one real code with a character the clamp rejects — which is why it
+    // has real copy in the map rather than relying on the echo fallback.
+    expect(authErrorMessage("email_doesn't_match")).not.toContain("rejected")
+    expect(authErrorMessage("a".repeat(64))).toContain("Sign-in was rejected (")
+  })
 })
 
 describe("pinMagicLinkRedirects", () => {
