@@ -11,9 +11,15 @@ You need exactly four values to boot:
 | `POSTGRES_PASSWORD`      | Postgres password. Kept internal to the Docker network.                                           | `openssl rand -hex 32`       |
 | `BETTER_AUTH_URL`        | Base URL your dashboard is served at. Must match the origin visitors use (session cookies).       | —                            |
 | `BETTER_AUTH_SECRET`     | Session-cookie signing secret.                                                                    | `openssl rand -hex 32`       |
-| `ATTACHMENT_URL_SECRET`  | Signing key for time-limited attachment download URLs.                                            | `openssl rand -hex 32`       |
+| `ATTACHMENT_URL_SECRET`  | Signs the attachment links embedded in GitHub issues and comments. See the warning below.         | `openssl rand -hex 32`       |
 
 Without these four the stack refuses to start (compose refuses interpolation; the dashboard refuses to boot).
+
+::: warning Rotating `ATTACHMENT_URL_SECRET` breaks existing image links
+The dashboard signs the links to screenshots it embeds in GitHub issues and to images pasted into comments. These links don't expire in practice: issue screenshots are valid for about 100 years and comment images for one year. Changing `ATTACHMENT_URL_SECRET` invalidates every link signed so far. Each screenshot already embedded in a GitHub issue shows as a broken image, and so does every image pasted into a comment, in both the dashboard and GitHub. There's no way to re-sign old links, so rotate only if the secret has leaked.
+
+A signed link needs no sign-in. Anyone who can see the GitHub issue can open its screenshot, and on a public repository that's everyone.
+:::
 
 ## Hostnames
 
@@ -100,7 +106,11 @@ Uses a GitHub App (not OAuth). See [Integrations → GitHub](./integrations#gith
 | `GITHUB_APP_PRIVATE_KEY`     | —        | Literal PEM contents (newlines as `\n`) or an absolute path to a `.pem`.  |
 | `GITHUB_APP_WEBHOOK_SECRET`  | —        | Whatever you pasted into the App's Webhook secret field.                  |
 | `GITHUB_APP_SLUG`            | `repro`  | Slug from the App's public URL (e.g. `https://github.com/apps/<slug>`).   |
-| `GITHUB_WEBHOOK_MAX_BYTES`   | `1048576`| Max webhook body before HMAC validation. Keep at the default.             |
+| `GITHUB_APP_CLIENT_ID`       | —        | Client ID from the App's settings page.                                   |
+| `GITHUB_APP_CLIENT_SECRET`   | —        | A client secret generated on the App's settings page.                     |
+| `GITHUB_WEBHOOK_MAX_BYTES`   | `1048576`| Currently ignored. Webhook bodies over 5 MB are always rejected.          |
+
+These are only needed if you create the GitHub App by hand instead of with the in-app wizard. Set all five of `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET`: if any is missing, the dashboard ignores them all and uses the wizard-created app, if there is one.
 
 ## Database connection + pool
 

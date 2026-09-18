@@ -64,17 +64,21 @@ For deployments that prefer static configuration (Infrastructure-as-Code, secret
 6. **Subscribe to events**: `Issues` only. `Installation` and `Installation repositories` are auto-delivered — if you check them, GitHub rejects the form with "Default events unsupported".
 7. **Where can this GitHub App be installed**: **Any account**. If you pick "Only on this account", non-owner teammates will 404 when they click "Sign in with GitHub" — GitHub hides private apps from non-owners on the authorize URL. The app stays unlisted (Marketplace is a separate opt-in).
 8. Click **Create GitHub App**
-8. On the new App's settings page, scroll to **Private keys** → **Generate a private key** → a `.pem` file downloads
-9. Note the **App ID** at the top of the settings page
+9. On the new App's settings page, scroll to **Private keys** → **Generate a private key** → a `.pem` file downloads
+10. Note the **App ID** and **Client ID** at the top of the settings page, then click **Generate a new client secret** and copy it
 
 Wire it up:
 
 ```ini
 GITHUB_APP_ID=12345
 GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
-GITHUB_APP_WEBHOOK_SECRET=<same secret you pasted into step 5>
+GITHUB_APP_WEBHOOK_SECRET=<same secret you pasted into step 3>
 GITHUB_APP_SLUG=<slug from https://github.com/apps/<slug>>
+GITHUB_APP_CLIENT_ID=<Client ID from step 10>
+GITHUB_APP_CLIENT_SECRET=<client secret from step 10>
 ```
+
+Set all five of `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET`. If any one is missing, the dashboard ignores all of them and uses the app created by the in-app wizard instead, or reports GitHub as not configured if there isn't one. **Settings → GitHub** shows which source is in use (**Env vars** or **In-app setup**).
 
 The `GITHUB_APP_PRIVATE_KEY` accepts either:
 
@@ -95,7 +99,20 @@ Then `GITHUB_APP_PRIVATE_KEY=/secrets/github-app.pem`.
 
 ### Installing the App on a repo
 
-Once the app is set up (either path), open the project in the dashboard → **Integrations** → **GitHub Issues**. Click **Install on GitHub**. GitHub walks you through picking the repo to install on. The dashboard receives the installation via webhook and saves it to the project's config.
+Once the app is set up (either path), a project owner opens the project in the dashboard → **Integrations**, and clicks **Install on GitHub** on the **GitHub Issues** card. GitHub asks which account and repositories to install the app on. When you click **Install** (or **Save**), GitHub redirects back to the dashboard's setup URL (`/api/integrations/github/install-callback`), which records the installation on the project and returns you to the **Integrations** page. This redirect, not a webhook, is what links the installation, so it works before webhooks are enabled.
+
+Then pick the **Repository** on the same card. Issues can't be created until a repository is chosen.
+
+If the app is later uninstalled or loses access, the card shows **Disconnected** and the button becomes **Reconnect on GitHub**.
+
+#### Sync settings
+
+The **GitHub Issues** card has two switches, which only a project owner can change:
+
+- **Push edits to GitHub**: when on, changes to a linked report's status, priority, and labels in the dashboard update the GitHub issue.
+- **Automatically create a GitHub issue for every new report**: when on, each report submitted through the SDK becomes a linked GitHub issue as soon as it arrives. When off, create issues one at a time with **Create issue** on a report. This switch is unavailable until a repository is picked.
+
+Both are **on** for a project connected with **Install on GitHub**. A project whose connection row was created some other way (for example, by an upgrade from an older version) starts with both off. **Default labels** and **Default assignees** on the same card are applied to every issue the dashboard creates. Click **Save defaults** to keep changes to the switches and defaults.
 
 Who can change the project's GitHub connection:
 
@@ -112,7 +129,7 @@ Everyone on the project can see the panel. Controls your role can't use are show
 
 **Webhook signature mismatch** — the `GITHUB_APP_WEBHOOK_SECRET` in `.env` must match exactly what you pasted into GitHub's **Webhook secret** field.
 
-**Attachments don't render in issue bodies** — the dashboard generates time-limited signed URLs that GitHub's image renderer fetches. If your `BETTER_AUTH_URL` is `http://localhost:3000`, GitHub's servers can't reach it. Use a real hostname + proxy.
+**Attachments don't render in issue bodies** — the screenshot in an issue body is a signed link back to your dashboard, which GitHub's image proxy fetches. If your `BETTER_AUTH_URL` is `http://localhost:3000`, GitHub's servers can't reach it. Use a real hostname + proxy. Images also break if `ATTACHMENT_URL_SECRET` has changed since the issue was created; see [Configuration → Required secrets](./configuration#required).
 
 ### Rotating the webhook secret
 
@@ -120,15 +137,13 @@ Rotate the webhook secret from the GitHub App's settings page. After GitHub issu
 
 1. **If you set it via env (`GITHUB_APP_WEBHOOK_SECRET`):** update the env var and restart the dashboard. Any webhooks that land during the restart fail signature verification; GitHub retries with exponential backoff — they succeed once the new secret is live. Write-locks' 30s TTL tolerates the gap cleanly.
 
-2. **If you set it via the manifest wizard:** re-run the wizard from **Settings → Integrations → GitHub → Reconfigure**. The new secret is written to the encrypted `github_app` row atomically; no downtime window.
+2. **If you set it via the manifest wizard:** the dashboard has no control for changing the stored secret. You have two options:
+   - **Keep the same app (recommended):** set a new secret on the GitHub App's settings page, then switch to env vars by setting all five `GITHUB_APP_*` credentials described in [Creating the GitHub App (legacy: env vars)](#creating-the-github-app-legacy-env-vars), including a newly generated private key and client secret. Env vars take precedence over the stored credentials, and existing project installations keep working because the app is the same.
+   - **Start over with a new app:** on **Settings → GitHub**, click **Disconnect**, then **Create GitHub App** again. Disconnecting deletes the stored credentials, every project's GitHub connection, and any pending sync jobs, so each project owner must click **Install on GitHub** again. The old app stays on GitHub until you delete it from the app's **Advanced** settings.
 
 The webhook endpoint requires HTTPS — GitHub will refuse to deliver over plain HTTP. We intentionally do **not** enforce IP allowlisting: self-hosters behind reverse proxies / CDNs routinely see rewritten source IPs, and the enforcement breaks more deployments than it defends.
 
 Defence in depth: every webhook request passes four checks in order — body size cap (5 MB), HMAC-SHA256 signature, `X-GitHub-Delivery` replay dedupe, and installation-id allowlist. Random traffic hitting `/api/integrations/github/webhook` gets 401 at step 2; replays get 202-noop at step 3; stolen-secret attacks against unknown installations get 202-noop at step 4.
-
-### Reserved columns (not yet user-visible)
-
-The `github_integrations` table now carries `push_on_edit` and `auto_create_on_intake` boolean columns. These control features that ship in subsequent phases — dashboard changes auto-push to the linked issue, and new reports auto-create a GitHub issue on intake, respectively. Until those phases land, the columns exist but have no UI toggles; defaults are `false` for every project.
 
 ## OAuth sign-in
 
