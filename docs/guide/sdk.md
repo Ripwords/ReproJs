@@ -309,7 +309,7 @@ identify(null)
 
 ### `log(event, data?, level?)`
 
-Drop a breadcrumb into the rolling session log. Appears in the dashboard's Events tab of a report, with a timestamp.
+Drop a breadcrumb into the rolling session log. It appears on the report's **Console** tab, under **App events**, with a timestamp.
 
 ```ts
 import { log } from "@reprojs/core"
