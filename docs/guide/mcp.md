@@ -10,8 +10,8 @@ Repro exposes your tickets to AI assistants through the [Model Context Protocol]
 
 Connected assistants can:
 
-- **Read tickets and reports** — title, description, status, priority, tags, page context, system info, console + network logs, and a textual replay timeline.
-- **Update triage** — change status, priority, tags, assignees (GitHub logins), and milestones.
+- **Read tickets and reports** — title, description, status, priority, labels, page context, system info, console + network logs, and a textual replay timeline.
+- **Update triage** — change status, priority, labels, assignees (GitHub logins), and milestones.
 - **Comment on tickets** — markdown comments, mirrored to GitHub if the ticket is linked.
 - **Link / unlink GitHub issues** — connect a Repro ticket to an existing GitHub issue.
 
