@@ -6,7 +6,7 @@ The dashboard speaks plain HTTP on `:3000`. For anything reachable outside local
 
 1. Terminate TLS (Let's Encrypt or your own certs)
 2. Forward everything to `localhost:3000`
-3. Set `X-Forwarded-For` (or equivalent) so the dashboard can log / rate-limit by the real client IP
+3. Set `X-Forwarded-For` to the connecting client's address, **replacing** any value the client sent. Both the sign-in limiter and the intake limiter key on the *first* address in that header, so a proxy that appends lets a client choose its own rate-limit key. Without the header at all, the sign-in limits are skipped (see [Auth rate limits](./configuration#auth-rate-limits)).
 4. Allow large request bodies — intake payloads carry base64 screenshots and gzipped replay events, up to ~10 MB
 
 And two things to change on the Repro side:
@@ -32,7 +32,7 @@ feedback.example.com {
 }
 ```
 
-That's it. Caddy talks to Let's Encrypt, forwards `X-Forwarded-For` by default, and handles HTTP/2 + HTTP/3. Point your DNS at the host and Caddy takes care of the rest.
+That's it. Caddy talks to Let's Encrypt, sets `X-Forwarded-For` by default (ignoring whatever the client sent, unless you configure `trusted_proxies`), and handles HTTP/2 + HTTP/3. Point your DNS at the host and Caddy takes care of the rest.
 
 ### Running Caddy
 
@@ -59,7 +59,9 @@ server {
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        # $remote_addr, not $proxy_add_x_forwarded_for: the dashboard reads the
+        # FIRST entry, and appending would keep a client-supplied first entry.
+        proxy_set_header   X-Forwarded-For   $remote_addr;
         proxy_set_header   X-Forwarded-Proto $scheme;
 
         # Keep connections warm for better-auth's short-polling
@@ -108,6 +110,10 @@ And drop the `ports:` mapping — Traefik handles ingress.
 If you can't expose ports directly (NAT, home-lab, dynamic IP), Cloudflare Tunnel works well. Create a tunnel, route `feedback.example.com` → `http://localhost:3000`, let Cloudflare handle TLS.
 
 You still want `TRUST_XFF=true` — Cloudflare sets `X-Forwarded-For` with the real client IP and `CF-Connecting-IP` (equivalent) on every request.
+
+## Serving on more than one hostname
+
+Sign-in rejects requests from any origin other than `BETTER_AUTH_URL`. If the proxy answers on a second hostname too, either redirect that hostname to the canonical one (simplest), or list it in `BETTER_AUTH_TRUSTED_ORIGINS` — see [Configuration → Hostnames](./configuration#hostnames).
 
 ## Verifying
 
