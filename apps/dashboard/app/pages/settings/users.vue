@@ -189,7 +189,7 @@ const columns = computed<TableColumn<UserDTO>[]>(() => [
           variant: "subtle",
           size: "sm",
         },
-        () => row.original.status,
+        () => row.original.status.charAt(0).toUpperCase() + row.original.status.slice(1),
       ),
   },
   {

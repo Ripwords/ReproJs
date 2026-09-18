@@ -28,7 +28,7 @@ const scopeBullets = computed(() =>
   scope.value.includes("mcp:full")
     ? [
         "Read your tickets, reports, screenshots, console + network logs, and replay transcripts",
-        "Change ticket status, priority, severity, assignee, and tags",
+        "Change ticket status, priority, severity, assignee, and labels",
         "Post comments on your tickets",
         "Link or unlink GitHub issues from your tickets",
       ]

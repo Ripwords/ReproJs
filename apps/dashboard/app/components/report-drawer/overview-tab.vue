@@ -187,7 +187,7 @@ const descriptionHtml = computed(() =>
               </dd>
             </div>
             <div class="flex items-center gap-3">
-              <dt class="text-muted w-24 shrink-0">Urgency</dt>
+              <dt class="text-muted w-24 shrink-0">Priority</dt>
               <dd>
                 <UBadge
                   :color="priorityColor(report.priority)"

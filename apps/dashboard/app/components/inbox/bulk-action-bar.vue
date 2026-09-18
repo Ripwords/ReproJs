@@ -1,6 +1,7 @@
 <!-- apps/dashboard/app/components/inbox/bulk-action-bar.vue -->
 <script setup lang="ts">
 import type { ReportStatus } from "@reprojs/shared"
+import { REPORT_STATUSES, statusLabel } from "~/composables/use-report-format"
 
 interface AssigneeOption {
   value: string | null
@@ -18,10 +19,6 @@ const emit = defineEmits<{
   clear: []
 }>()
 
-function humanStatus(s: ReportStatus): string {
-  if (s === "in_progress") return "In progress"
-  return s.charAt(0).toUpperCase() + s.slice(1)
-}
 function statusIcon(s: ReportStatus): string {
   switch (s) {
     case "open":
@@ -36,8 +33,8 @@ function statusIcon(s: ReportStatus): string {
 }
 
 const statusItems = computed(() => [
-  (["open", "in_progress", "resolved", "closed"] as ReportStatus[]).map((s) => ({
-    label: humanStatus(s),
+  REPORT_STATUSES.map((s) => ({
+    label: statusLabel(s),
     icon: statusIcon(s),
     onSelect: () => emit("status", s),
   })),

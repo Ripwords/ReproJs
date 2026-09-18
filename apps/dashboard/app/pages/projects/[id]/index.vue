@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProjectDTO, ProjectOverviewDTO, ReportSummaryDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
-import { priorityColor } from "~/composables/use-report-format"
+import { priorityColor, priorityLabel } from "~/composables/use-report-format"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
 
@@ -49,8 +49,8 @@ const EVENT_LABEL: Record<string, string> = {
   status_changed: "changed status",
   priority_changed: "changed priority",
   assignee_changed: "reassigned",
-  tag_added: "added a tag",
-  tag_removed: "removed a tag",
+  tag_added: "added a label",
+  tag_removed: "removed a label",
   github_unlinked: "unlinked GitHub issue",
 }
 
@@ -186,11 +186,11 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
               class="flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-elevated/50"
             >
               <UBadge
-                :label="r.priority"
+                :label="priorityLabel(r.priority)"
                 :color="priorityColor(r.priority)"
                 variant="soft"
                 size="sm"
-                class="capitalize shrink-0"
+                class="shrink-0"
               />
               <span class="flex-1 min-w-0 truncate text-default">{{ r.title }}</span>
               <span class="text-sm text-muted whitespace-nowrap tabular-nums">

@@ -2,7 +2,12 @@
 import { Orientation } from "@unovis/ts"
 import type { AdminOverviewDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
-import { priorityColor } from "~/composables/use-report-format"
+import {
+  REPORT_STATUSES,
+  priorityColor,
+  priorityLabel,
+  statusLabel,
+} from "~/composables/use-report-format"
 import RelativeTime from "~/components/common/relative-time.vue"
 
 definePageMeta({ middleware: "admin-only" })
@@ -48,17 +53,24 @@ const volumeXFormatter = (tick: number): string => {
 }
 
 const statusCounts = computed(() => overview.value?.counts.byStatus)
-const STATUS_ORDER = ["open", "in_progress", "resolved", "closed"] as const
-const statusData = computed<number[]>(() => STATUS_ORDER.map((s) => statusCounts.value?.[s] ?? 0))
+const statusData = computed<number[]>(() =>
+  REPORT_STATUSES.map((s) => statusCounts.value?.[s] ?? 0),
+)
 const hasStatus = computed(() => statusData.value.some((n) => n > 0))
 // DonutChart takes a number[] aligned by ORDER to these category entries
-// (STATUS_ORDER); the keys here only label the legend, they don't map data.
-const statusCategories = {
-  Open: { name: "Open", color: C.open },
-  "In progress": { name: "In progress", color: C.inProgress },
-  Resolved: { name: "Resolved", color: C.resolved },
-  Closed: { name: "Closed", color: C.closed },
-}
+// (REPORT_STATUSES); the keys here only label the legend, they don't map data.
+const STATUS_CHART_COLOR = {
+  open: C.open,
+  in_progress: C.inProgress,
+  resolved: C.resolved,
+  closed: C.closed,
+} as const
+const statusCategories = Object.fromEntries(
+  REPORT_STATUSES.map((s) => [
+    statusLabel(s),
+    { name: statusLabel(s), color: STATUS_CHART_COLOR[s] },
+  ]),
+)
 
 const topProjects = computed(() =>
   perProject.value
@@ -79,8 +91,8 @@ const EVENT_LABEL: Record<string, string> = {
   assignee_added: "added an assignee",
   assignee_removed: "removed an assignee",
   milestone_changed: "changed milestone",
-  tag_added: "added a tag",
-  tag_removed: "removed a tag",
+  tag_added: "added a label",
+  tag_removed: "removed a label",
   comment_added: "commented",
   comment_edited: "edited a comment",
   comment_deleted: "deleted a comment",
@@ -259,11 +271,11 @@ function describeEvent(e: AdminOverviewDTO["recentEvents"][number]): string {
                 {{ r.projectName }}
               </span>
               <UBadge
-                :label="r.priority"
+                :label="priorityLabel(r.priority)"
                 :color="priorityColor(r.priority)"
                 variant="soft"
                 size="sm"
-                class="capitalize shrink-0"
+                class="shrink-0"
               />
               <span class="flex-1 min-w-0 truncate text-default">{{ r.title }}</span>
               <span class="text-sm text-muted whitespace-nowrap tabular-nums">

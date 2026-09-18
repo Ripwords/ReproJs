@@ -8,6 +8,7 @@
 -->
 <script setup lang="ts">
 import type { ReportStatus } from "@reprojs/shared"
+import { REPORT_STATUSES, statusLabel } from "~/composables/use-report-format"
 
 interface Props {
   selected: ReportStatus[]
@@ -22,10 +23,7 @@ type TabKey = "all" | ReportStatus
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "all", label: "All" },
-  { key: "open", label: "Open" },
-  { key: "in_progress", label: "In progress" },
-  { key: "resolved", label: "Resolved" },
-  { key: "closed", label: "Closed" },
+  ...REPORT_STATUSES.map((s) => ({ key: s, label: statusLabel(s) })),
 ]
 
 function isActive(key: TabKey): boolean {

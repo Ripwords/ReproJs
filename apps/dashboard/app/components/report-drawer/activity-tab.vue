@@ -1,6 +1,7 @@
 <!-- apps/dashboard/app/components/report-drawer/activity-tab.vue -->
 <script setup lang="ts">
 import RelativeTime from "~/components/common/relative-time.vue"
+import { priorityLabel, statusLabel } from "~/composables/use-report-format"
 import type { ReportEventDTO, ReportSummaryDTO } from "@reprojs/shared"
 
 interface Props {
@@ -19,9 +20,9 @@ function summary(e: ReportEventDTO): string {
   const p = e.payload as Record<string, unknown>
   switch (e.kind) {
     case "status_changed":
-      return `changed status ${String(p.from)} → ${String(p.to)}`
+      return `changed status ${statusLabel(String(p.from))} → ${statusLabel(String(p.to))}`
     case "priority_changed":
-      return `set priority ${String(p.to)} (was ${String(p.from)})`
+      return `set priority ${priorityLabel(String(p.to))} (was ${priorityLabel(String(p.from))})`
     case "assignee_changed": {
       const from = p.from ? "someone" : "nobody"
       const to = p.to ? "someone" : "nobody"
@@ -33,11 +34,11 @@ function summary(e: ReportEventDTO): string {
       return `unassigned @${String(p.githubLogin ?? "?")}`
     case "tag_added": {
       const name = p.name ?? p.tag
-      return `added tag ${String(name ?? "")}`.trim()
+      return `added label ${String(name ?? "")}`.trim()
     }
     case "tag_removed": {
       const name = p.name ?? p.tag
-      return `removed tag ${String(name ?? "")}`.trim()
+      return `removed label ${String(name ?? "")}`.trim()
     }
     default:
       return e.kind

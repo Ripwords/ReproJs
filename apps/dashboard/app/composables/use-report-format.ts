@@ -5,6 +5,8 @@
  * the others). Centralize here so updates land in one place.
  */
 
+import type { ReportPriority, ReportStatus } from "@reprojs/shared"
+
 export type ReportBadgeColor = "error" | "warning" | "primary" | "success" | "info" | "neutral"
 
 /**
@@ -27,7 +29,19 @@ export function statusColor(s: string | undefined | null): ReportBadgeColor {
   return "neutral"
 }
 
-const STATUS_LABEL: Record<string, string> = {
+/** Display order for status pickers, tabs and charts. */
+export const REPORT_STATUSES: readonly ReportStatus[] = [
+  "open",
+  "in_progress",
+  "resolved",
+  "closed",
+]
+/** Display order for priority pickers and facets, most urgent first. */
+export const REPORT_PRIORITIES: readonly ReportPriority[] = ["urgent", "high", "normal", "low"]
+
+// The one place status and priority display labels live. Sentence case,
+// matching the rest of the UI ("In progress", not "In Progress").
+const STATUS_LABEL: Record<ReportStatus, string> = {
   open: "Open",
   in_progress: "In progress",
   resolved: "Resolved",
@@ -35,10 +49,10 @@ const STATUS_LABEL: Record<string, string> = {
 }
 export function statusLabel(s: string | undefined | null): string {
   if (!s) return "Unknown"
-  return STATUS_LABEL[s] ?? s
+  return STATUS_LABEL[s as ReportStatus] ?? s
 }
 
-const PRIORITY_LABEL: Record<string, string> = {
+const PRIORITY_LABEL: Record<ReportPriority, string> = {
   urgent: "Urgent",
   high: "High",
   normal: "Normal",
@@ -46,5 +60,5 @@ const PRIORITY_LABEL: Record<string, string> = {
 }
 export function priorityLabel(p: string | undefined | null): string {
   if (!p) return "—"
-  return PRIORITY_LABEL[p] ?? p
+  return PRIORITY_LABEL[p as ReportPriority] ?? p
 }

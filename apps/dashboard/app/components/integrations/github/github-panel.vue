@@ -50,9 +50,9 @@ const isInstalled = computed(() => Boolean(data.value?.installed))
 const isConnected = computed(() => data.value?.status === "connected")
 
 const statusLabel = computed(() => {
-  if (!data.value?.installed) return "not connected"
-  if (data.value.status === "connected") return "connected"
-  return "disconnected"
+  if (!data.value?.installed) return "Not connected"
+  if (data.value.status === "connected") return "Connected"
+  return "Disconnected"
 })
 
 const statusColor = computed<"neutral" | "success" | "warning">(() => {
@@ -138,16 +138,11 @@ async function saveRepo() {
         <div class="flex-1 min-w-0">
           <h2 class="text-base font-semibold text-default tracking-tight">GitHub Issues</h2>
           <p class="text-sm text-muted mt-0.5">
-            Auto-create issues for every report, sync status both ways.
+            Turn reports into GitHub issues, one at a time or automatically, and sync status both
+            ways.
           </p>
         </div>
-        <UBadge
-          :label="statusLabel"
-          :color="statusColor"
-          variant="soft"
-          size="md"
-          class="capitalize"
-        />
+        <UBadge :label="statusLabel" :color="statusColor" variant="soft" size="md" />
       </div>
     </template>
 
@@ -236,7 +231,7 @@ async function saveRepo() {
         <div>
           <p class="text-sm font-medium text-default">Push edits to GitHub</p>
           <p class="text-sm text-muted">
-            Sync priority, status, and tag changes back to the GitHub issue automatically.
+            Sync priority, status, and label changes back to the GitHub issue automatically.
           </p>
         </div>
       </div>

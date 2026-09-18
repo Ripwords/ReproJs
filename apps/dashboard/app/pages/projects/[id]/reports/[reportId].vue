@@ -21,7 +21,7 @@ import OverviewTab from "~/components/report-drawer/overview-tab.vue"
 import ReplayTab from "~/components/report-drawer/replay-tab.vue"
 import DrawerTabs from "~/components/report-drawer/tabs.vue"
 import TriageFooter from "~/components/report-drawer/triage-footer.vue"
-import { priorityColor } from "~/composables/use-report-format"
+import { priorityColor, priorityLabel } from "~/composables/use-report-format"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { hasProjectRole } from "~/utils/project-role"
 
@@ -178,8 +178,6 @@ function onKey(e: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener("keydown", onKey))
 onUnmounted(() => window.removeEventListener("keydown", onKey))
-
-// priorityColor imported at the top from ~/composables/use-report-format
 </script>
 
 <template>
@@ -233,11 +231,11 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
             </div>
           </div>
           <UBadge
-            :label="report.priority"
+            :label="priorityLabel(report.priority)"
             :color="priorityColor(report.priority)"
             variant="soft"
             size="md"
-            class="capitalize font-medium flex-shrink-0"
+            class="font-medium flex-shrink-0"
           />
         </div>
       </header>

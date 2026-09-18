@@ -332,7 +332,7 @@ async function disconnect() {
                 variant="subtle"
                 color="neutral"
                 icon="i-heroicons-clipboard"
-                aria-label="Copy Client ID"
+                aria-label="Copy client ID"
                 :disabled="!clientIdDisplay"
                 @click="() => clientIdDisplay && copyToClipboard(clientIdDisplay)"
               >
@@ -342,7 +342,7 @@ async function disconnect() {
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-muted mb-1">Client Secret</label>
+            <label class="block text-sm font-medium text-muted mb-1">Client secret</label>
             <div class="flex gap-2">
               <UInput
                 :model-value="revealed ? revealed.clientSecret : '••••••••••••••••'"
@@ -365,7 +365,7 @@ async function disconnect() {
                   variant="subtle"
                   color="neutral"
                   icon="i-heroicons-clipboard"
-                  aria-label="Copy Client Secret"
+                  aria-label="Copy client secret"
                   @click="() => revealed && copyToClipboard(revealed.clientSecret)"
                 >
                   Copy
@@ -374,7 +374,7 @@ async function disconnect() {
                   variant="subtle"
                   color="neutral"
                   icon="i-heroicons-eye-slash"
-                  :aria-label="`Hide Client Secret (${remainingSec} seconds remaining)`"
+                  :aria-label="`Hide client secret (${remainingSec} seconds remaining)`"
                   @click="clearRevealed"
                 >
                   Hide ({{ remainingSec }}s)

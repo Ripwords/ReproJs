@@ -11,7 +11,7 @@ import BulkActionBar from "~/components/inbox/bulk-action-bar.vue"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
 import { INBOX_PAGE_SIZE, useInboxQuery } from "~/composables/use-inbox-query"
 import { useKeyboardShortcuts } from "~/composables/useKeyboardShortcuts"
-import { priorityColor } from "~/composables/use-report-format"
+import { priorityColor, priorityLabel } from "~/composables/use-report-format"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
 
@@ -250,11 +250,11 @@ const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
     header: "Priority",
     cell: ({ row }) =>
       h(UBadge, {
-        label: row.original.priority,
+        label: priorityLabel(row.original.priority),
         color: priorityColor(row.original.priority),
         variant: "soft",
         size: "md",
-        class: "capitalize font-medium",
+        class: "font-medium",
       }),
   },
   {

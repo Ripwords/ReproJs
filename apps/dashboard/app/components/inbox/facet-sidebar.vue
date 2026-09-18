@@ -1,5 +1,5 @@
 <!--
-  Faceted filter sidebar for the inbox. Renders Assignee / Priority / Tags
+  Faceted filter sidebar for the inbox. Renders Assignee / Priority / Labels
   sections, each a list of togglable rows with a live count.
 
   Visual treatment:
@@ -15,6 +15,7 @@
 -->
 <script setup lang="ts">
 import type { ReportPriority } from "@reprojs/shared"
+import { REPORT_PRIORITIES, priorityLabel } from "~/composables/use-report-format"
 
 interface Assignee {
   login: string
@@ -41,7 +42,7 @@ const emit = defineEmits<{
   source: [string[]]
 }>()
 
-const PRIORITIES: ReportPriority[] = ["urgent", "high", "normal", "low"]
+const PRIORITIES = REPORT_PRIORITIES
 
 function togglePriority(p: ReportPriority) {
   const has = props.selectedPriority.includes(p)
@@ -77,10 +78,6 @@ function assigneeToken(a: Assignee): string {
 }
 function assigneeLabel(a: Assignee): string {
   return `@${a.login}`
-}
-
-function priorityLabel(p: ReportPriority): string {
-  return p.charAt(0).toUpperCase() + p.slice(1)
 }
 
 const sourceItems = computed(() => [
@@ -173,7 +170,7 @@ const priorityDot: Record<ReportPriority, string> = {
     </section>
 
     <section v-if="tags.length">
-      <h3 class="px-2 mb-2 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Tags</h3>
+      <h3 class="px-2 mb-2 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Labels</h3>
       <ul>
         <li v-for="t in tags" :key="t.name">
           <button
