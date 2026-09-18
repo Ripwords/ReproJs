@@ -1,5 +1,18 @@
 # Changelog
 
+## extension-v0.2.1
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/extension-v0.2.0...extension-v0.2.1)
+
+### 🩹 Fixes
+
+- **core:** Keep fixed and sticky elements in scrolled DOM screenshots ([9ce5d94](https://github.com/Ripwords/ReproJs/commit/9ce5d94))
+- **core:** Pin sticky cells in sideways-scrolled boxes without spilling ([0fdce3c](https://github.com/Ripwords/ReproJs/commit/0fdce3c))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+
 ## extension-v0.2.0
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/extension-v0.1.4...extension-v0.2.0)
