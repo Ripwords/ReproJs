@@ -22,6 +22,7 @@ import ReplayTab from "~/components/report-drawer/replay-tab.vue"
 import DrawerTabs from "~/components/report-drawer/tabs.vue"
 import TriageFooter from "~/components/report-drawer/triage-footer.vue"
 import { priorityColor, relativeTime } from "~/composables/use-report-format"
+import { hasProjectRole } from "~/utils/project-role"
 
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
@@ -49,6 +50,9 @@ const { data: meRole } = useApi<{ role: string }>(() => `/api/projects/${project
   default: () => ({ role: "viewer" }),
 })
 const canEdit = computed(() => meRole.value?.role !== "viewer")
+// Creating a GitHub label (integrations/github/labels.post) is developer+,
+// a rank above the manager-level triage edits canEdit covers.
+const canCreateLabels = computed(() => hasProjectRole(meRole.value?.role, "developer"))
 
 type TabId =
   | "overview"
@@ -317,6 +321,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
           :project-id="projectId"
           :report="report"
           :can-edit="canEdit"
+          :can-create-labels="canCreateLabels"
           @patched="onPatched"
         />
       </div>

@@ -15,6 +15,9 @@ const props = defineProps<{
   projectId: string
   modelValue: string[]
   disabled?: boolean
+  /** Offer "Create '<name>'" for unknown labels. The POST is developer+, so
+   *  managers can pick existing labels but not add new ones to the repo. */
+  canCreate: boolean
 }>()
 const emit = defineEmits<{
   "update:modelValue": [value: string[]]
@@ -67,7 +70,7 @@ function removeLabel(name: string) {
 // selection. Any 4xx surfaces as a toast so the user knows what broke
 // (conflicts → "already exists", 400 → validation).
 async function createLabel(name: string) {
-  if (props.disabled || creating.value) return
+  if (props.disabled || !props.canCreate || creating.value) return
   const trimmed = name.trim()
   if (!trimmed) return
   if (current.value.includes(trimmed)) return
@@ -123,7 +126,7 @@ function textColorForBg(hex: string): string {
       size="sm"
       variant="outline"
       class="w-full"
-      :create-item="{ position: 'bottom', when: 'empty' }"
+      :create-item="canCreate ? { position: 'bottom', when: 'empty' } : false"
       :ui="{
         base: 'justify-between',
         label: 'text-muted font-normal',
