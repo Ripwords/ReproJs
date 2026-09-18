@@ -4,6 +4,7 @@ import { InviteUserInput } from "@reprojs/shared"
 import { randomBytes } from "node:crypto"
 import { db } from "../../db"
 import { appSettings, user } from "../../db/schema"
+import { emailDomain, isEmailDomainOnAllowlist } from "../../lib/email-domain"
 import { env } from "../../lib/env"
 import { requireInstallAdmin } from "../../lib/permissions"
 import { sendMail } from "../../lib/email"
@@ -35,19 +36,15 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, statusMessage: "User already exists" })
   }
 
-  // Respect the install's sign-up gate: if admins have restricted sign-up to
-  // specific domains, direct invites must also honor that allowlist. Without
-  // this, an admin could side-step their own policy by inviting the blocked
-  // domain directly and letting the invitee claim the pre-created row.
+  // Sign-in enforces the domain allowlist whether or not sign-up is gated,
+  // so an invite to an off-list domain would create a row the invitee can
+  // never sign in to. Refuse it here, where the admin can see why.
   const [settings] = await db.select().from(appSettings).limit(1)
-  if (settings?.signupGated && settings.allowedEmailDomains.length > 0) {
-    const domain = emailLower.split("@")[1] ?? ""
-    if (!settings.allowedEmailDomains.includes(domain)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Email domain "${domain}" is not on this install's allowlist`,
-      })
-    }
+  if (settings && !isEmailDomainOnAllowlist(emailLower, settings.allowedEmailDomains)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Email domain "${emailDomain(emailLower)}" is not on this install's allowlist`,
+    })
   }
 
   // Magic-link / OAuth refactor: the invite is now purely a gate flag on the

@@ -8,6 +8,7 @@ import { oauthProvider } from "@better-auth/oauth-provider"
 import { db } from "../db"
 import { pinMagicLinkRedirects, SIGN_IN_PATH } from "../../shared/auth-redirect"
 import { appSettings, session, user } from "../db/schema"
+import { isEmailDomainOnAllowlist } from "./email-domain"
 import { env, getAuthRateLimitEnabled } from "./env"
 import { renderTemplate } from "./render-template"
 import { sendMail } from "./email"
@@ -56,9 +57,7 @@ async function loadAppSettings() {
  */
 async function isEmailDomainAllowed(email: string): Promise<boolean> {
   const settings = await loadAppSettings()
-  if (settings.allowedEmailDomains.length === 0) return true
-  const domain = email.toLowerCase().split("@")[1] ?? ""
-  return settings.allowedEmailDomains.includes(domain)
+  return isEmailDomainOnAllowlist(email, settings.allowedEmailDomains)
 }
 
 /**

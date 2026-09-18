@@ -10,6 +10,7 @@ import {
   projects,
   user,
 } from "../../../../db/schema"
+import { emailDomain, isEmailDomainOnAllowlist } from "../../../../lib/email-domain"
 import { env } from "../../../../lib/env"
 import { requireProjectRole } from "../../../../lib/permissions"
 import { getInviteLimiter } from "../../../../lib/rate-limit"
@@ -33,15 +34,14 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 429, statusMessage: "Too many invites — slow down" })
   }
 
+  // Same rule sign-in applies, whether or not sign-up is gated — an off-list
+  // invitee could accept nothing, because sign-in would refuse them.
   const [settings] = await db.select().from(appSettings).limit(1)
-  if (settings?.signupGated && settings.allowedEmailDomains.length > 0) {
-    const domain = email.split("@")[1]?.toLowerCase() ?? ""
-    if (!settings.allowedEmailDomains.includes(domain)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Email domain "${domain}" is not on this install's allowlist`,
-      })
-    }
+  if (settings && !isEmailDomainOnAllowlist(email, settings.allowedEmailDomains)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Email domain "${emailDomain(email)}" is not on this install's allowlist`,
+    })
   }
 
   let [targetUser] = await db.select().from(user).where(eq(user.email, email))

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, setDefaultTimeout } from "bun:test"
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import type { UserDTO } from "@reprojs/shared"
 import { db } from "../../server/db"
 import { user } from "../../server/db/schema"
@@ -73,6 +73,28 @@ describe("users API", () => {
     // And no raw-case row snuck through:
     const [rawCase] = await db.select().from(user).where(eq(user.email, "MixedCase@Example.com"))
     expect(rawCase).toBeUndefined()
+  })
+
+  test("admin invite honours the domain allowlist even when sign-up is open", async () => {
+    // Sign-in enforces allowed_email_domains whether or not signup_gated is
+    // on, so an off-list invite used to create an `invited` row the invitee
+    // could never sign in to — they just bounced to domain_not_allowed.
+    await createUser("admin@example.com", "admin")
+    const cookie = await signIn("admin@example.com")
+    await db.execute(
+      sql`UPDATE app_settings SET signup_gated = false, allowed_email_domains = '{"example.com"}'::text[] WHERE id = 1`,
+    )
+
+    const { status, body } = await apiFetch<{ statusMessage?: string }>("/api/users", {
+      method: "POST",
+      headers: { cookie },
+      body: JSON.stringify({ email: "outsider@other.com", role: "member" }),
+    })
+    expect(status).toBe(400)
+    expect(body.statusMessage).toContain("other.com")
+
+    const [row] = await db.select().from(user).where(eq(user.email, "outsider@other.com"))
+    expect(row).toBeUndefined()
   })
 
   test("cannot demote the last admin", async () => {
