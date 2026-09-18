@@ -9,7 +9,7 @@ import FacetSidebar from "~/components/inbox/facet-sidebar.vue"
 import SearchSort from "~/components/inbox/search-sort.vue"
 import BulkActionBar from "~/components/inbox/bulk-action-bar.vue"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
-import { useInboxQuery } from "~/composables/use-inbox-query"
+import { INBOX_PAGE_SIZE, useInboxQuery } from "~/composables/use-inbox-query"
 import { useKeyboardShortcuts } from "~/composables/useKeyboardShortcuts"
 import { priorityColor, relativeTime } from "~/composables/use-report-format"
 
@@ -61,6 +61,31 @@ const checkedIds = computed<string[]>(() =>
 function clearSelection() {
   rowSelection.value = {}
 }
+
+// "Select all" in the header selects the rows on this page only, and the bulk
+// bar acts on exactly what is ticked. Drop the selection whenever the visible
+// result set changes (page, filter, search, sort) so ticks from a page the
+// user can no longer see are never carried into a bulk action.
+watch(listUrl, clearSelection)
+
+// ---- Pagination ----
+const total = computed(() => data.value?.total ?? 0)
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / INBOX_PAGE_SIZE)))
+const rangeStart = computed(() => (query.value.page - 1) * INBOX_PAGE_SIZE + 1)
+const rangeEnd = computed(() => rangeStart.value + reports.value.length - 1)
+
+// A bulk update or someone else's triage can shrink the result set until the
+// current page is past the end. Land on the last page that has rows instead of
+// showing "No reports match" for a filter that still matches.
+// `immediate` also covers a stale deep link such as ?page=9.
+watch(
+  data,
+  (next) => {
+    if (import.meta.server || !next || next.items.length > 0 || next.total === 0) return
+    if (query.value.page > pageCount.value) update({ page: pageCount.value })
+  },
+  { immediate: true },
+)
 
 async function bulkStatus(status: ReportStatus) {
   submittingBulk.value = true
@@ -351,13 +376,13 @@ function onRowSelect(_e: Event, row: TableRowLike) {
       @priority="update({ priority: $event })"
       @assignee="update({ assignee: $event })"
       @tag="update({ tag: $event })"
-      @source="update({ source: $event, offset: 0 })"
+      @source="update({ source: $event })"
     />
 
     <div class="flex-1 min-w-0 flex flex-col">
       <header class="mb-4 flex items-baseline justify-between">
         <h1 class="text-2xl font-semibold text-default">Reports</h1>
-        <span class="text-sm text-muted">{{ data?.total ?? 0 }} matches</span>
+        <span class="text-sm text-muted">{{ total }} matches</span>
       </header>
 
       <div class="mb-3">
@@ -415,6 +440,25 @@ function onRowSelect(_e: Event, row: TableRowLike) {
             tr: 'cursor-pointer hover:bg-neutral-50/50 dark:hover:bg-neutral-900/30',
           }"
           @select="onRowSelect"
+        />
+      </div>
+
+      <div
+        v-if="pageCount > 1"
+        class="mt-3 flex items-center justify-between gap-4"
+        data-testid="inbox-pagination"
+      >
+        <span class="text-sm text-muted">
+          {{ reports.length > 0 ? `${rangeStart}–${rangeEnd} of ${total}` : `${total} matches` }}
+        </span>
+        <UPagination
+          :page="query.page"
+          :total="total"
+          :items-per-page="INBOX_PAGE_SIZE"
+          :sibling-count="1"
+          show-edges
+          size="sm"
+          @update:page="update({ page: $event })"
         />
       </div>
     </div>
