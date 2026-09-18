@@ -15,6 +15,22 @@ You need exactly four values to boot:
 
 Without these four the stack refuses to start (compose refuses interpolation; the dashboard refuses to boot).
 
+## Hostnames
+
+Sign-in only accepts requests whose origin is `BETTER_AUTH_URL`. If people reach the same install on more than one hostname, list the others here.
+
+| Variable                       | Default | Description                                                                                                                                              |
+| ------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_TRUSTED_ORIGINS`  | —       | Extra origins, comma-separated. Each entry needs its scheme; the dashboard refuses to boot otherwise. |
+
+For example:
+
+```bash
+BETTER_AUTH_TRUSTED_ORIGINS=https://feedback.internal.example.com,https://*.example.com
+```
+
+This only relaxes the origin check. Session cookies still belong to the hostname that set them, so someone who signs in on one hostname is signed out on the other, and OAuth callbacks and emailed magic links always use `BETTER_AUTH_URL`. For most installs, one canonical hostname (with the others redirecting to it at the proxy) is simpler.
+
 ## Compose overrides
 
 Optional knobs the bundled compose reads:
@@ -115,13 +131,22 @@ Tune the SDK intake path. Defaults are safe — only change if you have a specif
 
 ## Auth rate limits
 
-Protects `/api/auth/sign-in` and `/api/auth/magic-link/verify` from credential-stuffing / enumeration.
+Protects `/api/auth/sign-in/*` (sending a magic link, starting an OAuth sign-in) and `/api/auth/magic-link/verify` from credential-stuffing / enumeration. Each path has its own allowance. Session checks, sign-out, and OAuth callbacks are not limited.
 
 | Variable                        | Default                       | Description                                                                                   |
 | ------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------- |
-| `AUTH_RATE_PER_IP_PER_15MIN`    | `5`                           | Max attempts per IP per 15-minute window.                                                     |
+| `AUTH_RATE_PER_IP_PER_15MIN`    | `5`                           | Max attempts per IP per path per 15-minute window.                                            |
 | `AUTH_RATE_LIMIT_ENABLED`       | on in prod; off in dev/test   | Explicit override: `true` force-on, `false` force-off.                                        |
-| `RATE_LIMIT_STORE`              | `memory`                      | `memory` (per-worker, fine for single replica) or `postgres` (shared across replicas).        |
+| `RATE_LIMIT_STORE`              | `memory`                      | `memory` (per-worker, fine for single replica) or `postgres` (shared across replicas). Applies to the intake and invite limits only; the auth limits are always kept in each worker's memory. |
+
+The auth limiter finds the client IP differently from the intake limiter:
+
+- It reads the **first** address in `X-Forwarded-For`, whether or not `TRUST_XFF` is set.
+- If that header is missing, it can't tell clients apart and **skips the limit**, logging `Rate limiting skipped: could not determine client IP address` once.
+
+So in production, run the dashboard behind a reverse proxy that **overwrites** `X-Forwarded-For` with the connecting client's address. See [Reverse proxy](./reverse-proxy#what-the-proxy-needs-to-do).
+
+Everyone behind one office NAT or VPN shares one IP, and so one allowance. When a sign-in hits the limit, people see "Too many sign-in attempts from your network" on the sign-in page. If a whole office keeps hitting it, raise `AUTH_RATE_PER_IP_PER_15MIN` rather than turning the limit off.
 
 ## Invites
 

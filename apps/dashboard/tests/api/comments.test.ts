@@ -237,7 +237,7 @@ describe("comments API", () => {
     expect(body.comment.body).toBe("Updated")
   })
 
-  test("PATCH someone else's comment is forbidden for manager, allowed for owner", async () => {
+  test("PATCH someone else's comment is forbidden for manager, project owner and install admin", async () => {
     const adminId = await createUser("admin-perm@example.com", "admin")
     const projectId = await seedProject({
       name: "p",
@@ -253,8 +253,8 @@ describe("comments API", () => {
       "manager",
     )
     const { cookie: ownerCookie } = await seedMember("owner-user@example.com", projectId, "owner")
+    const adminCookie = await signIn("admin-perm@example.com")
 
-    // Insert a comment owned by authorId (not the manager who will try to edit)
     const [comment] = await db
       .insert(reportComments)
       .values({
@@ -265,27 +265,145 @@ describe("comments API", () => {
       })
       .returning()
 
-    // Manager trying to edit someone else's comment → 403
-    const { status: managerStatus } = await apiFetch(
-      `/api/projects/${projectId}/reports/${reportId}/comments/${comment.id}`,
-      {
-        method: "PATCH",
-        headers: { cookie: managerCookie },
-        body: JSON.stringify({ body: "Changed" }),
-      },
-    )
-    expect(managerStatus).toBe(403)
+    // An edit keeps the author's attribution (and syncs to GitHub under it),
+    // so nobody but the author may change the body — not even an owner.
+    for (const cookie of [managerCookie, ownerCookie, adminCookie]) {
+      // eslint-disable-next-line no-await-in-loop -- sequential requests keep the assertions readable
+      const { status } = await apiFetch(
+        `/api/projects/${projectId}/reports/${reportId}/comments/${comment.id}`,
+        {
+          method: "PATCH",
+          headers: { cookie },
+          body: JSON.stringify({ body: "Changed" }),
+        },
+      )
+      expect(status).toBe(403)
+    }
 
-    // Owner can edit any comment → 200
-    const { status: ownerStatus } = await apiFetch(
-      `/api/projects/${projectId}/reports/${reportId}/comments/${comment.id}`,
-      {
-        method: "PATCH",
-        headers: { cookie: ownerCookie },
-        body: JSON.stringify({ body: "Owner changed" }),
-      },
+    const [row] = await db.select().from(reportComments).where(eq(reportComments.id, comment.id))
+    expect(row?.body).toBe("Original body")
+  })
+
+  test("PATCH a GitHub-originated comment is forbidden for everyone", async () => {
+    const adminId = await createUser("admin-ghpatch@example.com", "admin")
+    const projectId = await seedProject({
+      name: "p",
+      publicKey: PK,
+      allowedOrigins: [ORIGIN],
+      createdBy: adminId,
+    })
+    const reportId = await seedLinkedReport(projectId)
+    const { cookie: ownerCookie } = await seedMember("gh-owner@example.com", projectId, "owner")
+    const adminCookie = await signIn("admin-ghpatch@example.com")
+
+    const [comment] = await db
+      .insert(reportComments)
+      .values({
+        reportId,
+        userId: null,
+        githubLogin: "octocat",
+        body: "From GitHub",
+        source: "github",
+        githubCommentId: 4242,
+      })
+      .returning()
+
+    for (const cookie of [ownerCookie, adminCookie]) {
+      // eslint-disable-next-line no-await-in-loop -- sequential requests keep the assertions readable
+      const { status } = await apiFetch(
+        `/api/projects/${projectId}/reports/${reportId}/comments/${comment.id}`,
+        {
+          method: "PATCH",
+          headers: { cookie },
+          body: JSON.stringify({ body: "Rewritten" }),
+        },
+      )
+      expect(status).toBe(403)
+    }
+
+    const [row] = await db.select().from(reportComments).where(eq(reportComments.id, comment.id))
+    expect(row?.body).toBe("From GitHub")
+  })
+
+  test("DELETE someone else's comment is forbidden for project owner and install admin", async () => {
+    const adminId = await createUser("admin-delperm@example.com", "admin")
+    const projectId = await seedProject({
+      name: "p",
+      publicKey: PK,
+      allowedOrigins: [ORIGIN],
+      createdBy: adminId,
+    })
+    const reportId = await seedReport(projectId)
+    const { userId: authorId, cookie: authorCookie } = await seedMember(
+      "del-author@example.com",
+      projectId,
+      "manager",
     )
-    expect(ownerStatus).toBe(200)
+    const { cookie: ownerCookie } = await seedMember("del-owner@example.com", projectId, "owner")
+    const adminCookie = await signIn("admin-delperm@example.com")
+
+    const [comment] = await db
+      .insert(reportComments)
+      .values({ reportId, userId: authorId, body: "Mine", source: "dashboard" })
+      .returning()
+
+    for (const cookie of [ownerCookie, adminCookie]) {
+      // eslint-disable-next-line no-await-in-loop -- sequential requests keep the assertions readable
+      const { status } = await apiFetch(
+        `/api/projects/${projectId}/reports/${reportId}/comments/${comment.id}`,
+        { method: "DELETE", headers: { cookie } },
+      )
+      expect(status).toBe(403)
+    }
+    const [kept] = await db.select().from(reportComments).where(eq(reportComments.id, comment.id))
+    expect(kept?.deletedAt).toBeNull()
+
+    // The author can still delete their own comment.
+    const { status: authorStatus } = await apiFetch(
+      `/api/projects/${projectId}/reports/${reportId}/comments/${comment.id}`,
+      { method: "DELETE", headers: { cookie: authorCookie } },
+    )
+    expect(authorStatus).toBe(204)
+  })
+
+  test("DELETE a GitHub-originated comment is forbidden for everyone", async () => {
+    const adminId = await createUser("admin-ghdel@example.com", "admin")
+    const projectId = await seedProject({
+      name: "p",
+      publicKey: PK,
+      allowedOrigins: [ORIGIN],
+      createdBy: adminId,
+    })
+    await seedGithubIntegration(projectId)
+    const reportId = await seedLinkedReport(projectId)
+    const { cookie: ownerCookie } = await seedMember("ghdel-owner@example.com", projectId, "owner")
+    const adminCookie = await signIn("admin-ghdel@example.com")
+
+    const [comment] = await db
+      .insert(reportComments)
+      .values({
+        reportId,
+        userId: null,
+        githubLogin: "octocat",
+        body: "From GitHub",
+        source: "github",
+        githubCommentId: 4343,
+      })
+      .returning()
+
+    for (const cookie of [ownerCookie, adminCookie]) {
+      // eslint-disable-next-line no-await-in-loop -- sequential requests keep the assertions readable
+      const { status } = await apiFetch(
+        `/api/projects/${projectId}/reports/${reportId}/comments/${comment.id}`,
+        { method: "DELETE", headers: { cookie } },
+      )
+      expect(status).toBe(403)
+    }
+
+    const [row] = await db.select().from(reportComments).where(eq(reportComments.id, comment.id))
+    expect(row?.deletedAt).toBeNull()
+    const jobs = await db.select().from(reportSyncJobs).where(eq(reportSyncJobs.reportId, reportId))
+    expect(jobs).toHaveLength(0)
   })
 
   test("DELETE soft-deletes and enqueues comment_delete for linked comments", async () => {

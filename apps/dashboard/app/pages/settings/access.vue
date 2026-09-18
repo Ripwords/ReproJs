@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import type { AppSettingsDTO } from "@reprojs/shared"
 
 definePageMeta({ middleware: "admin-only" })
@@ -74,7 +75,7 @@ async function save() {
   } catch (err) {
     toast.add({
       title: "Could not save access settings",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -95,7 +96,7 @@ function reset() {
     <header>
       <h1 class="text-2xl font-semibold text-default">Access</h1>
       <p class="text-sm text-muted mt-1">
-        Control who can sign up to this install. Changes take effect immediately.
+        Control who can sign in to this install. Changes take effect immediately.
       </p>
     </header>
 
@@ -111,8 +112,8 @@ function reset() {
             <div class="min-w-0">
               <h2 class="text-base font-semibold text-default">Sign-up gate</h2>
               <p class="mt-1 text-sm text-muted">
-                When enabled, a new user can only sign up if an admin has invited them
-                <em>or</em> their email domain is on the allowlist below.
+                When enabled, a new user can only sign up if an admin has invited them. People who
+                already have an account can still sign in.
               </p>
             </div>
             <USwitch v-model="signupGated" size="lg" />
@@ -120,22 +121,20 @@ function reset() {
         </template>
 
         <div class="space-y-2">
-          <UFormField
-            label="Allowed email domains"
-            :hint="signupGated ? 'Required when the gate is on' : 'Ignored while the gate is off'"
-          >
+          <UFormField label="Allowed email domains">
             <UTextarea
               v-model="domainsText"
               placeholder="acme.com&#10;example.org"
               :rows="5"
               class="w-full font-mono text-sm"
-              :disabled="!signupGated"
             />
           </UFormField>
 
           <p class="text-sm text-muted leading-relaxed">
-            One domain per line (or comma-separated). Users signing in with an email on any of these
-            domains can bypass the invite requirement. Leave blank to require invites for everyone.
+            One domain per line (or comma-separated). When the list isn't empty, only emails on
+            these domains can sign in or be invited, whether or not the sign-up gate is on. People
+            already on another domain are refused at their next sign-in. Leave blank to allow any
+            domain.
           </p>
 
           <div v-if="invalidDomains.length > 0" class="flex items-start gap-2 text-sm text-error">

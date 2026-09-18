@@ -15,7 +15,7 @@ import { createUser, truncateDomain } from "../helpers"
 await setup({ server: true, port: 3000, host: "localhost" })
 setDefaultTimeout(30000)
 
-const BASE_URL = "http://localhost:3000"
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 const MAX = 5
 
 // Each test picks a unique IP. better-auth's rate-limit key is `ip|path`, and
@@ -157,11 +157,22 @@ describe("auth rate limiting (H2)", () => {
     // else.
     expect(statuses.every((s) => s !== 429)).toBe(true)
 
+    // Still blocked before the handler runs, but a person clicking a link
+    // from their inbox lands on the sign-in page with the reason, not on a
+    // raw `{"message":"Too many requests…"}` JSON body.
     const blocked = await fetch(
       `${BASE_URL}/api/auth/magic-link/verify?token=bogusN&callbackURL=/`,
       { headers: { "X-Forwarded-For": ip }, redirect: "manual" },
     )
-    expect(blocked.status).toBe(429)
+    expect(blocked.status).toBe(302)
+    const location = new URL(blocked.headers.get("location") ?? "", BASE_URL)
+    expect(location.pathname).toBe("/auth/sign-in")
+    expect(location.searchParams.get("error")).toBe("rate_limited")
+  })
+
+  test("the sign-in page explains rate_limited", async () => {
+    const html = await (await fetch(`${BASE_URL}/auth/sign-in?error=rate_limited`)).text()
+    expect(html).toContain("Too many sign-in attempts")
   })
 
   test("OAuth /callback/* is NOT rate-limited", async () => {

@@ -1,6 +1,6 @@
 <!-- apps/dashboard/app/components/report-drawer/replay-tab.vue -->
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from "vue"
+import { computed, ref, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 // Side-effect import injects rrweb-player's stylesheet at build time. A
 // dynamic `await import("rrweb-player/dist/style.css")` does NOT reliably
 // inject the CSS in Vite/Nuxt — the module resolves but the bundler may
@@ -16,8 +16,6 @@ const props = defineProps<{
 }>()
 
 const playerHost = ref<HTMLDivElement | null>(null)
-const status = ref<"idle" | "loading" | "ready" | "error" | "missing">("idle")
-const errorMessage = ref<string | null>(null)
 const isFullscreen = ref(false)
 let player: unknown = null
 
@@ -68,52 +66,73 @@ async function onFullscreenChange() {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  if (e.key !== "Escape" || !isFullscreen.value) return
+  // Esc belongs to the fullscreen view: mark it handled so the report page
+  // (listening on window, after this document listener) doesn't also
+  // navigate back to the inbox.
+  e.preventDefault()
   // Handle ESC when we entered via CSS-only fullscreen (native request
   // rejected) — `fullscreenchange` won't fire in that case.
-  if (e.key === "Escape" && isFullscreen.value && !document.fullscreenElement) {
-    void toggleFullscreen()
+  if (!document.fullscreenElement) void toggleFullscreen()
+}
+
+type ReplayEvent = { type: number; data: unknown; timestamp: number }
+
+// The replay is a gzipped rrweb event log that can run to megabytes, so it is
+// fetched lazily on the client only (never during SSR or into the payload)
+// and decoded inside the handler so `events` holds parsed events. Nuxt drops
+// the entry when this tab unmounts, so reopening the tab refetches, as the
+// old onMounted fetch did.
+const { data: events, error: fetchError } = useLazyAsyncData(
+  `replay-${props.projectId}-${props.reportId}`,
+  async (): Promise<ReplayEvent[]> => {
+    const gzipped = await $fetch<ArrayBuffer>(
+      `/api/projects/${props.projectId}/reports/${props.reportId}/attachment?kind=replay`,
+      { credentials: "include", responseType: "arrayBuffer" },
+    )
+    const stream = new Blob([gzipped]).stream().pipeThrough(new DecompressionStream("gzip"))
+    return JSON.parse(await new Response(stream).text()) as ReplayEvent[]
+  },
+  { server: false, immediate: props.hasReplay },
+)
+
+const playerError = ref<string | null>(null)
+const playerReady = ref(false)
+
+const status = computed<"loading" | "ready" | "error" | "missing">(() => {
+  if (!props.hasReplay || fetchError.value?.statusCode === 404) return "missing"
+  if (fetchError.value || playerError.value) return "error"
+  if (playerReady.value) return "ready"
+  return "loading"
+})
+const errorMessage = computed(
+  () => playerError.value ?? describeApiError(fetchError.value, "Could not load the replay."),
+)
+
+async function mountPlayer(list: ReplayEvent[], host: HTMLDivElement) {
+  try {
+    const { default: Player } = await import("rrweb-player")
+    player = new Player({
+      target: host,
+      props: { events: list, autoPlay: false, showController: true },
+    })
+    playerReady.value = true
+  } catch (err) {
+    playerError.value = describeApiError(err, "The replay player failed to start.")
   }
 }
 
-onMounted(async () => {
-  if (!props.hasReplay) {
-    status.value = "missing"
-    return
-  }
-  status.value = "loading"
-  try {
-    const url = `/api/projects/${props.projectId}/reports/${props.reportId}/attachment?kind=replay`
-    let gzipped: ArrayBuffer
-    try {
-      gzipped = await $fetch<ArrayBuffer>(url, {
-        credentials: "include",
-        responseType: "arrayBuffer",
-      })
-    } catch (err) {
-      const s =
-        (err as { statusCode?: number; status?: number }).statusCode ??
-        (err as { status?: number }).status
-      if (s === 404) {
-        status.value = "missing"
-        return
-      }
-      throw err
-    }
-    const ds = new DecompressionStream("gzip")
-    const stream = new Blob([gzipped]).stream().pipeThrough(ds)
-    const text = await new Response(stream).text()
-    const events = JSON.parse(text) as Array<{ type: number; data: unknown; timestamp: number }>
-    if (!playerHost.value) return
-    const { default: Player } = await import("rrweb-player")
-    player = new Player({
-      target: playerHost.value,
-      props: { events, autoPlay: false, showController: true },
-    })
-    status.value = "ready"
-  } catch (err) {
-    status.value = "error"
-    errorMessage.value = err instanceof Error ? err.message : "unknown error"
-  }
+// Mount once both the decoded events and the host element exist.
+watch(
+  [events, playerHost],
+  ([list, host]) => {
+    if (player || !list || !host) return
+    void mountPlayer(list, host)
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
   document.addEventListener("fullscreenchange", onFullscreenChange)
   document.addEventListener("keydown", onKeydown)
 })

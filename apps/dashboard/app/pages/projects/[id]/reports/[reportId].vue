@@ -67,24 +67,29 @@ type TabId =
   | "raw"
 const activeTab = ref<TabId>("overview")
 
-// Logs attachment is lazy-loaded when a tab that needs it is opened. Matches
-// the drawer's behaviour so the Console/Network bundles aren't fetched up-front
-// for reports the reviewer never drills into.
-const logs = ref<LogsAttachment | null>(null)
-const logsLoaded = ref(false)
-async function ensureLogs() {
-  if (logsLoaded.value) return
-  logsLoaded.value = true
-  const res = await $fetch<LogsAttachment>(
-    `/api/projects/${projectId.value}/reports/${reportId.value}/attachment?kind=logs`,
-    { credentials: "include" },
-  ).catch(() => null)
-  logs.value = res ?? null
-}
+// Logs attachment is lazy-loaded when a tab that needs it is opened, so the
+// Console/Network bundles aren't fetched up-front for reports the reviewer
+// never drills into.
+const {
+  state: logsState,
+  ensure: ensureLogs,
+  retry: retryLogs,
+  reset: resetLogs,
+} = useReportLogs({
+  url: () => `/api/projects/${projectId.value}/reports/${reportId.value}/attachment?kind=logs`,
+  hasLogs: () => (report.value?.attachments ?? []).some((a) => a.kind === "logs"),
+  fetcher: (url) => $fetch<LogsAttachment>(url, { credentials: "include" }),
+})
+const needsLogs = (t: TabId) => t === "console" || t === "network"
 watch(activeTab, (t) => {
-  if (t === "console" || t === "network") ensureLogs()
+  if (needsLogs(t)) void ensureLogs()
+})
+watch(reportId, () => {
+  resetLogs()
+  if (needsLogs(activeTab.value)) void ensureLogs()
 })
 
+const logs = computed(() => (logsState.value.kind === "ready" ? logsState.value.logs : null))
 const consoleHasData = computed(
   () => logs.value !== null && (logs.value.console.length > 0 || logs.value.breadcrumbs.length > 0),
 )
@@ -97,7 +102,7 @@ const userFileCount = computed(
 )
 
 const tabs = computed(() => {
-  const base: { id: string; label: string; hasData?: boolean }[] = [
+  const base: { id: TabId; label: string; hasData?: boolean }[] = [
     { id: "overview", label: "Overview" },
     { id: "console", label: "Console", hasData: consoleHasData.value },
     { id: "network", label: "Network", hasData: networkHasData.value },
@@ -149,27 +154,25 @@ useReportStream(
 
 const triageOpen = ref(false)
 
-// Keyboard shortcuts: 1-8 jump to each tab; Esc navigates back to the inbox.
+// Keyboard shortcuts: 1-9 then 0 jump to the tabs in the order they are
+// rendered; Esc navigates back to the inbox.
 function onKey(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null
   const tag = target?.tagName.toLowerCase() ?? ""
   if (tag === "input" || tag === "textarea" || target?.isContentEditable) return
+  // Leave Cmd/Ctrl/Alt+digit to the browser (switching browser tabs).
+  if (e.metaKey || e.ctrlKey || e.altKey) return
 
   if (e.key === "Escape") {
+    // Close the innermost open thing first. Popovers, menus and dialogs are
+    // reka-ui dismissable layers (still in the DOM while this runs, whichever
+    // listener fires first); the replay's fullscreen view marks the event
+    // handled.
+    if (e.defaultPrevented || document.querySelector("[data-dismissable-layer]")) return
     navigateTo(`/projects/${projectId.value}/reports`)
     return
   }
-  const map: Record<string, TabId> = {
-    "1": "overview",
-    "2": "console",
-    "3": "network",
-    "4": "replay",
-    "5": "activity",
-    "6": "cookies",
-    "7": "system",
-    "8": "raw",
-  }
-  const next = map[e.key]
+  const next = tabForShortcut(tabs.value, e.key)
   if (next) activeTab.value = next
 }
 onMounted(() => window.addEventListener("keydown", onKey))
@@ -179,10 +182,16 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
 </script>
 
 <template>
-  <div v-if="pending" class="p-6">
+  <!-- Skeleton on first load only. `pending` is also true during refresh(),
+       which runs after every triage save and live update; swapping the
+       content out then would unmount every tab (replay restarts, comment
+       drafts and the issue-creation poll are lost). -->
+  <div v-if="pending && !report" class="p-6">
     <AppLoadingSkeleton variant="card" />
   </div>
-  <div v-else-if="error || !report" class="p-6">
+  <!-- A failed background refresh keeps the report on screen; only a
+       report we never loaded, or one that is now gone, shows the error. -->
+  <div v-else-if="!report || error?.statusCode === 404" class="p-6">
     <AppErrorState
       title="Report not found"
       message="It may have been deleted, or you may not have access."
@@ -249,8 +258,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
           :can-comment="canEdit"
           @select-tab="(t) => (activeTab = t)"
         />
-        <ConsoleTab v-else-if="activeTab === 'console'" :logs="logs" />
-        <NetworkTab v-else-if="activeTab === 'network'" :logs="logs" />
+        <ConsoleTab v-else-if="activeTab === 'console'" :state="logsState" @retry="retryLogs" />
+        <NetworkTab v-else-if="activeTab === 'network'" :state="logsState" @retry="retryLogs" />
         <ReplayTab
           v-else-if="activeTab === 'replay'"
           :key="report.id"

@@ -8,6 +8,7 @@
      already linked to an issue. Status/priority/tags/labels always
      render. -->
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import type {
   GithubConfigDTO,
   ReportDetailDTO,
@@ -106,7 +107,7 @@ async function createIssue() {
     if (syncAbort.signal.aborted) return
     toast.add({
       title: "Could not create GitHub issue",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -127,7 +128,7 @@ async function unlink() {
   } catch (err) {
     toast.add({
       title: "Could not unlink",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -153,7 +154,7 @@ async function patch(body: Record<string, unknown>) {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

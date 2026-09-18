@@ -8,14 +8,13 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useRoute } from "vue-router"
-import type { ProjectDTO } from "@reprojs/shared"
 
 const route = useRoute()
 const { openPalette } = useCommandPalette()
 
-// Piggybacks on the same `/api/projects` request as the sidebar + palette —
-// Nuxt's useFetch dedupes by URL, so no extra round-trip.
-const { data } = await useApi<ProjectDTO[]>("/api/projects", { default: () => [] })
+// Shared projects-list cache (same key as the sidebar, palette and
+// projects page), so a rename shows here without a reload.
+const { data } = await useProjectsList()
 
 const currentProjectId = computed(() => {
   const m = /^\/projects\/([^/]+)/.exec(route.path)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
 import type {
@@ -63,7 +64,7 @@ async function sendInvite() {
   } catch (err) {
     toast.add({
       title: "Could not send invite",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -84,7 +85,7 @@ async function updateRole(userId: string, next: ProjectRole) {
   } catch (err) {
     toast.add({
       title: "Could not update role",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -102,7 +103,7 @@ async function removeMember(userId: string) {
   } catch (err) {
     toast.add({
       title: "Could not remove member",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -120,7 +121,7 @@ async function resendInvite(id: string) {
   } catch (err) {
     toast.add({
       title: "Could not resend",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -145,7 +146,7 @@ async function revokeInvite(id: string) {
   } catch (err) {
     toast.add({
       title: "Could not revoke",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
