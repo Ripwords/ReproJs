@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue"
-import type { ProjectDTO, ProjectRole, SharedMediaDTO } from "@reprojs/shared"
+import type { ProjectDTO, SharedMediaDTO } from "@reprojs/shared"
 import { PROJECTS_LIST_KEY } from "~/composables/useApi"
 import ConfirmDeleteDialog from "~/components/common/confirm-delete-dialog.vue"
+import { hasProjectRole } from "~/utils/project-role"
 
 const route = useRoute()
 const router = useRouter()
@@ -26,11 +27,7 @@ const isOwner = computed(() => project.value?.effectiveRole === "owner")
 // requireProjectRole(event, id, "manager") in the shared-media routes);
 // the enable toggle and retention input stay owner-gated below since they
 // PATCH the project itself.
-const ROLE_RANK: Record<ProjectRole, number> = { viewer: 1, manager: 2, developer: 3, owner: 4 }
-const canManageSharing = computed(() => {
-  const role = project.value?.effectiveRole
-  return !!role && ROLE_RANK[role] >= ROLE_RANK.manager
-})
+const canManageSharing = computed(() => hasProjectRole(project.value?.effectiveRole, "manager"))
 
 // Local form state — seeded from the fetched project.
 const generalForm = ref({

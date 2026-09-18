@@ -14,6 +14,9 @@ interface Props {
   reportId: string
   /** Hide the section title strip — the embedding card already provides one. */
   hideHeader?: boolean
+  /** Posting, editing and deleting comments is manager+ on the server;
+   *  viewers get a read-only thread. */
+  canComment: boolean
 }
 const props = defineProps<Props>()
 
@@ -222,17 +225,36 @@ async function submitEdit(commentId: string) {
 }
 
 // ---- delete ----
+const toast = useToast()
+const { confirm } = useConfirm()
 const deleteLoading = ref<string | null>(null)
-async function deleteComment(commentId: string) {
-  deleteLoading.value = commentId
+async function deleteComment(comment: CommentDTO) {
+  const ok = await confirm({
+    title: "Delete comment?",
+    description:
+      comment.githubCommentId !== null
+        ? "This comment is synced to GitHub and will be deleted there too. This cannot be undone."
+        : "This cannot be undone.",
+    confirmLabel: "Delete",
+    confirmColor: "error",
+    icon: "i-heroicons-trash",
+  })
+  if (!ok) return
+  deleteLoading.value = comment.id
   try {
     await $fetch(
-      `/api/projects/${props.projectId}/reports/${props.reportId}/comments/${commentId}`,
+      `/api/projects/${props.projectId}/reports/${props.reportId}/comments/${comment.id}`,
       { method: "DELETE", credentials: "include" },
     )
     await refresh()
-  } catch {
-    // Silent — user can retry
+  } catch (e: unknown) {
+    const err = e as { statusMessage?: string; message?: string }
+    toast.add({
+      title: "Could not delete comment",
+      description: err.statusMessage ?? err.message,
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
   } finally {
     deleteLoading.value = null
   }
@@ -294,7 +316,7 @@ function relTime(iso: string | Date): string {
     <!-- Bubble list. Empty-state copy sits inside the same vertical rhythm. -->
     <div class="px-5 py-4 space-y-4 text-sm">
       <p v-if="!data?.items?.length" class="text-muted text-center py-8">
-        No comments yet — start the conversation below.
+        {{ canComment ? "No comments yet — start the conversation below." : "No comments yet." }}
       </p>
 
       <div
@@ -371,7 +393,7 @@ function relTime(iso: string | Date): string {
               ]"
             >
               <span>{{ relTime(comment.createdAt) }}</span>
-              <template v-if="isOwn(comment)">
+              <template v-if="canComment && isOwn(comment)">
                 <button
                   type="button"
                   class="hover:text-default transition-colors"
@@ -383,7 +405,7 @@ function relTime(iso: string | Date): string {
                   type="button"
                   class="hover:text-error transition-colors"
                   :disabled="deleteLoading === comment.id"
-                  @click="deleteComment(comment.id)"
+                  @click="deleteComment(comment)"
                 >
                   {{ deleteLoading === comment.id ? "Deleting…" : "Delete" }}
                 </button>
@@ -399,7 +421,10 @@ function relTime(iso: string | Date): string {
          server returns), so the typed body stays clean and the user
          actually sees what they pasted. Markdown image syntax is only
          spliced in at submit time. -->
-    <div class="px-5 py-3 border-t border-default">
+    <p v-if="!canComment" class="px-5 py-3 border-t border-default text-sm text-muted">
+      Viewers can read comments but not post them.
+    </p>
+    <div v-else class="px-5 py-3 border-t border-default">
       <label class="sr-only" for="comment-composer">Add a comment</label>
 
       <!-- Attachment thumbnail strip -->

@@ -95,7 +95,16 @@ Then `GITHUB_APP_PRIVATE_KEY=/secrets/github-app.pem`.
 
 ### Installing the App on a repo
 
-Once the app is set up (either path), open the dashboard → Project settings → **GitHub**. Click **Install**. GitHub walks you through picking the repo to install on. The dashboard receives the installation via webhook and saves it to the project's config.
+Once the app is set up (either path), open the project in the dashboard → **Integrations** → **GitHub Issues**. Click **Install on GitHub**. GitHub walks you through picking the repo to install on. The dashboard receives the installation via webhook and saves it to the project's config.
+
+Who can change the project's GitHub connection:
+
+- **Owner** (and install admins): install, pick the repository, save default labels / assignees and the sync toggles, disconnect.
+- **Developer** and above: **Retry failed** (re-queues every failed sync job), and create new labels on the repo from a report's **Labels** picker.
+- **Manager** and above: retry a single failed report, and apply existing labels.
+- **Viewer**: read-only.
+
+Everyone on the project can see the panel. Controls your role can't use are shown disabled with a note saying which role they need.
 
 ### Troubleshooting
 

@@ -27,6 +27,8 @@ interface Props {
   projectId: string
   report: ReportSummaryDTO
   canEdit: boolean
+  /** Creating a new label on the linked repo is developer+ on the server. */
+  canCreateLabels: boolean
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{ patched: [] }>()
@@ -349,6 +351,7 @@ const priorityDotClass = computed<string>(() => {
             :project-id="projectId"
             :model-value="report.tags"
             :disabled="!canEdit || posting"
+            :can-create="canCreateLabels"
             @update:model-value="patch({ tags: $event })"
           />
         </template>

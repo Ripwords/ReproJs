@@ -3,6 +3,10 @@ import type { GithubConfigDTO } from "@reprojs/shared"
 
 interface Props {
   projectId: string
+  /** Bulk retry (retry-failed.post) is developer+ on the server. */
+  canRetryAll: boolean
+  /** Single-report retry (reports/:id/github-sync.post) is manager+. */
+  canRetryOne: boolean
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{ retried: [] }>()
@@ -114,8 +118,12 @@ function relativeTime(iso: string): string {
       size="sm"
       block
       :loading="retryingAll"
+      :disabled="!canRetryAll"
       @click="retryAll"
     />
+    <p v-if="failedCount > 0 && !canRetryAll" class="text-sm text-muted">
+      Retrying all failed jobs needs the developer role or higher.
+    </p>
 
     <ul v-if="failedJobs.length > 0" class="space-y-1.5">
       <li
@@ -139,6 +147,7 @@ function relativeTime(iso: string): string {
           variant="outline"
           size="xs"
           :loading="retryingOne === j.reportId"
+          :disabled="!canRetryOne"
           @click="retryOne(j.reportId)"
         />
       </li>
