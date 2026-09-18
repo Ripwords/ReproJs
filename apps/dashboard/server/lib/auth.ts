@@ -148,6 +148,8 @@ function signInErrorURL(baseURL: string, code: string): string {
 
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
+  // BETTER_AUTH_URL's origin is always trusted; these are the extras.
+  trustedOrigins: env.BETTER_AUTH_TRUSTED_ORIGINS,
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "pg" }),
   rateLimit: {
