@@ -98,6 +98,8 @@ Both apply to every sign-in method (magic link, GitHub, Google). An invite for a
 
 **The last admin.** You can't disable or demote the last *active* install admin, so the install always has someone who can manage it. Disabled admins don't count. To hand over, promote the new admin first.
 
+**Changing roles.** Picking a new role in a user's **Role** column asks you to confirm before it takes effect. Promoting someone to **admin** warns that admins are treated as the owner of every project. Demoting yourself warns that you'll lose the admin pages immediately and only another admin can restore them. Project roles work the same way on a project's **Members** page, which only project owners can change. Other members see the same list with the controls disabled and a note saying so.
+
 ## Scaling
 
 A single-container Repro comfortably handles small / medium teams — thousands of reports, tens of simultaneous admin users. Beyond that:
