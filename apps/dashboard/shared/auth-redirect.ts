@@ -65,6 +65,16 @@ export function safeNextPath(next: unknown, fallback: string = DEFAULT_POST_SIGN
 }
 
 /**
+ * The sign-in URL that returns the browser to `next` once it has a session.
+ * `next` is the only destination param the sign-in page reads; build every
+ * "send them to sign in, then back here" link through this.
+ */
+export function signInPathFor(next: string): string {
+  const safe = safeNextPath(next, "")
+  return safe ? `${SIGN_IN_PATH}?${new URLSearchParams({ next: safe })}` : SIGN_IN_PATH
+}
+
+/**
  * Error codes that can reach the sign-in page as `?error=<code>`.
  *
  *  - snake_case lowercase — our own workspace gates in `server/lib/auth.ts`
