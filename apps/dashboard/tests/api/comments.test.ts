@@ -23,6 +23,7 @@ await setup({ server: true, port: 3000, host: "localhost" })
 
 setDefaultTimeout(60000)
 
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 const PK = "rp_pk_COMMENTS0000000000000000"
 const ORIGIN = "http://localhost:4000"
 
@@ -373,6 +374,53 @@ describe("comments API", () => {
     // The job should be deleted (not replaced with a delete job)
     const jobs = await db.select().from(reportSyncJobs).where(eq(reportSyncJobs.reportId, reportId))
     expect(jobs).toHaveLength(0)
+  })
+
+  test("upload-image matches comment posting: manager may upload, viewer may not", async () => {
+    const adminId = await createUser("admin-upload@example.com", "admin")
+    const projectId = await seedProject({
+      name: "p",
+      publicKey: PK,
+      allowedOrigins: [ORIGIN],
+      createdBy: adminId,
+    })
+    const reportId = await seedReport(projectId)
+    const { cookie: managerCookie } = await seedMember(
+      "upload-manager@example.com",
+      projectId,
+      "manager",
+    )
+    const { cookie: viewerCookie } = await seedMember(
+      "upload-viewer@example.com",
+      projectId,
+      "viewer",
+    )
+
+    // 1×1 transparent PNG. apiFetch JSON-encodes bodies, so multipart goes
+    // through fetch directly.
+    const png = Uint8Array.from(
+      atob(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      ),
+      (c) => c.charCodeAt(0),
+    )
+    const upload = (cookie: string) => {
+      const form = new FormData()
+      form.append("file", new Blob([png], { type: "image/png" }), "pasted.png")
+      return fetch(
+        `${BASE_URL}/api/projects/${projectId}/reports/${reportId}/comments/upload-image`,
+        { method: "POST", headers: { cookie }, body: form },
+      )
+    }
+
+    const managerRes = await upload(managerCookie)
+    expect(managerRes.status).toBe(200)
+    const managerBody = (await managerRes.json()) as { url: string; contentType: string }
+    expect(managerBody.contentType).toBe("image/png")
+    expect(managerBody.url).toContain("/comments/uploads/")
+
+    const viewerRes = await upload(viewerCookie)
+    expect(viewerRes.status).toBe(403)
   })
 
   test("GET returns comments after creation", async () => {
