@@ -1,12 +1,12 @@
 import { count, eq, sql } from "drizzle-orm"
-import { betterAuth } from "better-auth"
+import { betterAuth, type GenericEndpointContext } from "better-auth"
 import { APIError, createAuthMiddleware } from "better-auth/api"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { magicLink } from "better-auth/plugins/magic-link"
 import { jwt } from "better-auth/plugins/jwt"
 import { oauthProvider } from "@better-auth/oauth-provider"
 import { db } from "../db"
-import { pinMagicLinkRedirects } from "../../shared/auth-redirect"
+import { pinMagicLinkRedirects, SIGN_IN_PATH } from "../../shared/auth-redirect"
 import { appSettings, session, user } from "../db/schema"
 import { env, getAuthRateLimitEnabled } from "./env"
 import { renderTemplate } from "./render-template"
@@ -110,6 +110,43 @@ async function bootstrapFirstUserAsAdmin(userId: string): Promise<void> {
   })
 }
 
+/**
+ * Refuse a brand-new user row so the browser ends up on
+ * `/auth/sign-in?error=<code>` whichever sign-in path created it.
+ *
+ * The two paths handle a throw from `create.before` differently:
+ *
+ *  - Magic-link verify lets an APIError propagate, and better-auth passes a
+ *    redirect (`APIError("FOUND")`) straight through as a 302 — so we
+ *    redirect to the sign-in page ourselves.
+ *  - The OAuth callback wraps user creation in handleOAuthUserInfo
+ *    (oauth2/link-account), which catches any APIError and returns
+ *    `{ error: e.message }`; the callback then redirects to the client's
+ *    `errorCallbackURL` with `?error=<message>`. A redirect's message is
+ *    empty, so `if (result.error)` was falsy and the callback crashed with a
+ *    bare 500 destructuring `result.data` (null). Throwing an APIError whose
+ *    message IS the code lets better-auth do the redirect — the sign-in page
+ *    passes `/auth/sign-in` as errorCallbackURL.
+ *
+ * Without an endpoint ctx (programmatic auth.api.createUser) the plain
+ * APIError is the clearest refusal.
+ */
+function rejectSignup(
+  ctx: GenericEndpointContext | null,
+  code: "domain_not_allowed" | "not_invited",
+): never {
+  if (!ctx || ctx.path.startsWith("/callback/")) {
+    throw new APIError("FORBIDDEN", { message: code })
+  }
+  throw ctx.redirect(signInErrorURL(ctx.context.baseURL, code))
+}
+
+function signInErrorURL(baseURL: string, code: string): string {
+  const url = new URL(SIGN_IN_PATH, baseURL)
+  url.searchParams.set("error", code)
+  return url.toString()
+}
+
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
@@ -210,14 +247,9 @@ export const auth = betterAuth({
         // Signup gate. Fires ONLY when a brand-new user row is about to be
         // inserted — which means neither an existing account nor a pre-seeded
         // `invited` row matched the email (better-auth resolves those via
-        // findUserByEmail before ever calling create). We redirect to the
-        // sign-in page with ?error=not_invited to match the domain-gate UX;
-        // ctx.redirect throws an APIError(FOUND) internally, which better-
-        // auth's error pipeline passes through as a 302 (see api/index.mjs
-        // onError — it explicitly lets `FOUND` errors propagate untouched).
-        // Fallback to a plain APIError when ctx is missing (non-endpoint
-        // caller, e.g. programmatic auth.api.createUser) so callers still
-        // get a clear refusal.
+        // findUserByEmail before ever calling create). See rejectSignup for
+        // how each sign-in path turns the refusal into
+        // /auth/sign-in?error=<code>.
         before: async (newUser, ctx) => {
           // Domain allowlist: a new sign-up from an off-allowlist domain
           // is rejected at insert time so no orphan user row is ever
@@ -225,12 +257,7 @@ export const auth = betterAuth({
           // handled in the after-hook (see revokeJustCreatedSession).
           const emailLower = newUser.email.toLowerCase()
           if (!(await isEmailDomainAllowed(emailLower))) {
-            if (!ctx) throw new APIError("FORBIDDEN", { message: "domain_not_allowed" })
-            const url = new URL(
-              "/auth/sign-in?error=domain_not_allowed",
-              ctx.context.baseURL,
-            ).toString()
-            throw ctx.redirect(url)
+            rejectSignup(ctx, "domain_not_allowed")
           }
 
           // Signup gate. loadAppSettings throws if the settings row is
@@ -238,9 +265,7 @@ export const auth = betterAuth({
           // let the create proceed.
           const settings = await loadAppSettings()
           if (!settings.signupGated) return { data: newUser }
-          if (!ctx) throw new APIError("FORBIDDEN", { message: "not_invited" })
-          const url = new URL("/auth/sign-in?error=not_invited", ctx.context.baseURL).toString()
-          throw ctx.redirect(url)
+          rejectSignup(ctx, "not_invited")
         },
         // First-user bootstrap lives here (not in the auth after-hook) so
         // we have an unambiguous "brand-new row just inserted" signal
