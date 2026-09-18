@@ -4,6 +4,7 @@ import {
   pinMagicLinkRedirects,
   safeNextPath,
   SIGN_IN_PATH,
+  signInFailureMessage,
   signInPathFor,
 } from "../../shared/auth-redirect"
 
@@ -202,5 +203,25 @@ describe("signInPathFor", () => {
   test("drops a destination the sign-in page would refuse anyway", () => {
     expect(signInPathFor("//evil.com")).toBe(SIGN_IN_PATH)
     expect(signInPathFor("/api/intake/reports")).toBe(SIGN_IN_PATH)
+  })
+})
+
+describe("signInFailureMessage", () => {
+  test("a rate-limited attempt says so instead of failing silently", () => {
+    // better-auth's client resolves (never throws) with `{ error }` on a
+    // 429, and its message is often empty.
+    const msg = signInFailureMessage({ status: 429, statusText: "Too Many Requests" })
+    expect(msg).toMatch(/too many sign-in attempts/i)
+  })
+
+  test("uses the server's message when there is one", () => {
+    expect(
+      signInFailureMessage({ status: 400, statusText: "", message: "Provider not found" }),
+    ).toBe("Provider not found")
+  })
+
+  test("falls back to the status line, then to generic copy", () => {
+    expect(signInFailureMessage({ status: 502, statusText: "Bad Gateway" })).toBe("Bad Gateway")
+    expect(signInFailureMessage({ status: 0, statusText: "" })).toMatch(/try again/i)
   })
 })

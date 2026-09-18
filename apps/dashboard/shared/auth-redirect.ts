@@ -164,6 +164,26 @@ export function authErrorMessage(code: unknown): string | null {
 }
 
 /**
+ * Copy for a sign-in request the better-auth client rejected before any
+ * redirect happened (sending a magic link, starting an OAuth round trip).
+ *
+ * The client resolves with `{ error }` rather than throwing, and a 429 from
+ * the auth rate limiter usually carries no message — so without this the
+ * button just did nothing. 429 gets its own copy because the usual cause is
+ * several people behind one office IP sharing the per-IP cap.
+ */
+export function signInFailureMessage(error: {
+  status: number
+  statusText: string
+  message?: string
+}): string {
+  if (error.status === 429) {
+    return "Too many sign-in attempts from your network. Wait a few minutes, then try again."
+  }
+  return error.message || error.statusText || "Something went wrong. Try again in a moment."
+}
+
+/**
  * The redirect targets every minted magic link must carry, whatever the
  * client asked for.
  *
