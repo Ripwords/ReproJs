@@ -9,6 +9,7 @@
      select we POST /labels to create it in the linked GitHub repo, refetch
      the list, and append it to the current selection. -->
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import type { GithubRepoLabelListDTO } from "@reprojs/shared"
 
 const props = defineProps<{
@@ -92,7 +93,7 @@ async function createLabel(name: string) {
   } catch (err) {
     toast.add({
       title: "Could not create label",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

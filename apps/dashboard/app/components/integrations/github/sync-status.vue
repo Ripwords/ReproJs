@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import RelativeTime from "~/components/common/relative-time.vue"
 import type { GithubConfigDTO } from "@reprojs/shared"
 
@@ -43,7 +44,7 @@ async function retryAll() {
   } catch (err) {
     toast.add({
       title: "Could not retry",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -69,7 +70,7 @@ async function retryOne(reportId: string) {
   } catch (err) {
     toast.add({
       title: "Retry failed",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

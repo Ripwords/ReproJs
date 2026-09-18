@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import type { InvitationDetailDTO } from "@reprojs/shared"
 import { signInPathFor } from "~~/shared/auth-redirect"
 
@@ -95,7 +96,7 @@ async function decline() {
   } catch (err: unknown) {
     toast.add({
       title: "Could not decline",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
     })
   } finally {

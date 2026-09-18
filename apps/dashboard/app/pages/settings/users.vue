@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import PageHeader from "~/components/common/page-header.vue"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { h, resolveComponent } from "vue"
@@ -56,7 +57,7 @@ async function sendInvite() {
   } catch (err) {
     toast.add({
       title: "Could not send invite",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -85,7 +86,7 @@ async function updateRole(userId: string, next: InstallRole) {
   } catch (err) {
     toast.add({
       title: "Could not update role",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -108,7 +109,7 @@ async function setStatus(userId: string, status: UserStatus) {
   } catch (err) {
     toast.add({
       title: status === "disabled" ? "Could not disable user" : "Could not reactivate user",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

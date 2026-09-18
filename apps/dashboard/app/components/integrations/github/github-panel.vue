@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import type { GithubConfigDTO, ProjectDTO } from "@reprojs/shared"
 import { hasProjectRole } from "~/utils/project-role"
 import RepoPicker from "./repo-picker.vue"
@@ -79,7 +80,7 @@ async function startInstall() {
     installing.value = false
     toast.add({
       title: "Could not start install flow",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -116,7 +117,7 @@ async function saveRepo() {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
