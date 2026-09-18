@@ -80,7 +80,9 @@ type ReplayEvent = { type: number; data: unknown; timestamp: number }
 
 // The replay is a gzipped rrweb event log that can run to megabytes, so it is
 // fetched lazily on the client only (never during SSR or into the payload)
-// and decoded inside the handler so the cache holds parsed events.
+// and decoded inside the handler so `events` holds parsed events. Nuxt drops
+// the entry when this tab unmounts, so reopening the tab refetches, as the
+// old onMounted fetch did.
 const { data: events, error: fetchError } = useLazyAsyncData(
   `replay-${props.projectId}-${props.reportId}`,
   async (): Promise<ReplayEvent[]> => {
