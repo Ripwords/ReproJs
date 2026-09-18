@@ -11,12 +11,13 @@ beforeAll(async () => {
   })
 })
 
-let lastDomOptions: { filter?: (node: Node) => boolean } | undefined
+type DomOptions = { filter?: (node: Node) => boolean; features?: unknown }
+let lastDomOptions: DomOptions | undefined
 let domToBlobCalls = 0
 let displayDuringDomCapture: string | null = null
 
 mock.module("modern-screenshot", () => ({
-  domToBlob: async (_node: Node, options?: { filter?: (node: Node) => boolean }) => {
+  domToBlob: async (_node: Node, options?: DomOptions) => {
     domToBlobCalls += 1
     lastDomOptions = options
     const host = document.getElementById("repro-host") as HTMLElement | null
@@ -88,6 +89,14 @@ describe("capture (DOM path)", () => {
 
     host.remove()
     unrelated.remove()
+  })
+
+  test("offsets the clone by the page's scroll position", async () => {
+    // modern-screenshot draws the clone from the document's top-left unless
+    // restoreScrollPosition is on — the only feature it leaves off by default.
+    // Without it a scrolled reporter always gets the first screenful.
+    await capture({ method: "dom" })
+    expect(lastDomOptions?.features).toEqual({ restoreScrollPosition: true })
   })
 
   test("filter excludes <nextjs-portal> by default", async () => {
