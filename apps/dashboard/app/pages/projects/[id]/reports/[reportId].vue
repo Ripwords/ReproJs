@@ -180,10 +180,16 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
 </script>
 
 <template>
-  <div v-if="pending" class="p-6">
+  <!-- Skeleton on first load only. `pending` is also true during refresh(),
+       which runs after every triage save and live update; swapping the
+       content out then would unmount every tab (replay restarts, comment
+       drafts and the issue-creation poll are lost). -->
+  <div v-if="pending && !report" class="p-6">
     <AppLoadingSkeleton variant="card" />
   </div>
-  <div v-else-if="error || !report" class="p-6">
+  <!-- A failed background refresh keeps the report on screen; only a
+       report we never loaded, or one that is now gone, shows the error. -->
+  <div v-else-if="!report || error?.statusCode === 404" class="p-6">
     <AppErrorState
       title="Report not found"
       message="It may have been deleted, or you may not have access."
