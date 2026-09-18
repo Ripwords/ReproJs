@@ -14,7 +14,6 @@
 <script setup lang="ts">
 import { computed, watch } from "vue"
 import { useRoute } from "vue-router"
-import type { ProjectDTO } from "@reprojs/shared"
 
 const route = useRoute()
 const { isAdmin } = useSession()
@@ -31,11 +30,9 @@ const lastProjectId = useCookie<string | null>("last-project-id", {
   default: () => null,
 })
 
-// Piggybacks on the same `/api/projects` request as the project-switcher —
-// Nuxt's useFetch dedupes by URL, so this doesn't add a round-trip.
-const { data: projectsData } = await useApi<ProjectDTO[]>("/api/projects", {
-  default: () => [],
-})
+// Shared projects-list cache (same key as the switcher, palette and
+// projects page), so it's one request and stays current after edits.
+const { data: projectsData } = await useProjectsList()
 
 // Pending invitations count for the badge. Kept deliberately cheap — the
 // endpoint returns a small list and we only display the count in the

@@ -52,11 +52,15 @@ export function resolveAssigneeFilter(
 export type SortKey = "newest" | "oldest" | "priority" | "updated"
 
 export function buildSortClause(sort: string): SQL[] {
+  // `reports.id` is the final key for every sort so rows that tie on the
+  // leading keys (e.g. a batch sharing one `created_at`) keep a stable order
+  // across LIMIT/OFFSET pages instead of repeating or skipping rows.
+  const tieBreak = desc(reports.id)
   switch (sort) {
     case "oldest":
-      return [asc(reports.createdAt)]
+      return [asc(reports.createdAt), tieBreak]
     case "updated":
-      return [desc(reports.updatedAt)]
+      return [desc(reports.updatedAt), tieBreak]
     case "priority":
       return [
         sql`case ${reports.priority}
@@ -66,9 +70,10 @@ export function buildSortClause(sort: string): SQL[] {
               when 'low' then 3
             end asc`,
         desc(reports.createdAt),
+        tieBreak,
       ]
     case "newest":
     default:
-      return [desc(reports.createdAt)]
+      return [desc(reports.createdAt), tieBreak]
   }
 }

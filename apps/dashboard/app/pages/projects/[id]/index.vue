@@ -2,9 +2,12 @@
 import type { ProjectDTO, ProjectOverviewDTO, ReportSummaryDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
 import { priorityColor, relativeTime } from "~/composables/use-report-format"
+import { installLinkFor } from "~/utils/install-link"
 
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
+const { isAdmin } = useSession()
+const installLink = computed(() => installLinkFor(isAdmin.value, projectId.value))
 
 const { data: project } = await useApi<ProjectDTO>(`/api/projects/${projectId.value}`)
 
@@ -235,8 +238,8 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
       icon="i-heroicons-code-bracket"
       title="Install the SDK to start receiving reports"
       description="Add a single <script> tag to your site or npm-install @reprojs/core."
-      action-label="View install instructions"
-      action-to="/settings/install"
+      :action-label="installLink.label"
+      :action-to="installLink.to"
     />
   </div>
 </template>

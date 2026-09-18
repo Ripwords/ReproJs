@@ -56,24 +56,25 @@ describe("resolveAssigneeFilter", () => {
 })
 
 describe("buildSortClause", () => {
-  test("newest → one expression", () => {
+  // Every sort ends with an id tie-break so offset pagination is stable.
+  test("newest → created_at + id tiebreak", () => {
     const out = buildSortClause("newest")
-    expect(out.length).toBe(1)
-  })
-  test("oldest → one expression", () => {
-    const out = buildSortClause("oldest")
-    expect(out.length).toBe(1)
-  })
-  test("updated → one expression", () => {
-    const out = buildSortClause("updated")
-    expect(out.length).toBe(1)
-  })
-  test("priority → CASE + created_at tiebreak (2 expressions)", () => {
-    const out = buildSortClause("priority")
     expect(out.length).toBe(2)
   })
-  test("unknown key defaults to newest (one expression)", () => {
+  test("oldest → created_at + id tiebreak", () => {
+    const out = buildSortClause("oldest")
+    expect(out.length).toBe(2)
+  })
+  test("updated → updated_at + id tiebreak", () => {
+    const out = buildSortClause("updated")
+    expect(out.length).toBe(2)
+  })
+  test("priority → CASE + created_at + id tiebreak (3 expressions)", () => {
+    const out = buildSortClause("priority")
+    expect(out.length).toBe(3)
+  })
+  test("unknown key defaults to newest", () => {
     const out = buildSortClause("garbage")
-    expect(out.length).toBe(1)
+    expect(out.length).toBe(2)
   })
 })

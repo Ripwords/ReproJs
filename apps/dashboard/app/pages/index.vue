@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import type { ProjectDTO } from "@reprojs/shared"
-import { PROJECTS_LIST_KEY } from "~/composables/useApi"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
 
 useHead({ title: "Projects" })
@@ -26,14 +26,7 @@ onMounted(() => {
     router.replace({ query: {} })
   }
 })
-const {
-  data: projects,
-  pending,
-  refresh,
-} = await useApi<ProjectDTO[]>("/api/projects", {
-  key: PROJECTS_LIST_KEY,
-  default: () => [],
-})
+const { data: projects, pending, refresh } = await useProjectsList()
 
 const list = computed(() => projects.value ?? [])
 
@@ -66,7 +59,7 @@ async function createProject() {
   } catch (err) {
     toast.add({
       title: "Could not create project",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

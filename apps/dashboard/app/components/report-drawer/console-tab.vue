@@ -1,16 +1,20 @@
 <!-- apps/dashboard/app/components/report-drawer/console-tab.vue -->
 <script setup lang="ts">
-import type { LogsAttachment } from "@reprojs/shared"
+import AppErrorState from "~/components/common/app-error-state.vue"
+import type { ReportLogsState } from "~/composables/use-report-logs"
 
-const props = defineProps<{ logs: LogsAttachment | null }>()
+const props = defineProps<{ state: ReportLogsState }>()
+defineEmits<{ retry: [] }>()
+
+const logs = computed(() => (props.state.kind === "ready" ? props.state.logs : null))
 
 const levels = reactive({ log: true, info: true, warn: true, error: true, debug: true })
 const query = ref("")
 
 const filtered = computed(() => {
-  if (!props.logs) return []
+  if (!logs.value) return []
   const q = query.value.toLowerCase()
-  return props.logs.console.filter(
+  return logs.value.console.filter(
     (e) => levels[e.level] && (q === "" || e.args.some((a) => a.toLowerCase().includes(q))),
   )
 })
@@ -34,7 +38,13 @@ function toggle(i: number) {
 </script>
 
 <template>
-  <div v-if="!logs" class="p-5 text-sm text-muted">Loading…</div>
+  <div v-if="state.kind === 'error'" class="p-5">
+    <AppErrorState title="Couldn't load logs" :message="state.message" @retry="$emit('retry')" />
+  </div>
+  <div v-else-if="state.kind === 'missing'" class="p-5 text-sm text-muted">
+    No logs were captured for this report.
+  </div>
+  <div v-else-if="!logs" class="p-5 text-sm text-muted">Loading…</div>
   <div
     v-else-if="logs.console.length === 0 && logs.breadcrumbs.length === 0"
     class="p-5 text-sm text-muted"
