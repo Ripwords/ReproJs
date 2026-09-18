@@ -97,6 +97,49 @@ describe("users API", () => {
     expect(row).toBeUndefined()
   })
 
+  test("reactivating an invitee who never signed in puts them back to invited", async () => {
+    await createUser("admin@example.com", "admin")
+    const cookie = await signIn("admin@example.com")
+    const invite = await apiFetch<UserDTO>("/api/users", {
+      method: "POST",
+      headers: { cookie },
+      body: JSON.stringify({ email: "pending@example.com", role: "member" }),
+    })
+    const inviteeId = (invite.body as UserDTO).id
+
+    await apiFetch(`/api/users/${inviteeId}`, {
+      method: "PATCH",
+      headers: { cookie },
+      body: JSON.stringify({ status: "disabled" }),
+    })
+    const reactivated = await apiFetch<UserDTO>(`/api/users/${inviteeId}`, {
+      method: "PATCH",
+      headers: { cookie },
+      body: JSON.stringify({ status: "active" }),
+    })
+    expect(reactivated.status).toBe(200)
+    expect((reactivated.body as UserDTO).status).toBe("invited")
+  })
+
+  test("reactivating a user who has signed in before makes them active", async () => {
+    await createUser("admin@example.com", "admin")
+    const memberId = await createUser("member@example.com", "member")
+    await signIn("member@example.com")
+    const cookie = await signIn("admin@example.com")
+
+    await apiFetch(`/api/users/${memberId}`, {
+      method: "PATCH",
+      headers: { cookie },
+      body: JSON.stringify({ status: "disabled" }),
+    })
+    const reactivated = await apiFetch<UserDTO>(`/api/users/${memberId}`, {
+      method: "PATCH",
+      headers: { cookie },
+      body: JSON.stringify({ status: "active" }),
+    })
+    expect((reactivated.body as UserDTO).status).toBe("active")
+  })
+
   test("a disabled admin does not count toward the last-admin guard", async () => {
     // A disabled admin can't sign in, so demoting or disabling the only
     // *active* admin locks everyone out of user management.

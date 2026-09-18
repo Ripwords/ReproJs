@@ -2,7 +2,7 @@ import { createError, defineEventHandler, getRouterParam, readValidatedBody } fr
 import { and, count, eq, sql } from "drizzle-orm"
 import { UpdateUserInput } from "@reprojs/shared"
 import { db } from "../../../db"
-import { user } from "../../../db/schema"
+import { account, user } from "../../../db/schema"
 import { requireInstallAdmin } from "../../../lib/permissions"
 import { endSessionsOfDisabledUser } from "../../../lib/session-ended"
 
@@ -26,7 +26,19 @@ export default defineEventHandler(async (event) => {
     if (!target) return { outcome: "not_found" as const }
 
     const nextRole = body.role ?? target.role
-    const nextStatus = body.status ?? target.status
+    let nextStatus = body.status ?? target.status
+    // "Reactivate" on someone who was disabled before ever signing in must
+    // put them back to "invited", not "active": the invite is still pending,
+    // and the users table should keep saying so. Signing in at least once
+    // leaves a verified email (magic link) or a linked provider (OAuth).
+    if (target.status === "disabled" && nextStatus === "active" && !target.emailVerified) {
+      const [linked] = await tx
+        .select({ id: account.id })
+        .from(account)
+        .where(eq(account.userId, id))
+        .limit(1)
+      if (!linked) nextStatus = "invited"
+    }
     // Only an active admin can sign in and run the install. A disabled or
     // never-signed-in admin doesn't count, or demoting the one admin who can
     // still sign in would lock everyone out of user management.
