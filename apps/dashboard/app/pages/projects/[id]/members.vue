@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
@@ -173,17 +174,6 @@ function roleColor(role: string): "primary" | "neutral" | "warning" | "success" 
   return "neutral"
 }
 
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-
 function initials(name: string | null, email: string): string {
   const base = name?.trim() || email
   return base.slice(0, 2).toUpperCase()
@@ -238,7 +228,9 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
     accessorKey: "joinedAt",
     header: "Joined",
     cell: ({ row }) =>
-      h("span", { class: "text-sm text-muted" }, relativeTime(row.original.joinedAt)),
+      h("span", { class: "text-sm text-muted" }, [
+        h(RelativeTime, { value: row.original.joinedAt }),
+      ]),
   },
   {
     id: "actions",
@@ -310,8 +302,8 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
           <div>
             <div class="text-sm font-medium">{{ inv.email }}</div>
             <div class="text-sm text-muted">
-              Invited as {{ inv.role }} · expires
-              {{ new Date(inv.expiresAt).toLocaleDateString() }}
+              Invited as {{ inv.role }} ·
+              <RelativeTime :value="inv.expiresAt" prefix="expires" />
             </div>
           </div>
           <div class="flex gap-2">

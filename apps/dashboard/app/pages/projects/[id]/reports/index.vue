@@ -11,12 +11,12 @@ import BulkActionBar from "~/components/inbox/bulk-action-bar.vue"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
 import { INBOX_PAGE_SIZE, useInboxQuery } from "~/composables/use-inbox-query"
 import { useKeyboardShortcuts } from "~/composables/useKeyboardShortcuts"
-import { priorityColor, relativeTime } from "~/composables/use-report-format"
+import { priorityColor } from "~/composables/use-report-format"
+import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
 
 const UCheckbox = resolveComponent("UCheckbox")
 const UBadge = resolveComponent("UBadge")
-const UTooltip = resolveComponent("UTooltip")
 const UIcon = resolveComponent("UIcon")
 
 const route = useRoute()
@@ -227,7 +227,6 @@ useKeyboardShortcuts({
 })
 
 // ---- Columns ----
-const timeCompact = (iso: string) => relativeTime(iso, { compact: true })
 
 const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
   {
@@ -342,13 +341,9 @@ const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
     accessorKey: "receivedAt",
     header: "",
     cell: ({ row }) =>
-      h(UTooltip, { text: new Date(row.original.receivedAt).toLocaleString() }, () =>
-        h(
-          "span",
-          { class: "text-sm text-muted whitespace-nowrap" },
-          timeCompact(row.original.receivedAt),
-        ),
-      ),
+      h("span", { class: "text-sm text-muted whitespace-nowrap" }, [
+        h(RelativeTime, { value: row.original.receivedAt, compact: true }),
+      ]),
   },
 ])
 

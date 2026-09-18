@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
 import type { InstallRole, UserDTO, UserStatus } from "@reprojs/shared"
@@ -125,17 +126,6 @@ function statusColor(status: UserStatus): "success" | "neutral" | "warning" {
   return "neutral"
 }
 
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-
 function initials(name: string | null, email: string): string {
   const base = name?.trim() || email
   return base.slice(0, 2).toUpperCase()
@@ -196,7 +186,9 @@ const columns = computed<TableColumn<UserDTO>[]>(() => [
     accessorKey: "createdAt",
     header: "Joined",
     cell: ({ row }) =>
-      h("span", { class: "text-sm text-muted" }, relativeTime(row.original.createdAt)),
+      h("span", { class: "text-sm text-muted" }, [
+        h(RelativeTime, { value: row.original.createdAt }),
+      ]),
   },
   {
     id: "actions",

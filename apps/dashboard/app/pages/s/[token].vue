@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import { clampPlayback } from "~/utils/clamp-playback"
 
 // Public share page — no dashboard chrome, no session fetch. Reachable by
@@ -71,9 +72,8 @@ function clampToTrim() {
       />
       <footer class="flex flex-col items-center gap-1 text-center text-sm text-white/50">
         <span
-          >Shared via Repro &middot; expires
-          {{ new Date(meta.expiresAt).toLocaleDateString() }}</span
-        >
+          >Shared via Repro &middot; <RelativeTime :value="meta.expiresAt" prefix="expires"
+        /></span>
         <span v-if="meta.trimStartMs != null || meta.trimEndMs != null">
           Trimmed view — the raw file keeps full length
         </span>

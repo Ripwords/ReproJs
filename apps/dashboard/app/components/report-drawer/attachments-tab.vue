@@ -1,5 +1,6 @@
 <!-- apps/dashboard/app/components/report-drawer/attachments-tab.vue -->
 <script setup lang="ts">
+import { formatRelative } from "~/utils/date-format"
 import type { AttachmentDTO } from "@reprojs/shared"
 import TrimVideo from "~/components/report-drawer/trim-video.vue"
 
@@ -31,18 +32,6 @@ function truncate(name: string, max = 40): string {
   return `${head}…${tail}`
 }
 
-function relativeTime(iso: string | null): string {
-  if (!iso) return ""
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000))
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.round(hours / 24)
-  return `${days}d ago`
-}
-
 interface ScanBadge {
   status: "clean" | "unknown"
   label: string
@@ -54,7 +43,7 @@ function scanBadge(file: AttachmentDTO): ScanBadge {
   if (file.scanStatus === "clean") {
     const engine = file.scanEngine ?? "AV"
     const duration = file.scanDurationMs != null ? `${file.scanDurationMs}ms` : ""
-    const when = relativeTime(file.scannedAt)
+    const when = formatRelative(file.scannedAt)
     const detailParts = [engine, duration, when].filter((p) => p.length > 0)
     return {
       status: "clean",

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import type { GithubConfigDTO } from "@reprojs/shared"
 
 interface Props {
@@ -76,17 +77,6 @@ async function retryOne(reportId: string) {
     retryingOne.value = null
   }
 }
-
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime()
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s ago`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
 </script>
 
 <template>
@@ -104,7 +94,7 @@ function relativeTime(iso: string): string {
       <div class="p-4 rounded-lg border border-default bg-default">
         <div class="text-sm font-semibold uppercase tracking-[0.14em] text-muted">Last sync</div>
         <div class="mt-1 text-base font-semibold text-default">
-          {{ lastSyncedAt ? relativeTime(lastSyncedAt) : "—" }}
+          <RelativeTime :value="lastSyncedAt" />
         </div>
       </div>
     </div>
@@ -138,7 +128,7 @@ function relativeTime(iso: string): string {
           </div>
           <div class="mt-1 text-sm text-muted tabular-nums">
             {{ j.attempts }} attempt{{ j.attempts === 1 ? "" : "s" }} ·
-            {{ relativeTime(j.updatedAt) }}
+            <RelativeTime :value="j.updatedAt" />
           </div>
         </div>
         <UButton

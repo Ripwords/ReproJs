@@ -2,7 +2,8 @@
 import { Orientation } from "@unovis/ts"
 import type { AdminOverviewDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
-import { priorityColor, relativeTime } from "~/composables/use-report-format"
+import { priorityColor } from "~/composables/use-report-format"
+import RelativeTime from "~/components/common/relative-time.vue"
 
 definePageMeta({ middleware: "admin-only" })
 useHead({ title: "Admin overview" })
@@ -266,7 +267,7 @@ function describeEvent(e: AdminOverviewDTO["recentEvents"][number]): string {
               />
               <span class="flex-1 min-w-0 truncate text-default">{{ r.title }}</span>
               <span class="text-sm text-muted whitespace-nowrap tabular-nums">
-                {{ relativeTime(r.receivedAt) }}
+                <RelativeTime :value="r.receivedAt" />
               </span>
             </NuxtLink>
           </li>
@@ -296,7 +297,7 @@ function describeEvent(e: AdminOverviewDTO["recentEvents"][number]): string {
               <span>&nbsp;</span>
               <span class="text-muted">{{ describeEvent(e) }}</span>
               <div class="mt-0.5 text-sm text-muted tabular-nums">
-                {{ relativeTime(e.createdAt) }}
+                <RelativeTime :value="e.createdAt" />
               </div>
             </div>
           </li>

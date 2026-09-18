@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import { computed, ref } from "vue"
 
@@ -241,9 +242,9 @@ async function copy(text: string): Promise<void> {
           <div class="space-y-1 min-w-0">
             <div class="font-medium text-default text-sm">{{ c.clientName }}</div>
             <div class="text-xs text-muted">
-              Connected {{ new Date(c.connectedAt).toLocaleDateString() }}
+              Connected <RelativeTime :value="c.connectedAt" />
               <span v-if="c.lastUsedAt">
-                &middot; last used {{ new Date(c.lastUsedAt).toLocaleString() }}
+                &middot; last used <RelativeTime :value="c.lastUsedAt" />
               </span>
             </div>
             <div class="text-xs text-muted">

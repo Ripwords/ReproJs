@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import type { AppSettingsDTO } from "@reprojs/shared"
 
@@ -153,7 +154,7 @@ function reset() {
         <template #footer>
           <div class="flex items-center justify-between gap-3">
             <span class="text-sm text-muted">
-              Last updated {{ new Date(settings.updatedAt).toLocaleString() }}
+              Last updated <RelativeTime :value="settings.updatedAt" />
             </span>
             <div class="flex gap-2">
               <UButton

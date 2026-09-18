@@ -1,5 +1,6 @@
 <!-- apps/dashboard/app/components/report-drawer/activity-tab.vue -->
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import type { ReportEventDTO, ReportSummaryDTO } from "@reprojs/shared"
 
 interface Props {
@@ -42,16 +43,6 @@ function summary(e: ReportEventDTO): string {
       return e.kind
   }
 }
-function relTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime()
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s ago`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
 function actorLabel(e: ReportEventDTO): string {
   return e.actor?.name ?? e.actor?.email ?? "System"
 }
@@ -72,7 +63,7 @@ function actorInitials(e: ReportEventDTO): string {
             <span>&nbsp;</span>
             <span class="text-muted">{{ summary(e) }}</span>
           </div>
-          <div class="text-sm text-muted mt-0.5">{{ relTime(e.createdAt) }}</div>
+          <div class="text-sm text-muted mt-0.5"><RelativeTime :value="e.createdAt" /></div>
         </div>
       </li>
     </ul>

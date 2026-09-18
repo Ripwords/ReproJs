@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import { ref, computed, watch } from "vue"
 import type { ProjectDTO, SharedMediaDTO } from "@reprojs/shared"
@@ -465,13 +466,13 @@ async function confirmDelete() {
           :ui="{ td: 'text-sm', th: 'text-sm font-medium text-muted uppercase' }"
         >
           <template #createdAt-cell="{ row }">
-            {{ new Date(row.original.createdAt).toLocaleString() }}
+            <RelativeTime :value="row.original.createdAt" />
           </template>
           <template #sizeBytes-cell="{ row }">
             {{ formatBytes(row.original.sizeBytes) }}
           </template>
           <template #expiresAt-cell="{ row }">
-            {{ new Date(row.original.expiresAt).toLocaleString() }}
+            <RelativeTime :value="row.original.expiresAt" />
           </template>
           <template #status-cell="{ row }">
             <UBadge :color="statusColor(mediaStatus(row.original))" variant="subtle" size="sm">
