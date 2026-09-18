@@ -66,11 +66,14 @@ async function onFullscreenChange() {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  if (e.key !== "Escape" || !isFullscreen.value) return
+  // Esc belongs to the fullscreen view: mark it handled so the report page
+  // (listening on window, after this document listener) doesn't also
+  // navigate back to the inbox.
+  e.preventDefault()
   // Handle ESC when we entered via CSS-only fullscreen (native request
   // rejected) — `fullscreenchange` won't fire in that case.
-  if (e.key === "Escape" && isFullscreen.value && !document.fullscreenElement) {
-    void toggleFullscreen()
-  }
+  if (!document.fullscreenElement) void toggleFullscreen()
 }
 
 type ReplayEvent = { type: number; data: unknown; timestamp: number }

@@ -160,6 +160,11 @@ function onKey(e: KeyboardEvent) {
   if (e.metaKey || e.ctrlKey || e.altKey) return
 
   if (e.key === "Escape") {
+    // Close the innermost open thing first. Popovers, menus and dialogs are
+    // reka-ui dismissable layers (still in the DOM while this runs, whichever
+    // listener fires first); the replay's fullscreen view marks the event
+    // handled.
+    if (e.defaultPrevented || document.querySelector("[data-dismissable-layer]")) return
     navigateTo(`/projects/${projectId.value}/reports`)
     return
   }
