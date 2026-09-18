@@ -98,7 +98,7 @@ const userFileCount = computed(
 )
 
 const tabs = computed(() => {
-  const base: { id: string; label: string; hasData?: boolean }[] = [
+  const base: { id: TabId; label: string; hasData?: boolean }[] = [
     { id: "overview", label: "Overview" },
     { id: "console", label: "Console", hasData: consoleHasData.value },
     { id: "network", label: "Network", hasData: networkHasData.value },
@@ -150,27 +150,20 @@ useReportStream(
 
 const triageOpen = ref(false)
 
-// Keyboard shortcuts: 1-8 jump to each tab; Esc navigates back to the inbox.
+// Keyboard shortcuts: 1-9 then 0 jump to the tabs in the order they are
+// rendered; Esc navigates back to the inbox.
 function onKey(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null
   const tag = target?.tagName.toLowerCase() ?? ""
   if (tag === "input" || tag === "textarea" || target?.isContentEditable) return
+  // Leave Cmd/Ctrl/Alt+digit to the browser (switching browser tabs).
+  if (e.metaKey || e.ctrlKey || e.altKey) return
 
   if (e.key === "Escape") {
     navigateTo(`/projects/${projectId.value}/reports`)
     return
   }
-  const map: Record<string, TabId> = {
-    "1": "overview",
-    "2": "console",
-    "3": "network",
-    "4": "replay",
-    "5": "activity",
-    "6": "cookies",
-    "7": "system",
-    "8": "raw",
-  }
-  const next = map[e.key]
+  const next = tabForShortcut(tabs.value, e.key)
   if (next) activeTab.value = next
 }
 onMounted(() => window.addEventListener("keydown", onKey))
