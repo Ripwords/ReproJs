@@ -225,17 +225,36 @@ async function submitEdit(commentId: string) {
 }
 
 // ---- delete ----
+const toast = useToast()
+const { confirm } = useConfirm()
 const deleteLoading = ref<string | null>(null)
-async function deleteComment(commentId: string) {
-  deleteLoading.value = commentId
+async function deleteComment(comment: CommentDTO) {
+  const ok = await confirm({
+    title: "Delete comment?",
+    description:
+      comment.githubCommentId !== null
+        ? "This comment is synced to GitHub and will be deleted there too. This cannot be undone."
+        : "This cannot be undone.",
+    confirmLabel: "Delete",
+    confirmColor: "error",
+    icon: "i-heroicons-trash",
+  })
+  if (!ok) return
+  deleteLoading.value = comment.id
   try {
     await $fetch(
-      `/api/projects/${props.projectId}/reports/${props.reportId}/comments/${commentId}`,
+      `/api/projects/${props.projectId}/reports/${props.reportId}/comments/${comment.id}`,
       { method: "DELETE", credentials: "include" },
     )
     await refresh()
-  } catch {
-    // Silent — user can retry
+  } catch (e: unknown) {
+    const err = e as { statusMessage?: string; message?: string }
+    toast.add({
+      title: "Could not delete comment",
+      description: err.statusMessage ?? err.message,
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
   } finally {
     deleteLoading.value = null
   }
@@ -386,7 +405,7 @@ function relTime(iso: string | Date): string {
                   type="button"
                   class="hover:text-error transition-colors"
                   :disabled="deleteLoading === comment.id"
-                  @click="deleteComment(comment.id)"
+                  @click="deleteComment(comment)"
                 >
                   {{ deleteLoading === comment.id ? "Deleting…" : "Delete" }}
                 </button>
