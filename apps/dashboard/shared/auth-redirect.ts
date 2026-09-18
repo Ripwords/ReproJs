@@ -65,6 +65,16 @@ export function safeNextPath(next: unknown, fallback: string = DEFAULT_POST_SIGN
 }
 
 /**
+ * The sign-in URL that returns the browser to `next` once it has a session.
+ * `next` is the only destination param the sign-in page reads; build every
+ * "send them to sign in, then back here" link through this.
+ */
+export function signInPathFor(next: string): string {
+  const safe = safeNextPath(next, "")
+  return safe ? `${SIGN_IN_PATH}?${new URLSearchParams({ next: safe })}` : SIGN_IN_PATH
+}
+
+/**
  * Error codes that can reach the sign-in page as `?error=<code>`.
  *
  *  - snake_case lowercase — our own workspace gates in `server/lib/auth.ts`
@@ -84,6 +94,11 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
   // Workspace gates — server/lib/auth.ts
   domain_not_allowed: "Your email domain isn't allowed on this workspace.",
   not_invited: "Sign-up is invite-only. Ask an admin to invite you first.",
+  account_disabled:
+    "Your account has been disabled, so you were signed out. Ask a workspace admin to re-enable it.",
+  // Auth rate limiter on /magic-link/verify — server/api/auth/[...].ts
+  rate_limited:
+    "Too many sign-in attempts from your network. Wait a few minutes, then request a fresh link.",
 
   // better-auth magic-link verify
   INVALID_TOKEN: "That sign-in link is no longer valid. Request a fresh one below.",
@@ -149,6 +164,26 @@ export function authErrorMessage(code: unknown): string | null {
   const known = AUTH_ERROR_MESSAGES[code]
   if (known) return known
   return ERROR_CODE_RE.test(code) ? `Sign-in was rejected (${code}).` : "Sign-in was rejected."
+}
+
+/**
+ * Copy for a sign-in request the better-auth client rejected before any
+ * redirect happened (sending a magic link, starting an OAuth round trip).
+ *
+ * The client resolves with `{ error }` rather than throwing, and a 429 from
+ * the auth rate limiter usually carries no message — so without this the
+ * button just did nothing. 429 gets its own copy because the usual cause is
+ * several people behind one office IP sharing the per-IP cap.
+ */
+export function signInFailureMessage(error: {
+  status: number
+  statusText: string
+  message?: string
+}): string {
+  if (error.status === 429) {
+    return "Too many sign-in attempts from your network. Wait a few minutes, then try again."
+  }
+  return error.message || error.statusText || "Something went wrong. Try again in a moment."
 }
 
 /**

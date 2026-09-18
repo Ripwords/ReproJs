@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { parseTrustedOrigins } from "./trusted-origins"
 
 // ---------------------------------------------------------------------------
 // Zod-validated env singleton.
@@ -26,6 +27,19 @@ const Schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
   BETTER_AUTH_SECRET: z.string().min(1),
+  // Extra origins (comma-separated) better-auth accepts besides
+  // BETTER_AUTH_URL — for installs reachable on more than one hostname.
+  BETTER_AUTH_TRUSTED_ORIGINS: z
+    .string()
+    .optional()
+    .transform((raw, ctx) => {
+      try {
+        return parseTrustedOrigins(raw)
+      } catch (err) {
+        ctx.addIssue({ code: "custom", message: err instanceof Error ? err.message : String(err) })
+        return z.NEVER
+      }
+    }),
   DATABASE_URL: z.string().min(1),
   ATTACHMENT_URL_SECRET: z.string().min(1),
   // Base64-encoded 32-byte key used by `encryptedText` columns (AES-256-GCM

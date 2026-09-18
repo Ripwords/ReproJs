@@ -9,6 +9,14 @@
  */
 const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 
+// server/lib/env.ts parses once per process, and bun runs every test file in
+// one process. tests/api/oauth-signup-gate.test.ts drives an in-process
+// better-auth with a stubbed GitHub provider, so the provider must be
+// configured before whichever file imports env.ts first. Only affects the
+// in-process auth instance, never the dev server under test.
+process.env.GITHUB_CLIENT_ID ||= "test-github-client-id"
+process.env.GITHUB_CLIENT_SECRET ||= "test-github-client-secret"
+
 async function checkServer(retries = 30, delayMs = 1000): Promise<void> {
   for (let i = 0; i < retries; i++) {
     try {

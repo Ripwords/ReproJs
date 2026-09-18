@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { AuthProviderStatus } from "~~/server/lib/auth-providers"
-import { authErrorMessage, safeNextPath, SIGN_IN_PATH } from "~~/shared/auth-redirect"
+import {
+  authErrorMessage,
+  safeNextPath,
+  SIGN_IN_PATH,
+  signInFailureMessage,
+} from "~~/shared/auth-redirect"
 
 definePageMeta({ layout: "auth" })
 useHead({ title: "Sign in" })
@@ -65,7 +70,7 @@ async function sendMagicLink() {
     if (err) {
       toast.add({
         title: "Could not send sign-in link",
-        description: err.message ?? undefined,
+        description: signInFailureMessage(err),
         color: "error",
         icon: "i-heroicons-exclamation-triangle",
       })
@@ -78,18 +83,31 @@ async function sendMagicLink() {
 }
 
 async function oauth(provider: "github" | "google") {
+  const title = `${provider === "github" ? "GitHub" : "Google"} sign-in failed`
   try {
     // Without errorCallbackURL a failed OAuth callback renders better-auth's
     // bare built-in error page at /api/auth/error; send it back to the
     // sign-in page so the reason lands next to the retry button.
-    await signIn.social({
+    //
+    // The client resolves with `{ error }` instead of throwing, so a
+    // rejected start (a 429 from the rate limiter, a misconfigured
+    // provider) must be read off the result or the button does nothing.
+    const { error: err } = await signIn.social({
       provider,
       callbackURL: nextPath.value,
       errorCallbackURL: SIGN_IN_PATH,
     })
+    if (err) {
+      toast.add({
+        title,
+        description: signInFailureMessage(err),
+        color: "error",
+        icon: "i-heroicons-exclamation-triangle",
+      })
+    }
   } catch (err) {
     toast.add({
-      title: `${provider === "github" ? "GitHub" : "Google"} sign-in failed`,
+      title,
       description: err instanceof Error ? err.message : undefined,
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
