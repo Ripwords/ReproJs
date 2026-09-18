@@ -1,10 +1,14 @@
 import { createError, defineEventHandler, getRouterParam, readValidatedBody } from "h3"
-import { count, eq } from "drizzle-orm"
+import { and, count, eq, sql } from "drizzle-orm"
 import { UpdateUserInput } from "@reprojs/shared"
 import { db } from "../../../db"
 import { user } from "../../../db/schema"
 import { requireInstallAdmin } from "../../../lib/permissions"
 import { endSessionsOfDisabledUser } from "../../../lib/session-ended"
+
+function isActiveAdmin(role: string | null, status: string | null): boolean {
+  return role === "admin" && status === "active"
+}
 
 export default defineEventHandler(async (event) => {
   await requireInstallAdmin(event)
@@ -12,41 +16,53 @@ export default defineEventHandler(async (event) => {
   if (!id) throw createError({ statusCode: 400, statusMessage: "missing id" })
   const body = await readValidatedBody(event, (b: unknown) => UpdateUserInput.parse(b))
 
-  const [target] = await db.select().from(user).where(eq(user.id, id))
-  if (!target) {
-    throw createError({ statusCode: 404, statusMessage: "User not found" })
-  }
+  const result = await db.transaction(async (tx) => {
+    // Serialize role/status changes install-wide so the last-admin guard
+    // can't be raced: two concurrent demotions would otherwise both count
+    // two admins and both commit. Released at commit/rollback.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('users:admins'))`)
 
-  // Last-admin guard: cannot demote the last admin or disable the last admin.
-  const wouldLoseAdmin =
-    (body.role === "member" && target.role === "admin") ||
-    (body.status === "disabled" && target.role === "admin" && target.status !== "disabled")
-  if (wouldLoseAdmin) {
-    const [countRow] = await db.select({ c: count() }).from(user).where(eq(user.role, "admin"))
-    const c = countRow?.c ?? 0
-    if (c <= 1) {
-      throw createError({
-        statusCode: 409,
-        statusMessage: "Cannot demote or disable the last admin",
-      })
+    const [target] = await tx.select().from(user).where(eq(user.id, id))
+    if (!target) return { outcome: "not_found" as const }
+
+    const nextRole = body.role ?? target.role
+    const nextStatus = body.status ?? target.status
+    // Only an active admin can sign in and run the install. A disabled or
+    // never-signed-in admin doesn't count, or demoting the one admin who can
+    // still sign in would lock everyone out of user management.
+    if (isActiveAdmin(target.role, target.status) && !isActiveAdmin(nextRole, nextStatus)) {
+      const [countRow] = await tx
+        .select({ c: count() })
+        .from(user)
+        .where(and(eq(user.role, "admin"), eq(user.status, "active")))
+      if ((countRow?.c ?? 0) <= 1) return { outcome: "last_admin" as const }
     }
-  }
 
-  const updates: Partial<typeof target> = {}
-  if (body.role !== undefined) updates.role = body.role
-  if (body.status !== undefined) updates.status = body.status
-
-  const updated = await db.transaction(async (tx) => {
-    const [row] = await tx.update(user).set(updates).where(eq(user.id, id)).returning()
+    const [row] = await tx
+      .update(user)
+      .set({ role: nextRole, status: nextStatus })
+      .where(eq(user.id, id))
+      .returning()
     // A disabled user must be signed out everywhere now, not when their
     // sessions happen to expire. requireSession already refuses them, but a
     // live session left them clicking through 403 toasts and "project not
     // found" redirects with no idea why.
     if (row && body.status === "disabled") await endSessionsOfDisabledUser(tx, id)
-    return row
+    return { outcome: "updated" as const, row }
   })
+
+  if (result.outcome === "not_found") {
+    throw createError({ statusCode: 404, statusMessage: "User not found" })
+  }
+  if (result.outcome === "last_admin") {
+    throw createError({
+      statusCode: 409,
+      statusMessage: "Cannot demote or disable the last active admin",
+    })
+  }
+  const updated = result.row
   if (!updated) {
-    throw createError({ statusCode: 500, statusMessage: "Insert failed" })
+    throw createError({ statusCode: 500, statusMessage: "Update failed" })
   }
 
   return {

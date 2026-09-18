@@ -97,6 +97,51 @@ describe("users API", () => {
     expect(row).toBeUndefined()
   })
 
+  test("a disabled admin does not count toward the last-admin guard", async () => {
+    // A disabled admin can't sign in, so demoting or disabling the only
+    // *active* admin locks everyone out of user management.
+    const activeId = await createUser("active-admin@example.com", "admin")
+    const disabledId = await createUser("disabled-admin@example.com", "admin")
+    await db.update(user).set({ status: "disabled" }).where(eq(user.id, disabledId))
+    const cookie = await signIn("active-admin@example.com")
+
+    const demote = await apiFetch(`/api/users/${activeId}`, {
+      method: "PATCH",
+      headers: { cookie },
+      body: JSON.stringify({ role: "member" }),
+    })
+    expect(demote.status).toBe(409)
+
+    const disable = await apiFetch(`/api/users/${activeId}`, {
+      method: "PATCH",
+      headers: { cookie },
+      body: JSON.stringify({ status: "disabled" }),
+    })
+    expect(disable.status).toBe(409)
+
+    const [row] = await db.select().from(user).where(eq(user.id, activeId))
+    expect(row?.role).toBe("admin")
+    expect(row?.status).toBe("active")
+  })
+
+  test("concurrent demotions of the last two admins leave one admin standing", async () => {
+    const aId = await createUser("a-admin@example.com", "admin")
+    const bId = await createUser("b-admin@example.com", "admin")
+    const cookie = await signIn("a-admin@example.com")
+
+    const demote = (id: string) =>
+      apiFetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { cookie },
+        body: JSON.stringify({ role: "member" }),
+      })
+    const results = await Promise.all([demote(aId), demote(bId)])
+    expect(results.map((r) => r.status).toSorted()).toEqual([200, 409])
+
+    const admins = await db.select().from(user).where(eq(user.role, "admin"))
+    expect(admins).toHaveLength(1)
+  })
+
   test("cannot demote the last admin", async () => {
     const adminId = await createUser("admin@example.com", "admin")
     const cookie = await signIn("admin@example.com")
