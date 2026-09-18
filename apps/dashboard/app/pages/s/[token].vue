@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatAbsolute, formatRelative } from "~/utils/date-format"
 import { clampPlayback } from "~/utils/clamp-playback"
 
 // Public share page — no dashboard chrome, no session fetch. Reachable by
@@ -71,8 +72,15 @@ function clampToTrim() {
       />
       <footer class="flex flex-col items-center gap-1 text-center text-sm text-white/50">
         <span
-          >Shared via Repro &middot; expires
-          {{ new Date(meta.expiresAt).toLocaleDateString() }}</span
+          >Shared via Repro &middot;
+          <!-- Native title, not RelativeTime: this page has no layout, so no
+               UApp and no tooltip provider for UTooltip to inject. -->
+          <time
+            :datetime="meta.expiresAt"
+            :title="formatAbsolute(meta.expiresAt)"
+            data-allow-mismatch="text"
+            >expires {{ formatRelative(meta.expiresAt) }}</time
+          ></span
         >
         <span v-if="meta.trimStartMs != null || meta.trimEndMs != null">
           Trimmed view — the raw file keeps full length

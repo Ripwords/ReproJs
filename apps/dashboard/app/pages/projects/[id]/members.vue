@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
+import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
@@ -8,6 +10,7 @@ import type {
   ProjectMemberDTO,
   ProjectRole,
 } from "@reprojs/shared"
+import { projectRoleChangeConfirm } from "~/utils/role-change-confirm"
 
 const UAvatar = resolveComponent("UAvatar")
 const USelectMenu = resolveComponent("USelectMenu")
@@ -18,6 +21,7 @@ const route = useRoute()
 const projectId = computed(() => String(route.params.id))
 const toast = useToast()
 const { confirm } = useConfirm()
+const { user: sessionUser, isAdmin } = useSession()
 
 const { data: project } = await useApi<ProjectDTO>(`/api/projects/${projectId.value}`)
 const {
@@ -71,6 +75,19 @@ async function sendInvite() {
   } finally {
     inviting.value = false
   }
+}
+
+async function confirmRoleChange(member: ProjectMemberDTO, next: ProjectRole) {
+  const ok = await confirm(
+    projectRoleChangeConfirm({
+      email: member.email,
+      to: next,
+      isSelf: member.userId === sessionUser.value?.id,
+      selfIsAdmin: isAdmin.value,
+    }),
+  )
+  if (!ok) return
+  await updateRole(member.userId, next)
 }
 
 async function updateRole(userId: string, next: ProjectRole) {
@@ -165,25 +182,6 @@ async function confirmRemove(member: ProjectMemberDTO) {
   void removeMember(member.userId)
 }
 
-function roleColor(role: string): "primary" | "neutral" | "warning" | "success" | "info" {
-  if (role === "owner") return "warning"
-  if (role === "developer") return "primary"
-  if (role === "manager") return "info"
-  if (role === "viewer") return "neutral"
-  return "neutral"
-}
-
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-
 function initials(name: string | null, email: string): string {
   const base = name?.trim() || email
   return base.slice(0, 2).toUpperCase()
@@ -213,32 +211,27 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
   {
     accessorKey: "role",
     header: "Role",
-    cell: ({ row }) => {
-      if (!isOwner.value) {
-        const UBadge = resolveComponent("UBadge")
-        return h(
-          UBadge,
-          { color: roleColor(row.original.role), variant: "subtle", size: "sm" },
-          () => row.original.role,
-        )
-      }
-      return h(USelectMenu, {
+    // Non-owners see the same control, disabled; the header note says why.
+    cell: ({ row }) =>
+      h(USelectMenu, {
         modelValue: roleOptions.find((o) => o.value === row.original.role),
         items: roleOptions,
         size: "xs",
+        disabled: !isOwner.value,
         "onUpdate:modelValue": (v: { label: string; value: ProjectRole }) => {
           if (v?.value && v.value !== row.original.role) {
-            void updateRole(row.original.userId, v.value)
+            void confirmRoleChange(row.original, v.value)
           }
         },
-      })
-    },
+      }),
   },
   {
     accessorKey: "joinedAt",
     header: "Joined",
     cell: ({ row }) =>
-      h("span", { class: "text-sm text-muted" }, relativeTime(row.original.joinedAt)),
+      h("span", { class: "text-sm text-muted" }, [
+        h(RelativeTime, { value: row.original.joinedAt }),
+      ]),
   },
   {
     id: "actions",
@@ -272,21 +265,20 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
 
 <template>
   <div class="space-y-6">
-    <header class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold text-default">
-          {{ project?.name ? `${project.name} — Members` : "Members" }}
-        </h1>
-        <p class="text-sm text-muted mt-1">People with access to this project</p>
-      </div>
-      <UButton
-        v-if="isOwner"
-        label="Invite member"
-        icon="i-heroicons-plus"
-        color="primary"
-        @click="inviteOpen = true"
-      />
-    </header>
+    <PageHeader eyebrow="Project" title="Members" description="People with access to this project.">
+      <template #actions>
+        <UButton
+          label="Invite member"
+          icon="i-heroicons-plus"
+          color="primary"
+          :disabled="!isOwner"
+          @click="inviteOpen = true"
+        />
+      </template>
+    </PageHeader>
+    <p v-if="project && !isOwner" class="-mt-3 text-sm text-muted">
+      Only project owners can invite or remove members and change roles.
+    </p>
 
     <UCard :ui="{ body: 'p-0' }">
       <UTable
@@ -310,8 +302,8 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
           <div>
             <div class="text-sm font-medium">{{ inv.email }}</div>
             <div class="text-sm text-muted">
-              Invited as {{ inv.role }} · expires
-              {{ new Date(inv.expiresAt).toLocaleDateString() }}
+              Invited as {{ inv.role }} ·
+              <RelativeTime :value="inv.expiresAt" prefix="expires" />
             </div>
           </div>
           <div class="flex gap-2">

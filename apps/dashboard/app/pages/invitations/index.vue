@@ -1,36 +1,16 @@
 <script setup lang="ts">
-import type { ProjectRole } from "@reprojs/shared"
-
-interface PendingInvitation {
-  token: string
-  projectId: string
-  projectName: string
-  role: ProjectRole
-  inviterName: string | null
-  inviterEmail: string | null
-  invitedAt: string
-  expiresAt: string
-}
+import RelativeTime from "~/components/common/relative-time.vue"
+import type { PendingInvitationDTO } from "@reprojs/shared"
 
 useHead({ title: "Pending invitations" })
 
-const { data, pending, refresh } = await useApi<PendingInvitation[]>("/api/invitations", {
+const { data, pending, refresh } = await useApi<PendingInvitationDTO[]>("/api/invitations", {
   default: () => [],
 })
 
 const invites = computed(() => data.value ?? [])
 
-function relativeTo(iso: string): string {
-  const then = new Date(iso).getTime()
-  const diffMs = then - Date.now()
-  const days = Math.round(diffMs / 86_400_000)
-  if (diffMs <= 0) return "expired"
-  if (days <= 0) return "less than a day left"
-  if (days === 1) return "1 day left"
-  return `${days} days left`
-}
-
-function inviterLabel(inv: PendingInvitation): string {
+function inviterLabel(inv: PendingInvitationDTO): string {
   return inv.inviterName || inv.inviterEmail || "Someone"
 }
 </script>
@@ -68,7 +48,7 @@ function inviterLabel(inv: PendingInvitation): string {
           <div class="text-sm text-muted mt-0.5">
             {{ inviterLabel(inv) }} invited you as
             <strong>{{ inv.role }}</strong>
-            · {{ relativeTo(inv.expiresAt) }}
+            · <RelativeTime :value="inv.expiresAt" prefix="expires" />
           </div>
         </div>
         <div class="flex gap-2 shrink-0">

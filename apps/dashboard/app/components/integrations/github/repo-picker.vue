@@ -1,23 +1,11 @@
 <script setup lang="ts">
 import { describeApiError } from "~/utils/api-error"
+import type { GithubRepositoryDTO, GithubRepositoryPageDTO } from "@reprojs/shared"
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 
-interface Repo {
-  id: number
-  owner: string
-  name: string
-  fullName: string
-}
 interface RepoValue {
   owner: string
   name: string
-}
-interface RepoPage {
-  repos: Repo[]
-  page: number
-  perPage: number
-  total: number
-  hasMore: boolean
 }
 
 interface Props {
@@ -35,7 +23,7 @@ const DEBOUNCE_MS = 250
 
 const open = ref(false)
 const search = ref("")
-const repos = ref<Repo[]>([])
+const repos = ref<GithubRepositoryDTO[]>([])
 const page = ref(1)
 const hasMore = ref(false)
 const loading = ref(false)
@@ -53,7 +41,7 @@ async function fetchPage(nextPage: number): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const res = await $fetch<RepoPage>(
+    const res = await $fetch<GithubRepositoryPageDTO>(
       `/api/projects/${props.projectId}/integrations/github/repositories`,
       {
         credentials: "include",
@@ -126,12 +114,12 @@ function attachObserver(el: HTMLElement | null) {
 watch(sentinel, attachObserver)
 onBeforeUnmount(() => observer?.disconnect())
 
-function pick(r: Repo) {
+function pick(r: GithubRepositoryDTO) {
   emit("update:modelValue", { owner: r.owner, name: r.name })
   open.value = false
 }
 
-const isSelected = (r: Repo) =>
+const isSelected = (r: GithubRepositoryDTO) =>
   r.owner === props.modelValue.owner && r.name === props.modelValue.name
 </script>
 

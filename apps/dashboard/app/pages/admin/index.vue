@@ -1,8 +1,15 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { Orientation } from "@unovis/ts"
 import type { AdminOverviewDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
-import { priorityColor, relativeTime } from "~/composables/use-report-format"
+import {
+  REPORT_STATUSES,
+  priorityColor,
+  priorityLabel,
+  statusLabel,
+} from "~/composables/use-report-format"
+import RelativeTime from "~/components/common/relative-time.vue"
 
 definePageMeta({ middleware: "admin-only" })
 useHead({ title: "Admin overview" })
@@ -47,17 +54,24 @@ const volumeXFormatter = (tick: number): string => {
 }
 
 const statusCounts = computed(() => overview.value?.counts.byStatus)
-const STATUS_ORDER = ["open", "in_progress", "resolved", "closed"] as const
-const statusData = computed<number[]>(() => STATUS_ORDER.map((s) => statusCounts.value?.[s] ?? 0))
+const statusData = computed<number[]>(() =>
+  REPORT_STATUSES.map((s) => statusCounts.value?.[s] ?? 0),
+)
 const hasStatus = computed(() => statusData.value.some((n) => n > 0))
 // DonutChart takes a number[] aligned by ORDER to these category entries
-// (STATUS_ORDER); the keys here only label the legend, they don't map data.
-const statusCategories = {
-  Open: { name: "Open", color: C.open },
-  "In progress": { name: "In progress", color: C.inProgress },
-  Resolved: { name: "Resolved", color: C.resolved },
-  Closed: { name: "Closed", color: C.closed },
-}
+// (REPORT_STATUSES); the keys here only label the legend, they don't map data.
+const STATUS_CHART_COLOR = {
+  open: C.open,
+  in_progress: C.inProgress,
+  resolved: C.resolved,
+  closed: C.closed,
+} as const
+const statusCategories = Object.fromEntries(
+  REPORT_STATUSES.map((s) => [
+    statusLabel(s),
+    { name: statusLabel(s), color: STATUS_CHART_COLOR[s] },
+  ]),
+)
 
 const topProjects = computed(() =>
   perProject.value
@@ -78,8 +92,8 @@ const EVENT_LABEL: Record<string, string> = {
   assignee_added: "added an assignee",
   assignee_removed: "removed an assignee",
   milestone_changed: "changed milestone",
-  tag_added: "added a tag",
-  tag_removed: "removed a tag",
+  tag_added: "added a label",
+  tag_removed: "removed a label",
   comment_added: "commented",
   comment_edited: "edited a comment",
   comment_deleted: "deleted a comment",
@@ -96,22 +110,21 @@ function describeEvent(e: AdminOverviewDTO["recentEvents"][number]): string {
 <template>
   <div class="space-y-8">
     <!-- Page header -->
-    <header class="flex items-end justify-between gap-4">
-      <div>
-        <div class="text-sm font-medium uppercase tracking-[0.18em] text-muted">Admin</div>
-        <h1 class="mt-1 text-3xl font-semibold text-default tracking-tight">Overview</h1>
-        <p class="mt-1.5 text-sm text-muted">
-          Snapshot of incoming reports, health, and recent team activity across all projects.
-        </p>
-      </div>
-      <UButton
-        to="/"
-        label="View all projects"
-        trailing-icon="i-heroicons-arrow-right"
-        color="primary"
-        size="md"
-      />
-    </header>
+    <PageHeader
+      eyebrow="Admin"
+      title="Overview"
+      description="Snapshot of incoming reports, health, and recent team activity across all projects."
+    >
+      <template #actions>
+        <UButton
+          to="/"
+          label="View all projects"
+          trailing-icon="i-heroicons-arrow-right"
+          color="primary"
+          size="md"
+        />
+      </template>
+    </PageHeader>
 
     <!-- Metric tiles -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -258,15 +271,15 @@ function describeEvent(e: AdminOverviewDTO["recentEvents"][number]): string {
                 {{ r.projectName }}
               </span>
               <UBadge
-                :label="r.priority"
+                :label="priorityLabel(r.priority)"
                 :color="priorityColor(r.priority)"
                 variant="soft"
                 size="sm"
-                class="capitalize shrink-0"
+                class="shrink-0"
               />
               <span class="flex-1 min-w-0 truncate text-default">{{ r.title }}</span>
               <span class="text-sm text-muted whitespace-nowrap tabular-nums">
-                {{ relativeTime(r.receivedAt) }}
+                <RelativeTime :value="r.receivedAt" />
               </span>
             </NuxtLink>
           </li>
@@ -296,7 +309,7 @@ function describeEvent(e: AdminOverviewDTO["recentEvents"][number]): string {
               <span>&nbsp;</span>
               <span class="text-muted">{{ describeEvent(e) }}</span>
               <div class="mt-0.5 text-sm text-muted tabular-nums">
-                {{ relativeTime(e.createdAt) }}
+                <RelativeTime :value="e.createdAt" />
               </div>
             </div>
           </li>

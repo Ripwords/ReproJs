@@ -1,5 +1,11 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
+import type {
+  AuthProvidersDTO,
+  GithubAppStatusDTO,
+  GithubOAuthCredentialsDTO,
+} from "@reprojs/shared"
 definePageMeta({ middleware: "admin-only" })
 useHead({ title: "GitHub App" })
 
@@ -12,30 +18,16 @@ const { confirm } = useConfirm()
 // at build time.
 const dashboardUrl = useRequestURL().origin
 
-interface AppStatus {
-  configured: boolean
-  source?: "env" | "db"
-  slug?: string
-  appId?: string
-  clientId?: string
-}
-
-const { data: status, refresh } = await useApi<AppStatus>("/api/integrations/github/app-status")
-
-interface OAuthCredentials {
-  clientId: string
-  clientSecret: string
-}
-
-interface AuthProviders {
-  github: boolean
-  google: boolean
-}
+const { data: status, refresh } = await useApi<GithubAppStatusDTO>(
+  "/api/integrations/github/app-status",
+)
+// The status narrowed to its configured shape, so slug/clientId are typed.
+const configuredApp = computed(() => (status.value?.configured ? status.value : null))
 
 const { data: providers, refresh: refreshProviders } =
-  await useApi<AuthProviders>("/api/auth/providers")
+  await useApi<AuthProvidersDTO>("/api/auth/providers")
 
-const revealed = ref<OAuthCredentials | null>(null)
+const revealed = ref<GithubOAuthCredentialsDTO | null>(null)
 const revealing = ref(false)
 const revealError = ref<string | null>(null)
 const remainingSec = ref(0)
@@ -48,7 +40,9 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 // returns clientId (for completeness on the one-click reveal flow), but we
 // prefer the already-fetched value so re-rendering never hits the audited
 // endpoint without an explicit admin click.
-const clientIdDisplay = computed(() => revealed.value?.clientId ?? status.value?.clientId ?? "")
+const clientIdDisplay = computed(
+  () => revealed.value?.clientId ?? configuredApp.value?.clientId ?? "",
+)
 
 function clearRevealed() {
   revealed.value = null
@@ -69,7 +63,9 @@ async function revealSecret() {
   revealError.value = null
   copyFailed.value = false
   try {
-    const creds = await $fetch<OAuthCredentials>("/api/integrations/github/oauth-credentials")
+    const creds = await $fetch<GithubOAuthCredentialsDTO>(
+      "/api/integrations/github/oauth-credentials",
+    )
     revealed.value = creds
     remainingSec.value = 30
     countdownTimer = setInterval(() => {
@@ -109,24 +105,27 @@ function startManifestFlow() {
 }
 
 const githubAppSettingsUrl = computed(() => {
-  if (!status.value?.slug) return null
-  return `https://github.com/settings/apps/${status.value.slug}`
+  const slug = configuredApp.value?.slug
+  if (!slug) return null
+  return `https://github.com/settings/apps/${slug}`
 })
 
 const githubAppPublicUrl = computed(() => {
-  if (!status.value?.slug) return null
-  return `https://github.com/apps/${status.value.slug}`
+  const slug = configuredApp.value?.slug
+  if (!slug) return null
+  return `https://github.com/apps/${slug}`
 })
 
 const githubAppAdvancedUrl = computed(() => {
-  if (!status.value?.slug) return null
-  return `https://github.com/settings/apps/${status.value.slug}/advanced`
+  const slug = configuredApp.value?.slug
+  if (!slug) return null
+  return `https://github.com/settings/apps/${slug}/advanced`
 })
 
 const disconnecting = ref(false)
 
 async function disconnect() {
-  const slug = status.value?.slug ?? "the GitHub App"
+  const slug = configuredApp.value?.slug ?? "the GitHub App"
   const ok = await confirm({
     title: "Disconnect GitHub App?",
     description: `This removes ${slug}'s credentials from this dashboard and unlinks every project installation. Report history is preserved. The app itself still exists on GitHub — delete it from your GitHub App's Advanced settings if you also want it gone there.`,
@@ -168,14 +167,11 @@ async function disconnect() {
 
 <template>
   <div class="space-y-6 max-w-3xl">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">GitHub integration</h1>
-      <p class="text-sm text-muted mt-1">
-        Connect this instance to GitHub so ticket triage can mirror to issues. A GitHub App is
-        installed on your organization or personal account — each self-hosted Repro instance creates
-        its own app with its own credentials.
-      </p>
-    </header>
+    <PageHeader
+      eyebrow="Admin"
+      title="GitHub integration"
+      description="Connect this instance to GitHub so ticket triage can mirror to issues. A GitHub App is installed on your organization or personal account — each self-hosted Repro instance creates its own app with its own credentials."
+    />
 
     <UAlert
       v-if="justCreated"
@@ -332,7 +328,7 @@ async function disconnect() {
                 variant="subtle"
                 color="neutral"
                 icon="i-heroicons-clipboard"
-                aria-label="Copy Client ID"
+                aria-label="Copy client ID"
                 :disabled="!clientIdDisplay"
                 @click="() => clientIdDisplay && copyToClipboard(clientIdDisplay)"
               >
@@ -342,7 +338,7 @@ async function disconnect() {
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-muted mb-1">Client Secret</label>
+            <label class="block text-sm font-medium text-muted mb-1">Client secret</label>
             <div class="flex gap-2">
               <UInput
                 :model-value="revealed ? revealed.clientSecret : '••••••••••••••••'"
@@ -365,7 +361,7 @@ async function disconnect() {
                   variant="subtle"
                   color="neutral"
                   icon="i-heroicons-clipboard"
-                  aria-label="Copy Client Secret"
+                  aria-label="Copy client secret"
                   @click="() => revealed && copyToClipboard(revealed.clientSecret)"
                 >
                   Copy
@@ -374,7 +370,7 @@ async function disconnect() {
                   variant="subtle"
                   color="neutral"
                   icon="i-heroicons-eye-slash"
-                  :aria-label="`Hide Client Secret (${remainingSec} seconds remaining)`"
+                  :aria-label="`Hide client secret (${remainingSec} seconds remaining)`"
                   @click="clearRevealed"
                 >
                   Hide ({{ remainingSec }}s)

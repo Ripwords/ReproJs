@@ -5,12 +5,7 @@
      assignees are a GitHub-only concept in this app, so anyone who isn't
      a repo collaborator can't appear here. -->
 <script setup lang="ts">
-type AssigneeOption = {
-  githubUserId: string
-  login: string
-  avatarUrl: string | null
-  linkedUser: { id: string; name: string | null; email: string | null } | null
-}
+import type { GithubAssignableUserListDTO } from "@reprojs/shared"
 
 const props = defineProps<{
   projectId: string
@@ -23,7 +18,7 @@ const emit = defineEmits<{
 
 const searchTerm = ref("")
 
-const { data, pending } = useFetch<{ items: AssigneeOption[] }>(
+const { data, pending } = useFetch<GithubAssignableUserListDTO>(
   () =>
     `/api/projects/${props.projectId}/integrations/github/assignable-users?q=${encodeURIComponent(searchTerm.value)}`,
   { default: () => ({ items: [] }), watch: [searchTerm] },

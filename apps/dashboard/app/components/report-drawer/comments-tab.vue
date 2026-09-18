@@ -7,6 +7,7 @@
      scroll), so it can be embedded inline in the overview or used as
      a standalone tab — the parent's scroll container handles overflow. -->
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import type { CommentDTO } from "@reprojs/shared"
 
 interface Props {
@@ -298,17 +299,6 @@ function authorColor(comment: CommentDTO): string {
   for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0
   return AUTHOR_COLORS[h % AUTHOR_COLORS.length] ?? "text-primary"
 }
-
-function relTime(iso: string | Date): string {
-  const ms = Date.now() - new Date(iso).getTime()
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s ago`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
 </script>
 
 <template>
@@ -392,7 +382,7 @@ function relTime(iso: string | Date): string {
                 isOwn(comment) ? 'justify-end' : 'justify-start',
               ]"
             >
-              <span>{{ relTime(comment.createdAt) }}</span>
+              <RelativeTime :value="comment.createdAt" />
               <template v-if="canComment && isOwn(comment)">
                 <button
                   type="button"

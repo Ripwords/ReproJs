@@ -1,4 +1,5 @@
 // apps/dashboard/server/api/projects/[id]/integrations/github/milestones.get.ts
+import type { GithubMilestoneListDTO } from "@reprojs/shared"
 import { createError, defineEventHandler, getQuery, getRouterParam } from "h3"
 import { eq } from "drizzle-orm"
 import { db } from "../../../../../db"
@@ -7,7 +8,7 @@ import { requireProjectRole } from "../../../../../lib/permissions"
 import { getGithubClient } from "../../../../../lib/github"
 import { githubCache, cacheKey } from "../../../../../lib/github-cache"
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<GithubMilestoneListDTO> => {
   const projectId = getRouterParam(event, "id")
   if (!projectId) throw createError({ statusCode: 400, statusMessage: "Missing project id" })
   await requireProjectRole(event, projectId, "viewer")

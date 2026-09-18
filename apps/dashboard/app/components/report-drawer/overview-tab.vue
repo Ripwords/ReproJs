@@ -11,6 +11,7 @@
      in the dedicated System and Raw tabs — the overview is for the
      "what / who / when" + the conversation around the bug. -->
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
 import type { ReportDetailDTO } from "@reprojs/shared"
 import { safeHref } from "~/composables/use-safe-href"
 import { useMarkdown } from "~/composables/use-markdown"
@@ -32,8 +33,6 @@ const userFileCount = computed(
 )
 
 const ctx = computed(() => props.report.context)
-
-const fmtTime = (iso: string) => new Date(iso).toLocaleString()
 
 // Lightbox state — opened by the fullscreen button overlaying the
 // screenshot card. Native Fullscreen API behaviour (Esc to close) is
@@ -173,7 +172,7 @@ const descriptionHtml = computed(() =>
             </div>
             <div class="flex items-start gap-3">
               <dt class="text-muted w-24 shrink-0">Received</dt>
-              <dd class="text-default tabular-nums">{{ fmtTime(report.receivedAt) }}</dd>
+              <dd class="text-default tabular-nums"><RelativeTime :value="report.receivedAt" /></dd>
             </div>
             <div class="flex items-center gap-3">
               <dt class="text-muted w-24 shrink-0">Status</dt>
@@ -188,7 +187,7 @@ const descriptionHtml = computed(() =>
               </dd>
             </div>
             <div class="flex items-center gap-3">
-              <dt class="text-muted w-24 shrink-0">Urgency</dt>
+              <dt class="text-muted w-24 shrink-0">Priority</dt>
               <dd>
                 <UBadge
                   :color="priorityColor(report.priority)"

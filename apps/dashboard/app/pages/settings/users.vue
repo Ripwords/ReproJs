@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
+import PageHeader from "~/components/common/page-header.vue"
+import RelativeTime from "~/components/common/relative-time.vue"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
 import type { InstallRole, UserDTO, UserStatus } from "@reprojs/shared"
+import { installRoleChangeConfirm } from "~/utils/role-change-confirm"
 
 definePageMeta({ middleware: "admin-only" })
 useHead({ title: "Users" })
@@ -14,6 +18,7 @@ const USelectMenu = resolveComponent("USelectMenu")
 
 const toast = useToast()
 const { confirm } = useConfirm()
+const { user: sessionUser } = useSession()
 
 const {
   data: users,
@@ -52,13 +57,21 @@ async function sendInvite() {
   } catch (err) {
     toast.add({
       title: "Could not send invite",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
   } finally {
     inviting.value = false
   }
+}
+
+async function confirmRoleChange(u: UserDTO, next: InstallRole) {
+  const ok = await confirm(
+    installRoleChangeConfirm({ email: u.email, to: next, isSelf: u.id === sessionUser.value?.id }),
+  )
+  if (!ok) return
+  await updateRole(u.id, next)
 }
 
 async function updateRole(userId: string, next: InstallRole) {
@@ -73,7 +86,7 @@ async function updateRole(userId: string, next: InstallRole) {
   } catch (err) {
     toast.add({
       title: "Could not update role",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -96,7 +109,7 @@ async function setStatus(userId: string, status: UserStatus) {
   } catch (err) {
     toast.add({
       title: status === "disabled" ? "Could not disable user" : "Could not reactivate user",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -123,17 +136,6 @@ function statusColor(status: UserStatus): "success" | "neutral" | "warning" {
   if (status === "active") return "success"
   if (status === "disabled") return "warning"
   return "neutral"
-}
-
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
 }
 
 function initials(name: string | null, email: string): string {
@@ -173,7 +175,7 @@ const columns = computed<TableColumn<UserDTO>[]>(() => [
         class: "w-28",
         "onUpdate:modelValue": (v: { label: string; value: InstallRole }) => {
           if (v?.value && v.value !== row.original.role) {
-            void updateRole(row.original.id, v.value)
+            void confirmRoleChange(row.original, v.value)
           }
         },
       }),
@@ -189,14 +191,16 @@ const columns = computed<TableColumn<UserDTO>[]>(() => [
           variant: "subtle",
           size: "sm",
         },
-        () => row.original.status,
+        () => row.original.status.charAt(0).toUpperCase() + row.original.status.slice(1),
       ),
   },
   {
     accessorKey: "createdAt",
     header: "Joined",
     cell: ({ row }) =>
-      h("span", { class: "text-sm text-muted" }, relativeTime(row.original.createdAt)),
+      h("span", { class: "text-sm text-muted" }, [
+        h(RelativeTime, { value: row.original.createdAt }),
+      ]),
   },
   {
     id: "actions",
@@ -234,18 +238,16 @@ const columns = computed<TableColumn<UserDTO>[]>(() => [
 
 <template>
   <div class="space-y-6">
-    <header class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold text-default">Users</h1>
-        <p class="text-sm text-muted mt-1">Everyone with access to this install.</p>
-      </div>
-      <UButton
-        label="Invite user"
-        icon="i-heroicons-plus"
-        color="primary"
-        @click="inviteOpen = true"
-      />
-    </header>
+    <PageHeader eyebrow="Admin" title="Users" description="Everyone with access to this install.">
+      <template #actions>
+        <UButton
+          label="Invite user"
+          icon="i-heroicons-plus"
+          color="primary"
+          @click="inviteOpen = true"
+        />
+      </template>
+    </PageHeader>
 
     <UCard :ui="{ body: 'p-0' }">
       <UTable

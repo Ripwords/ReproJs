@@ -49,3 +49,73 @@ export const CreateGithubLabelInput = z.object({
   description: z.string().max(100).optional(),
 })
 export type CreateGithubLabelInput = z.infer<typeof CreateGithubLabelInput>
+
+// Response shapes for the dashboard's GitHub read endpoints. The server
+// handlers annotate their return types with these, so the dashboard UI and
+// the handlers share one definition.
+
+export const GithubAppStatusDTO = z.discriminatedUnion("configured", [
+  z.object({ configured: z.literal(false) }),
+  z.object({
+    configured: z.literal(true),
+    source: z.enum(["env", "db"]),
+    slug: z.string(),
+    appId: z.string(),
+    clientId: z.string(),
+  }),
+])
+export type GithubAppStatusDTO = z.infer<typeof GithubAppStatusDTO>
+
+export const GithubOAuthCredentialsDTO = z.object({
+  clientId: z.string(),
+  clientSecret: z.string(),
+})
+export type GithubOAuthCredentialsDTO = z.infer<typeof GithubOAuthCredentialsDTO>
+
+export const GithubRepoLabelDTO = z.object({
+  name: z.string(),
+  color: z.string(),
+  description: z.string().nullable(),
+})
+export type GithubRepoLabelDTO = z.infer<typeof GithubRepoLabelDTO>
+export const GithubRepoLabelListDTO = z.object({ items: z.array(GithubRepoLabelDTO) })
+export type GithubRepoLabelListDTO = z.infer<typeof GithubRepoLabelListDTO>
+
+export const GithubMilestoneDTO = z.object({
+  number: z.number().int(),
+  title: z.string(),
+  state: z.enum(["open", "closed"]),
+  dueOn: z.string().nullable(),
+})
+export type GithubMilestoneDTO = z.infer<typeof GithubMilestoneDTO>
+export const GithubMilestoneListDTO = z.object({ items: z.array(GithubMilestoneDTO) })
+export type GithubMilestoneListDTO = z.infer<typeof GithubMilestoneListDTO>
+
+export const GithubAssignableUserDTO = z.object({
+  githubUserId: z.string(),
+  login: z.string(),
+  avatarUrl: z.string().nullable(),
+  /** Set when the collaborator linked this GitHub account to a dashboard user. */
+  linkedUser: z
+    .object({ id: z.string(), name: z.string().nullable(), email: z.string().nullable() })
+    .nullable(),
+})
+export type GithubAssignableUserDTO = z.infer<typeof GithubAssignableUserDTO>
+export const GithubAssignableUserListDTO = z.object({ items: z.array(GithubAssignableUserDTO) })
+export type GithubAssignableUserListDTO = z.infer<typeof GithubAssignableUserListDTO>
+
+export const GithubRepositoryDTO = z.object({
+  id: z.number().int(),
+  owner: z.string(),
+  name: z.string(),
+  fullName: z.string(),
+})
+export type GithubRepositoryDTO = z.infer<typeof GithubRepositoryDTO>
+export const GithubRepositoryPageDTO = z.object({
+  repos: z.array(GithubRepositoryDTO),
+  page: z.number().int(),
+  perPage: z.number().int(),
+  total: z.number().int(),
+  hasMore: z.boolean(),
+})
+export type GithubRepositoryPageDTO = z.infer<typeof GithubRepositoryPageDTO>

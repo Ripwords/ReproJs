@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import GithubPanel from "~/components/integrations/github/github-panel.vue"
 
 const route = useRoute()
@@ -25,13 +26,11 @@ onMounted(() => {
 
 <template>
   <div class="space-y-8">
-    <header>
-      <div class="text-sm font-medium uppercase tracking-[0.18em] text-muted">Project</div>
-      <h1 class="mt-1 text-3xl font-semibold text-default tracking-tight">Integrations</h1>
-      <p class="mt-2 text-sm text-muted max-w-xl">
-        Connect external services to mirror reports and enrich triage.
-      </p>
-    </header>
+    <PageHeader
+      eyebrow="Project"
+      title="Integrations"
+      description="Connect external services to mirror reports and enrich triage."
+    />
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <GithubPanel :project-id="projectId" />

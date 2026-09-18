@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import type { ProjectDTO, ProjectOverviewDTO, ReportSummaryDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
-import { priorityColor, relativeTime } from "~/composables/use-report-format"
+import { priorityColor, priorityLabel } from "~/composables/use-report-format"
+import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
 
 const route = useRoute()
@@ -48,8 +50,8 @@ const EVENT_LABEL: Record<string, string> = {
   status_changed: "changed status",
   priority_changed: "changed priority",
   assignee_changed: "reassigned",
-  tag_added: "added a tag",
-  tag_removed: "removed a tag",
+  tag_added: "added a label",
+  tag_removed: "removed a label",
   github_unlinked: "unlinked GitHub issue",
 }
 
@@ -62,24 +64,21 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
 <template>
   <div class="space-y-8">
     <!-- Page header -->
-    <header class="flex items-end justify-between gap-4">
-      <div>
-        <div class="text-sm font-medium uppercase tracking-[0.18em] text-muted">Project</div>
-        <h1 class="mt-1 text-3xl font-semibold text-default tracking-tight">
-          {{ project?.name ?? "…" }}
-        </h1>
-        <p class="mt-1.5 text-sm text-muted">
-          Snapshot of incoming reports, health, and recent team activity.
-        </p>
-      </div>
-      <UButton
-        :to="`/projects/${projectId}/reports`"
-        label="Go to inbox"
-        trailing-icon="i-heroicons-arrow-right"
-        color="primary"
-        size="md"
-      />
-    </header>
+    <PageHeader
+      eyebrow="Project"
+      :title="project?.name ?? '…'"
+      description="Snapshot of incoming reports, health, and recent team activity."
+    >
+      <template #actions>
+        <UButton
+          :to="`/projects/${projectId}/reports`"
+          label="Go to inbox"
+          trailing-icon="i-heroicons-arrow-right"
+          color="primary"
+          size="md"
+        />
+      </template>
+    </PageHeader>
 
     <!-- Metric tiles: each tile has a small icon chip + eyebrow label above
          a big number. The tiles lift slightly on hover to signal they're
@@ -185,15 +184,15 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
               class="flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-elevated/50"
             >
               <UBadge
-                :label="r.priority"
+                :label="priorityLabel(r.priority)"
                 :color="priorityColor(r.priority)"
                 variant="soft"
                 size="sm"
-                class="capitalize shrink-0"
+                class="shrink-0"
               />
               <span class="flex-1 min-w-0 truncate text-default">{{ r.title }}</span>
               <span class="text-sm text-muted whitespace-nowrap tabular-nums">
-                {{ relativeTime(r.receivedAt) }}
+                <RelativeTime :value="r.receivedAt" />
               </span>
             </NuxtLink>
           </li>
@@ -223,7 +222,7 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
               <span>&nbsp;</span>
               <span class="text-muted"> {{ describeEvent(e) }}</span>
               <div class="mt-0.5 text-sm text-muted tabular-nums">
-                {{ relativeTime(e.createdAt) }}
+                <RelativeTime :value="e.createdAt" />
               </div>
             </div>
           </li>

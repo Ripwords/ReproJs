@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm"
 import { db } from "../../../db"
 import { githubApp } from "../../../db/schema"
 import { requireInstallAdmin } from "../../../lib/permissions"
+import type { GithubOAuthCredentialsDTO } from "@reprojs/shared"
 
 /**
  * Admin-only: reveals the GitHub App's OAuth client_id + client_secret so the
@@ -16,7 +17,7 @@ import { requireInstallAdmin } from "../../../lib/permissions"
  * emits a structured `console.info` audit line so operators with a log
  * collector can answer "who saw this secret, when, from where".
  */
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<GithubOAuthCredentialsDTO> => {
   const session = await requireInstallAdmin(event)
 
   const [row] = await db.select().from(githubApp).where(eq(githubApp.id, 1)).limit(1)

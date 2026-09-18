@@ -128,6 +128,6 @@ The `StorageAdapter` interface is three methods (`put`, `get`, `delete`) so a on
 - Screenshots are stored as `<report_id>/screenshot.png` (content-type: `image/png`)
 - Logs bundle as `<report_id>/logs.json`
 - Session replay as `<report_id>/replay.json.gz` (gzipped)
-- The dashboard mints time-limited signed URLs (`ATTACHMENT_URL_SECRET` signs them) when rendering in the UI or embedding in GitHub issue bodies
+- In the dashboard, attachments load through your signed-in session. The screenshot embedded in a GitHub issue body is a signed link (`ATTACHMENT_URL_SECRET` signs it) that stays valid for about 100 years, because GitHub re-fetches issue images long after the issue is created. Anyone who can see the issue can open that link without signing in, which on a public repository means everyone. Images pasted into comments use signed links valid for one year. Rotating `ATTACHMENT_URL_SECRET` breaks all of these links; see [Configuration → Required](./configuration#required).
 
 There's no automatic retention policy yet — attachments live until you delete their report (cascades). Bucket-level lifecycle rules on the S3 side are a reasonable stopgap if you need aging.

@@ -1,5 +1,7 @@
 <!-- apps/dashboard/app/components/report-drawer/activity-tab.vue -->
 <script setup lang="ts">
+import RelativeTime from "~/components/common/relative-time.vue"
+import { priorityLabel, statusLabel } from "~/composables/use-report-format"
 import type { ReportEventDTO, ReportSummaryDTO } from "@reprojs/shared"
 
 interface Props {
@@ -18,9 +20,9 @@ function summary(e: ReportEventDTO): string {
   const p = e.payload as Record<string, unknown>
   switch (e.kind) {
     case "status_changed":
-      return `changed status ${String(p.from)} → ${String(p.to)}`
+      return `changed status ${statusLabel(String(p.from))} → ${statusLabel(String(p.to))}`
     case "priority_changed":
-      return `set priority ${String(p.to)} (was ${String(p.from)})`
+      return `set priority ${priorityLabel(String(p.to))} (was ${priorityLabel(String(p.from))})`
     case "assignee_changed": {
       const from = p.from ? "someone" : "nobody"
       const to = p.to ? "someone" : "nobody"
@@ -32,25 +34,15 @@ function summary(e: ReportEventDTO): string {
       return `unassigned @${String(p.githubLogin ?? "?")}`
     case "tag_added": {
       const name = p.name ?? p.tag
-      return `added tag ${String(name ?? "")}`.trim()
+      return `added label ${String(name ?? "")}`.trim()
     }
     case "tag_removed": {
       const name = p.name ?? p.tag
-      return `removed tag ${String(name ?? "")}`.trim()
+      return `removed label ${String(name ?? "")}`.trim()
     }
     default:
       return e.kind
   }
-}
-function relTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime()
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s ago`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
 }
 function actorLabel(e: ReportEventDTO): string {
   return e.actor?.name ?? e.actor?.email ?? "System"
@@ -72,7 +64,7 @@ function actorInitials(e: ReportEventDTO): string {
             <span>&nbsp;</span>
             <span class="text-muted">{{ summary(e) }}</span>
           </div>
-          <div class="text-sm text-muted mt-0.5">{{ relTime(e.createdAt) }}</div>
+          <div class="text-sm text-muted mt-0.5"><RelativeTime :value="e.createdAt" /></div>
         </div>
       </li>
     </ul>

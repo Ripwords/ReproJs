@@ -1,12 +1,7 @@
 <!-- report-drawer/pickers/milestone-picker.vue
      Single-select milestone picker backed by the linked repo's open milestones. -->
 <script setup lang="ts">
-type RepoMilestone = {
-  number: number
-  title: string
-  state: "open" | "closed"
-  dueOn: string | null
-}
+import type { GithubMilestoneListDTO } from "@reprojs/shared"
 
 const props = defineProps<{
   projectId: string
@@ -17,7 +12,7 @@ const emit = defineEmits<{
   "update:modelValue": [value: { number: number; title: string } | null]
 }>()
 
-const { data, pending } = useFetch<{ items: RepoMilestone[] }>(
+const { data, pending } = useFetch<GithubMilestoneListDTO>(
   () => `/api/projects/${props.projectId}/integrations/github/milestones?state=open`,
   { default: () => ({ items: [] }) },
 )

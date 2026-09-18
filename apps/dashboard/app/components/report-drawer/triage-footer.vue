@@ -21,6 +21,12 @@ import AssigneesPicker from "./pickers/assignees-picker.vue"
 import MilestonePicker from "./pickers/milestone-picker.vue"
 import UnlinkDialog from "~/components/integrations/github/unlink-dialog.vue"
 import { safeHref } from "~/composables/use-safe-href"
+import {
+  REPORT_PRIORITIES,
+  REPORT_STATUSES,
+  priorityLabel,
+  statusLabel,
+} from "~/composables/use-report-format"
 import { pollUntil } from "~/composables/use-poll-until"
 import { useGithubIntegration } from "~/composables/use-github-integration"
 
@@ -35,9 +41,6 @@ const props = defineProps<Props>()
 const emit = defineEmits<{ patched: [] }>()
 
 const toast = useToast()
-
-const STATUSES: ReportStatus[] = ["open", "in_progress", "resolved", "closed"]
-const PRIORITIES: ReportPriority[] = ["urgent", "high", "normal", "low"]
 
 const { data: githubConfig } = useApi<GithubConfigDTO>(
   `/api/projects/${props.projectId}/integrations/github`,
@@ -189,26 +192,18 @@ const priorityModel = computed<ReportPriority>({
   },
 })
 
-function titleCase(s: string): string {
-  return s
-    .split(/[\s_]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ")
-}
-
-const statusItems = computed(() => STATUSES.map((s) => ({ label: titleCase(s), value: s })))
-const priorityItems = computed(() => PRIORITIES.map((p) => ({ label: titleCase(p), value: p })))
+const statusItems = REPORT_STATUSES.map((s) => ({ label: statusLabel(s), value: s }))
+const priorityItems = REPORT_PRIORITIES.map((p) => ({ label: priorityLabel(p), value: p }))
 
 const assigneeLogins = computed(() => props.report.assignees.map((a) => a.login))
 
 // Collapsed-state summaries — shown inline when the section is closed so
 // the sidebar stays informative at a glance without forcing an expand.
 const propertiesSummary = computed(() => {
-  const parts: string[] = [titleCase(props.report.status), titleCase(props.report.priority)]
+  const parts: string[] = [statusLabel(props.report.status), priorityLabel(props.report.priority)]
   if (isReportLinked.value) {
     const n = props.report.assignees.length
-    if (n > 0) parts.push(`${n} Assignee${n === 1 ? "" : "s"}`)
+    if (n > 0) parts.push(`${n} assignee${n === 1 ? "" : "s"}`)
     if (props.report.milestoneTitle) parts.push(props.report.milestoneTitle)
   }
   return parts.join(" · ")
@@ -216,13 +211,13 @@ const propertiesSummary = computed(() => {
 const labelsSummary = computed(() => {
   const n = props.report.tags.length
   if (n === 0) return "None"
-  return `${n} ${n === 1 ? "Label" : "Labels"}`
+  return `${n} ${n === 1 ? "label" : "labels"}`
 })
 const githubSummary = computed(() => {
   if (props.report.githubIssueNumber && props.report.githubIssueUrl) {
     return `#${props.report.githubIssueNumber}`
   }
-  return githubReady.value ? "Not Linked" : "Not Configured"
+  return githubReady.value ? "Not linked" : "Not configured"
 })
 
 const open = reactive({ properties: true, labels: true, github: true })
@@ -248,6 +243,9 @@ const priorityDotClass = computed<string>(() => {
   <div class="divide-y divide-default/60">
     <!-- Properties -->
     <section class="py-4 first:pt-0">
+      <p v-if="!canEdit" class="pb-3 text-sm text-muted">
+        Only project managers, developers, and owners can change triage.
+      </p>
       <button
         type="button"
         class="flex w-full items-center gap-2 pb-3 text-sm font-semibold text-default hover:text-primary transition-colors"
@@ -302,7 +300,7 @@ const priorityDotClass = computed<string>(() => {
             :items="priorityItems"
             value-key="value"
             size="md"
-            class="w-full min-w-0 capitalize"
+            class="w-full min-w-0"
             :disabled="!canEdit || posting"
           />
         </div>
@@ -359,8 +357,8 @@ const priorityDotClass = computed<string>(() => {
         <template v-else>
           <div class="flex flex-col gap-2">
             <UInput
-              v-if="canEdit"
               v-model="tagDraft"
+              :disabled="!canEdit || posting"
               placeholder="Add a label…"
               size="md"
               variant="outline"
@@ -387,7 +385,6 @@ const priorityDotClass = computed<string>(() => {
                 </button>
               </span>
             </div>
-            <span v-else-if="!canEdit" class="text-sm text-muted italic">None</span>
           </div>
         </template>
       </div>
@@ -446,7 +443,7 @@ const priorityDotClass = computed<string>(() => {
         </template>
 
         <UButton
-          v-else-if="canEdit && githubReady"
+          v-else-if="githubReady"
           size="md"
           color="neutral"
           variant="outline"
@@ -454,6 +451,7 @@ const priorityDotClass = computed<string>(() => {
           :loading="ghSubmitting"
           :label="ghSubmitting ? 'Creating…' : 'Create GitHub issue'"
           block
+          :disabled="!canEdit"
           @click="createIssue"
         />
 
@@ -481,7 +479,7 @@ const priorityDotClass = computed<string>(() => {
             block
           />
         </div>
-        <span v-else class="text-sm text-muted italic">Not linked</span>
+        <p v-else class="text-sm text-muted">GitHub isn't connected to this project.</p>
       </div>
     </section>
 

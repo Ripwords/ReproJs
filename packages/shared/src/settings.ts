@@ -23,3 +23,22 @@ export const UpdateAppSettingsInput = z.object({
   allowedEmailDomains: z.array(EmailDomain).max(50).optional(),
 })
 export type UpdateAppSettingsInput = z.infer<typeof UpdateAppSettingsInput>
+
+/** Which OAuth sign-in providers this deployment has enabled (GET /api/auth/providers). */
+export const AuthProvidersDTO = z.object({
+  github: z.boolean(),
+  google: z.boolean(),
+})
+export type AuthProvidersDTO = z.infer<typeof AuthProvidersDTO>
+
+/** An AI assistant the user connected over MCP OAuth (GET /api/me/mcp-connections). */
+export const McpConnectionDTO = z.object({
+  clientId: z.string(),
+  clientName: z.string(),
+  scopes: z.array(z.string()),
+  connectedAt: z.string().nullable(),
+  lastUsedAt: z.string().nullable(),
+})
+export type McpConnectionDTO = z.infer<typeof McpConnectionDTO>
+export const McpConnectionListDTO = z.object({ connections: z.array(McpConnectionDTO) })
+export type McpConnectionListDTO = z.infer<typeof McpConnectionListDTO>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
+import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import type { AppSettingsDTO } from "@reprojs/shared"
 
@@ -93,12 +95,11 @@ function reset() {
 
 <template>
   <div class="space-y-6 max-w-3xl">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">Access</h1>
-      <p class="text-sm text-muted mt-1">
-        Control who can sign in to this install. Changes take effect immediately.
-      </p>
-    </header>
+    <PageHeader
+      eyebrow="Admin"
+      title="Access"
+      description="Control who can sign in to this install. Changes take effect immediately."
+    />
 
     <div v-if="pending" class="rounded-xl border border-default bg-default p-6">
       <div class="h-4 w-48 bg-muted rounded animate-pulse mb-3" />
@@ -153,7 +154,7 @@ function reset() {
         <template #footer>
           <div class="flex items-center justify-between gap-3">
             <span class="text-sm text-muted">
-              Last updated {{ new Date(settings.updatedAt).toLocaleString() }}
+              Last updated <RelativeTime :value="settings.updatedAt" />
             </span>
             <div class="flex gap-2">
               <UButton

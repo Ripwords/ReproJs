@@ -1,9 +1,10 @@
 <!-- apps/dashboard/app/pages/projects/[id]/reports.vue -->
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
-import type { ReportPriority, ReportStatus, ReportSummaryDTO } from "@reprojs/shared"
+import type { ReportListDTO, ReportPriority, ReportStatus, ReportSummaryDTO } from "@reprojs/shared"
 import StatusTabs from "~/components/inbox/status-tabs.vue"
 import FacetSidebar from "~/components/inbox/facet-sidebar.vue"
 import SearchSort from "~/components/inbox/search-sort.vue"
@@ -11,12 +12,12 @@ import BulkActionBar from "~/components/inbox/bulk-action-bar.vue"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
 import { INBOX_PAGE_SIZE, useInboxQuery } from "~/composables/use-inbox-query"
 import { useKeyboardShortcuts } from "~/composables/useKeyboardShortcuts"
-import { priorityColor, relativeTime } from "~/composables/use-report-format"
+import { priorityColor, priorityLabel } from "~/composables/use-report-format"
+import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
 
 const UCheckbox = resolveComponent("UCheckbox")
 const UBadge = resolveComponent("UBadge")
-const UTooltip = resolveComponent("UTooltip")
 const UIcon = resolveComponent("UIcon")
 
 const route = useRoute()
@@ -28,21 +29,7 @@ useHead({ title: "Reports" })
 const { query, update, toApi } = useInboxQuery()
 
 const listUrl = computed(() => `/api/projects/${projectId.value}/reports?${toApi()}`)
-const { data, pending, refresh } = useApi<{
-  items: ReportSummaryDTO[]
-  total: number
-  facets: {
-    status: Record<ReportStatus, number>
-    priority: Record<ReportPriority, number>
-    assignees: Array<{
-      login: string
-      avatarUrl: string | null
-      count: number
-    }>
-    tags: Array<{ name: string; count: number }>
-    source: { web: number; expo: number; ios: number; android: number }
-  }
-}>(listUrl, { watch: [listUrl] })
+const { data, pending, refresh } = useApi<ReportListDTO>(listUrl, { watch: [listUrl] })
 
 const reports = computed<ReportSummaryDTO[]>(() => data.value?.items ?? [])
 
@@ -227,7 +214,6 @@ useKeyboardShortcuts({
 })
 
 // ---- Columns ----
-const timeCompact = (iso: string) => relativeTime(iso, { compact: true })
 
 const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
   {
@@ -251,11 +237,11 @@ const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
     header: "Priority",
     cell: ({ row }) =>
       h(UBadge, {
-        label: row.original.priority,
+        label: priorityLabel(row.original.priority),
         color: priorityColor(row.original.priority),
         variant: "soft",
         size: "md",
-        class: "capitalize font-medium",
+        class: "font-medium",
       }),
   },
   {
@@ -342,13 +328,9 @@ const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
     accessorKey: "receivedAt",
     header: "",
     cell: ({ row }) =>
-      h(UTooltip, { text: new Date(row.original.receivedAt).toLocaleString() }, () =>
-        h(
-          "span",
-          { class: "text-sm text-muted whitespace-nowrap" },
-          timeCompact(row.original.receivedAt),
-        ),
-      ),
+      h("span", { class: "text-sm text-muted whitespace-nowrap" }, [
+        h(RelativeTime, { value: row.original.receivedAt, compact: true }),
+      ]),
   },
 ])
 
@@ -383,10 +365,11 @@ function onRowSelect(_e: Event, row: TableRowLike) {
     />
 
     <div class="flex-1 min-w-0 flex flex-col">
-      <header class="mb-4 flex items-baseline justify-between">
-        <h1 class="text-2xl font-semibold text-default">Reports</h1>
-        <span class="text-sm text-muted">{{ total }} matches</span>
-      </header>
+      <PageHeader eyebrow="Project" title="Reports" class="mb-4">
+        <template #actions>
+          <span class="text-sm text-muted">{{ total }} matches</span>
+        </template>
+      </PageHeader>
 
       <div class="mb-3">
         <BulkActionBar

@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
+import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
+import type { McpConnectionListDTO } from "@reprojs/shared"
 import { computed, ref } from "vue"
 
 useHead({ title: "MCP / AI assistants" })
@@ -42,17 +45,8 @@ const cursorSnippet = computed(() =>
 
 const remoteCli = computed(() => `npx mcp-remote ${mcpUrl.value}`)
 
-interface Connection {
-  clientId: string
-  clientName: string
-  scopes: string[]
-  connectedAt: string
-  lastUsedAt: string | null
-}
-
-const { data: connectionsData, refresh } = await useApi<{ connections: Connection[] }>(
-  "/api/me/mcp-connections",
-)
+const { data: connectionsData, refresh } =
+  await useApi<McpConnectionListDTO>("/api/me/mcp-connections")
 
 const connections = computed(() => connectionsData.value?.connections ?? [])
 
@@ -99,13 +93,11 @@ async function copy(text: string): Promise<void> {
 
 <template>
   <div class="space-y-8 max-w-3xl">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">MCP / AI assistants</h1>
-      <p class="text-sm text-muted mt-1">
-        Connect an AI assistant (Claude Desktop, Cursor, ChatGPT, …) to triage your Repro tickets
-        through the Model Context Protocol.
-      </p>
-    </header>
+    <PageHeader
+      eyebrow="Account"
+      title="MCP / AI assistants"
+      description="Connect an AI assistant (Claude Desktop, Cursor, ChatGPT, …) to triage your Repro tickets through the Model Context Protocol."
+    />
 
     <!-- ── Connect section ─────────────────────────────────────────────── -->
     <section class="space-y-4">
@@ -241,9 +233,9 @@ async function copy(text: string): Promise<void> {
           <div class="space-y-1 min-w-0">
             <div class="font-medium text-default text-sm">{{ c.clientName }}</div>
             <div class="text-xs text-muted">
-              Connected {{ new Date(c.connectedAt).toLocaleDateString() }}
+              Connected <RelativeTime :value="c.connectedAt" />
               <span v-if="c.lastUsedAt">
-                &middot; last used {{ new Date(c.lastUsedAt).toLocaleString() }}
+                &middot; last used <RelativeTime :value="c.lastUsedAt" />
               </span>
             </div>
             <div class="text-xs text-muted">

@@ -5,6 +5,8 @@
  * the others). Centralize here so updates land in one place.
  */
 
+import type { ReportPriority, ReportStatus } from "@reprojs/shared"
+
 export type ReportBadgeColor = "error" | "warning" | "primary" | "success" | "info" | "neutral"
 
 /**
@@ -27,7 +29,19 @@ export function statusColor(s: string | undefined | null): ReportBadgeColor {
   return "neutral"
 }
 
-const STATUS_LABEL: Record<string, string> = {
+/** Display order for status pickers, tabs and charts. */
+export const REPORT_STATUSES: readonly ReportStatus[] = [
+  "open",
+  "in_progress",
+  "resolved",
+  "closed",
+]
+/** Display order for priority pickers and facets, most urgent first. */
+export const REPORT_PRIORITIES: readonly ReportPriority[] = ["urgent", "high", "normal", "low"]
+
+// The one place status and priority display labels live. Sentence case,
+// matching the rest of the UI ("In progress", not "In Progress").
+const STATUS_LABEL: Record<ReportStatus, string> = {
   open: "Open",
   in_progress: "In progress",
   resolved: "Resolved",
@@ -35,10 +49,10 @@ const STATUS_LABEL: Record<string, string> = {
 }
 export function statusLabel(s: string | undefined | null): string {
   if (!s) return "Unknown"
-  return STATUS_LABEL[s] ?? s
+  return STATUS_LABEL[s as ReportStatus] ?? s
 }
 
-const PRIORITY_LABEL: Record<string, string> = {
+const PRIORITY_LABEL: Record<ReportPriority, string> = {
   urgent: "Urgent",
   high: "High",
   normal: "Normal",
@@ -46,30 +60,5 @@ const PRIORITY_LABEL: Record<string, string> = {
 }
 export function priorityLabel(p: string | undefined | null): string {
   if (!p) return "—"
-  return PRIORITY_LABEL[p] ?? p
-}
-
-/**
- * Humanize an ISO timestamp into the compact scheme we use across the app.
- * Handles undefined / empty input so the caller can pass optional fields
- * directly.
- *
- * Default (`compact: false`): "just now" | "5m ago" | "3h ago" | "2d ago"
- * Compact (`compact: true`):  "now" | "5m" | "3h" | "2d"  — for dense table
- *                             columns where "ago" would steal column width.
- */
-export function relativeTime(
-  iso: string | undefined | null,
-  opts: { compact?: boolean } = {},
-): string {
-  if (!iso) return ""
-  const suffix = opts.compact ? "" : " ago"
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 1) return opts.compact ? "now" : "just now"
-  if (mins < 60) return `${mins}m${suffix}`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h${suffix}`
-  const days = Math.floor(hrs / 24)
-  return `${days}d${suffix}`
+  return PRIORITY_LABEL[p as ReportPriority] ?? p
 }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
+import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import { ref, computed, watch } from "vue"
 import type { ProjectDTO, SharedMediaDTO } from "@reprojs/shared"
@@ -330,12 +332,11 @@ async function confirmDelete() {
 
 <template>
   <div class="space-y-6">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">
-        {{ project?.name ? `${project.name} — Settings` : "Settings" }}
-      </h1>
-      <p class="text-sm text-muted mt-1">Configure the project's intake, triage, and security.</p>
-    </header>
+    <PageHeader
+      eyebrow="Project"
+      title="Settings"
+      description="Configure the project's intake, triage, and security."
+    />
 
     <UTabs v-model="activeTab" :items="tabs" value-key="value" :content="false" class="w-full" />
 
@@ -465,13 +466,13 @@ async function confirmDelete() {
           :ui="{ td: 'text-sm', th: 'text-sm font-medium text-muted uppercase' }"
         >
           <template #createdAt-cell="{ row }">
-            {{ new Date(row.original.createdAt).toLocaleString() }}
+            <RelativeTime :value="row.original.createdAt" />
           </template>
           <template #sizeBytes-cell="{ row }">
             {{ formatBytes(row.original.sizeBytes) }}
           </template>
           <template #expiresAt-cell="{ row }">
-            {{ new Date(row.original.expiresAt).toLocaleString() }}
+            <RelativeTime :value="row.original.expiresAt" />
           </template>
           <template #status-cell="{ row }">
             <UBadge :color="statusColor(mediaStatus(row.original))" variant="subtle" size="sm">
