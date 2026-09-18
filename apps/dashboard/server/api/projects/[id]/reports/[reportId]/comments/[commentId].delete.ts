@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: "Missing ids" })
   }
 
-  const { session, effectiveRole } = await requireProjectRole(event, projectId, "manager")
+  const { session } = await requireProjectRole(event, projectId, "manager")
 
   const [comment] = await db
     .select()
@@ -37,10 +37,11 @@ export default defineEventHandler(async (event) => {
 
   if (!comment) throw createError({ statusCode: 404, statusMessage: "Comment not found" })
 
-  // Permission: author can delete their own; owner can delete any
-  const isAuthor = comment.userId === session.userId
-  const isOwner = effectiveRole === "owner"
-  if (!isAuthor && !isOwner) {
+  // Author-only. A delete also removes the comment on GitHub when synced, and
+  // no dashboard UI offers moderator deletes, so there is no owner override.
+  // GitHub-originated comments (userId null) are never deletable here.
+  const isAuthor = comment.userId !== null && comment.userId === session.userId
+  if (!isAuthor) {
     throw createError({ statusCode: 403, statusMessage: "Insufficient permission" })
   }
 

@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: "Missing ids" })
   }
 
-  const { session, effectiveRole } = await requireProjectRole(event, projectId, "manager")
+  const { session } = await requireProjectRole(event, projectId, "manager")
   const body = await readValidatedBody(event, (b) => UpdateCommentBody.parse(b))
 
   const [comment] = await db
@@ -38,10 +38,12 @@ export default defineEventHandler(async (event) => {
 
   if (!comment) throw createError({ statusCode: 404, statusMessage: "Comment not found" })
 
-  // Permission: author can edit their own; owner can edit any
-  const isAuthor = comment.userId === session.userId
-  const isOwner = effectiveRole === "owner"
-  if (!isAuthor && !isOwner) {
+  // Author-only. An edit keeps the original attribution and syncs to GitHub
+  // under it, so letting anyone else (owners included) rewrite the body would
+  // put words in the author's mouth. GitHub-originated comments have no
+  // dashboard author (userId null) and are never editable here.
+  const isAuthor = comment.userId !== null && comment.userId === session.userId
+  if (!isAuthor) {
     throw createError({ statusCode: 403, statusMessage: "Insufficient permission" })
   }
 
