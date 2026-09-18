@@ -222,7 +222,7 @@ bun run release --only sdk  # restrict (comma-separated); --skip is the inverse
 
 It works out which artifacts are affected by asking what each one is *built from* — including the SDK bundle that the dashboard bakes into its image and the extension syncs at build time. So a `packages/ui` fix releases the SDK, dashboard **and** extension together, while a dashboard-only change releases just the dashboard. It shows the plan, asks once, then makes a single commit, tags each artifact, and pushes.
 
-Version lines stay independent (`sdk-v0.4.2` / `v0.6.5` / `extension-v0.1.4`), so a dashboard change never forces a churn republish of `@reprojs/core`.
+Version lines stay independent (`sdk-v0.5.0` / `v0.7.0` / `extension-v0.2.0`), so a dashboard change never forces a churn republish of `@reprojs/core`.
 
 Mixed bump levels compose with `--only`:
 

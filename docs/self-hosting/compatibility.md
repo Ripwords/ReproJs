@@ -8,22 +8,26 @@ If you deploy the dashboard and update clients in lockstep, you can ignore this 
 
 | Dashboard tag | `@reprojs/core` (web SDK) | `@reprojs/expo` (Expo SDK) | `@reprojs/extension` (Chrome) |
 | --- | --- | --- | --- |
-| `0.1.0` – `0.1.10` | `>= 0.1.4`, `<= 0.4.x` ¹ | not supported | not supported ² |
-| `0.1.11` – `0.1.18` | `>= 0.1.4`, `<= 0.4.x` ¹ | not supported | `0.1.1` |
-| `0.2.x` – `0.4.x` | `>= 0.1.4`, `<= 0.4.x` ¹ | `>= 0.1.0`, `<= 0.2.x` ¹ | `0.1.1` – `0.1.2` |
-| `0.5.x` | `>= 0.1.4`, `<= 0.4.x` | `>= 0.1.0`, `<= 0.2.x` | `0.1.1` – `0.1.2` |
+| `0.1.0` – `0.1.10` | `>= 0.1.4`, `<= 0.5.x` ¹ ³ | not supported | not supported ² |
+| `0.1.11` – `0.1.18` | `>= 0.1.4`, `<= 0.5.x` ¹ ³ | not supported | `0.1.1` |
+| `0.2.x` – `0.4.x` | `>= 0.1.4`, `<= 0.5.x` ¹ ³ | `>= 0.1.0`, `<= 0.3.x` ¹ | `0.1.1` – `0.2.0` ³ |
+| `0.5.0` – `0.6.5` | `>= 0.1.4`, `<= 0.5.x` ³ | `>= 0.1.0`, `<= 0.3.x` | `0.1.1` – `0.2.0` ³ |
+| `0.6.6` – `0.7.x` | `>= 0.1.4`, `<= 0.5.x` | `>= 0.1.0`, `<= 0.3.x` | `0.1.1` – `0.2.0` |
 
 ¹ **User-file attachments** (web SDK `0.4.0` / Expo SDK `0.2.0`) require dashboard `>= 0.5.0`. On older dashboards the report is still accepted, but the user-attached files are silently dropped — only the screenshot and replay are persisted.
 
 ² The Chrome extension proxies the intake POST through its service worker, which fixes the `Origin` header to `chrome-extension://<id>`. Dashboards before `0.1.11` did not honour the `X-Repro-Origin` fallback header, so every proxied report was rejected as "Origin not allowed".
 
+³ **Screen recordings and gallery media** (web SDK `0.5.0`, and extension `0.2.0`, which bundles it) require dashboard `>= 0.6.6`. On older dashboards the report is still accepted, but the `media[N]` parts are silently dropped.
+
 ## What changed at each boundary
 
-Boundaries only move when the intake contract changes. Patch-level dashboard releases (e.g. `0.4.1`, `0.4.2`, `0.1.x`) never narrow the supported client range.
+Boundaries only move when the intake contract changes. Patch-level dashboard releases (e.g. `0.4.1`, `0.4.2`, `0.1.x`) never narrow the supported client range. They can widen it: `0.6.6` added gallery media intake in a patch release.
 
 - **Dashboard `0.1.11`** — intake accepts `X-Repro-Origin` from the Chrome extension's service-worker proxy. First dashboard the tester extension can talk to.
 - **Dashboard `0.2.0`** — adds `ReportContext.source` discriminator, optional mobile fields on `SystemInfo` (`devicePlatform`, `appVersion`, `appBuild`, `deviceModel`, `osVersion`), allows empty `Origin` for `source: "expo"`, and accepts the `Idempotency-Key` header for offline-queue retries. First dashboard `@reprojs/expo` can talk to.
 - **Dashboard `0.5.0`** — intake accepts `attachment[N]` multipart parts as user-attached files (with per-file size cap, MIME denylist, ClamAV virus scan, `kind='user-file'` rows). Required for the user-attachments UX added in web SDK `0.4.0` and Expo SDK `0.2.0`.
+- **Dashboard `0.6.6`** — intake accepts `media[N]` multipart parts plus a `mediaMeta` JSON part (kind, MIME, duration, trim range) for screen recordings and gallery images. Required for the capture gallery in web SDK `0.5.0`. The report schema itself is unchanged, so web SDK `0.5.x` works anywhere `0.4.x` did, minus the media.
 
 All other dashboard releases in the `0.x` line ship admin-side changes — UI, GitHub deeper-sync, replay player, triage permissions, role model — that don't move the intake contract.
 
@@ -42,21 +46,23 @@ The extension bundles `@reprojs/core` at build time (MV3 forbids remote code), s
 
 - `extension-v0.1.1` bundles `sdk-v0.3.0`
 - `extension-v0.1.2` bundles `sdk-v0.4.0`
+- `extension-v0.1.3` and `extension-v0.1.4` bundle `@reprojs/core` `0.4.1`
+- `extension-v0.2.0` bundles `sdk-v0.5.0`
 
 ## Pinning in your host app
 
 ```bash
 # Web SDK — pin in your host app's package.json:
-npm i @reprojs/core@~0.4.0    # tilde: accept 0.4.x patches, refuse 0.5.x
+npm i @reprojs/core@~0.5.0    # tilde: accept 0.5.x patches, refuse 0.6.x
 
 # Expo SDK — same idea:
-npm i @reprojs/expo@~0.2.0
+npm i @reprojs/expo@~0.3.0
 ```
 
 ```bash
 # Dashboard — pin in your .env / compose file:
-REPRO_VERSION=0.5.0    # exact — most predictable
-REPRO_VERSION=0.5      # major.minor — accept patches on pull
+REPRO_VERSION=0.7.0    # exact — most predictable
+REPRO_VERSION=0.7      # major.minor — accept patches on pull
 REPRO_VERSION=latest   # tracks main; only safe when you redeploy clients in lockstep
 ```
 

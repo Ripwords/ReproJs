@@ -344,9 +344,9 @@ Operators configure a cookie/header denylist on the dashboard. Report payloads s
 
 ## Bundle size
 
-`@reprojs/core@0.1.0`:
+`@reprojs/core@0.5.0`:
 
-- **ESM**: ~157 KB uncompressed (`@reprojs/*` deps inlined)
-- **IIFE** (minified): ~93 KB — the one your users download
+- **ESM**: ~243 KB uncompressed (`@reprojs/*` deps inlined)
+- **IIFE** (minified): ~147 KB — the one your users download
 
-Typical real-world transfer once your CDN gzips it: ~32 KB.
+Typical real-world transfer once your CDN gzips it: ~46 KB.
