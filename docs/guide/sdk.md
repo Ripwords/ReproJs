@@ -247,10 +247,12 @@ No server rendering, no guards needed — the top-level call in the ESM example 
 
 Sign in to your dashboard, create a project, open **Project → Settings**. Each project has:
 
-- A **public key** (`rp_pk_` + 24 base62 chars) — safe to ship in your client JS
-- An **origin allowlist** — requests from any origin not on the list are rejected with 403 and no CORS oracle leaked
+- A **public key** (`rp_pk_` + 24 base62 chars), on the **Security** tab — safe to ship in your client JS. The tab also shows a ready-to-paste embed snippet with the key filled in.
+- An **origin allowlist**, on the **General** tab — requests from any origin not on the list are rejected with 403 and no CORS oracle leaked
 
-You can rotate the key any time.
+A new project has no key yet: the field reads **(not generated)** until a project owner clicks **Rotate key**. The owner can rotate the key again at any time.
+
+Every project member can open the Security tab. On a project with no reports, the **View embed snippet** button on the project overview and the empty inbox goes straight to it. Install admins see **View install instructions** instead, which opens the full install guide at **Admin → Install**.
 
 ## API
 

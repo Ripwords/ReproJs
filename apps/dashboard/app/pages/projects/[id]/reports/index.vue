@@ -12,6 +12,7 @@ import AppEmptyState from "~/components/common/app-empty-state.vue"
 import { INBOX_PAGE_SIZE, useInboxQuery } from "~/composables/use-inbox-query"
 import { useKeyboardShortcuts } from "~/composables/useKeyboardShortcuts"
 import { priorityColor, relativeTime } from "~/composables/use-report-format"
+import { installLinkFor } from "~/utils/install-link"
 
 const UCheckbox = resolveComponent("UCheckbox")
 const UBadge = resolveComponent("UBadge")
@@ -19,7 +20,6 @@ const UTooltip = resolveComponent("UTooltip")
 const UIcon = resolveComponent("UIcon")
 
 const route = useRoute()
-const router = useRouter()
 const toast = useToast()
 const projectId = computed(() => route.params.id as string)
 
@@ -172,6 +172,9 @@ const hasActiveFilters = computed(
     query.value.tag.length > 0 ||
     query.value.source.length > 0,
 )
+
+const { isAdmin } = useSession()
+const installLink = computed(() => installLinkFor(isAdmin.value, projectId.value))
 
 function clearFilters() {
   update({ q: "", status: [], priority: [], assignee: [], tag: [], source: [] })
@@ -422,10 +425,10 @@ function onRowSelect(_e: Event, row: TableRowLike) {
               ? 'Try clearing the search or adjusting the filters.'
               : 'Reports will appear here when the SDK is installed and users submit bugs.'
           "
-          :action-label="hasActiveFilters ? 'Clear filters' : 'View install instructions'"
-          :action-to="hasActiveFilters ? undefined : '/settings/install'"
+          :action-label="hasActiveFilters ? 'Clear filters' : installLink.label"
+          :action-to="hasActiveFilters ? undefined : installLink.to"
           :variant="hasActiveFilters ? 'plain' : 'gradient'"
-          @action="hasActiveFilters ? clearFilters() : router.push('/settings/install')"
+          @action="clearFilters"
         />
         <UTable
           v-else

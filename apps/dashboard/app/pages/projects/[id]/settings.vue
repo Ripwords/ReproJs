@@ -50,7 +50,6 @@ const retentionSaving = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 
-const activeTab = ref("general")
 const tabs = [
   { value: "general", label: "General", icon: "i-heroicons-cog-6-tooth" },
   { value: "triage", label: "Triage", icon: "i-heroicons-inbox" },
@@ -58,6 +57,10 @@ const tabs = [
   { value: "security", label: "Security", icon: "i-heroicons-key" },
   { value: "danger", label: "Danger zone", icon: "i-heroicons-exclamation-triangle" },
 ]
+// `?tab=security` opens a tab directly — the "View embed snippet" links on the
+// empty inbox and project overview land members on the Security tab.
+const requestedTab = route.query.tab
+const activeTab = ref(tabs.some((t) => t.value === requestedTab) ? String(requestedTab) : "general")
 
 // Shared-media list is fetched lazily the first time the Sharing tab is
 // activated, matching the report detail page's pattern of deferring
