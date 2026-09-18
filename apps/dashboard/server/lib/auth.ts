@@ -61,11 +61,11 @@ async function isEmailDomainAllowed(email: string): Promise<boolean> {
 }
 
 /**
- * Revoke the session better-auth just planted for `userId`. Used on the
- * "existing user's domain is no longer on the allowlist" path: the user
- * already has their row + memberships + OAuth linkage provisioned from
- * before the allowlist tightened, and we must NOT cascade-delete those
- * assets just because policy changed. Dropping the session row
+ * Revoke the session better-auth just planted for `userId`. Used when an
+ * existing user is refused at sign-in (account disabled, or a domain that is
+ * no longer on the allowlist): the user already has their row + memberships
+ * + OAuth linkage, and we must NOT cascade-delete those assets just because
+ * policy changed. Dropping the session row
  * invalidates the cookie that `setSessionCookie` already sent.
  */
 async function revokeJustCreatedSession(userId: string): Promise<void> {
@@ -313,6 +313,19 @@ export const auth = betterAuth({
       const newSession = ctx.context.newSession
       const newUser = newSession?.user
       if (!newUser?.id || !newUser.email) return
+
+      // A disabled user can still complete a magic link or an OAuth round
+      // trip; better-auth knows nothing about our `status` column. Drop the
+      // session it just planted and say why, rather than let them land on a
+      // dashboard where every request answers 403.
+      const [row] = await db
+        .select({ status: user.status })
+        .from(user)
+        .where(eq(user.id, newUser.id))
+      if (row?.status === "disabled") {
+        await revokeJustCreatedSession(newUser.id)
+        throw ctx.redirect(signInErrorURL(ctx.context.baseURL, "account_disabled"))
+      }
 
       // Post-hoc domain allowlist tightening: an existing user whose
       // row was provisioned when their domain was allowed but no longer

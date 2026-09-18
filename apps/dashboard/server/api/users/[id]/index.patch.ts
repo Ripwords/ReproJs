@@ -4,6 +4,7 @@ import { UpdateUserInput } from "@reprojs/shared"
 import { db } from "../../../db"
 import { user } from "../../../db/schema"
 import { requireInstallAdmin } from "../../../lib/permissions"
+import { endSessionsOfDisabledUser } from "../../../lib/session-ended"
 
 export default defineEventHandler(async (event) => {
   await requireInstallAdmin(event)
@@ -35,7 +36,15 @@ export default defineEventHandler(async (event) => {
   if (body.role !== undefined) updates.role = body.role
   if (body.status !== undefined) updates.status = body.status
 
-  const [updated] = await db.update(user).set(updates).where(eq(user.id, id)).returning()
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx.update(user).set(updates).where(eq(user.id, id)).returning()
+    // A disabled user must be signed out everywhere now, not when their
+    // sessions happen to expire. requireSession already refuses them, but a
+    // live session left them clicking through 403 toasts and "project not
+    // found" redirects with no idea why.
+    if (row && body.status === "disabled") await endSessionsOfDisabledUser(tx, id)
+    return row
+  })
   if (!updated) {
     throw createError({ statusCode: 500, statusMessage: "Insert failed" })
   }

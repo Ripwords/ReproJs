@@ -84,6 +84,8 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
   // Workspace gates — server/lib/auth.ts
   domain_not_allowed: "Your email domain isn't allowed on this workspace.",
   not_invited: "Sign-up is invite-only. Ask an admin to invite you first.",
+  account_disabled:
+    "Your account has been disabled, so you were signed out. Ask a workspace admin to re-enable it.",
 
   // better-auth magic-link verify
   INVALID_TOKEN: "That sign-in link is no longer valid. Request a fresh one below.",

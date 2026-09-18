@@ -135,6 +135,20 @@ describe("OAuth sign-in against the workspace gates", () => {
     expect(row).toBeUndefined()
   })
 
+  test("a disabled user signing in with GitHub lands on sign-in with account_disabled", async () => {
+    const id = await createUser("carol@example.com", "member")
+    await db.update(user).set({ status: "disabled" }).where(eq(user.id, id))
+
+    const res = await githubSignIn({ id: 104, email: "carol@example.com" })
+    expect(res.status).toBe(302)
+    const location = locationOf(res)
+    expect(location.pathname).toBe("/auth/sign-in")
+    expect(location.searchParams.get("error")).toBe("account_disabled")
+
+    const sessions = await db.execute(sql`SELECT 1 FROM "session" WHERE user_id = ${id}`)
+    expect(sessions.rows).toHaveLength(0)
+  })
+
   test("domain allowlist: an off-list GitHub email lands on sign-in with domain_not_allowed", async () => {
     await db.execute(
       sql`UPDATE app_settings SET allowed_email_domains = ARRAY['work.com']::text[] WHERE id = 1`,

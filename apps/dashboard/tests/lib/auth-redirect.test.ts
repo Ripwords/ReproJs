@@ -89,6 +89,7 @@ describe("authErrorMessage", () => {
   test("keeps explaining the workspace gates", () => {
     expect(authErrorMessage("domain_not_allowed")).toContain("domain")
     expect(authErrorMessage("not_invited")).toContain("invite")
+    expect(authErrorMessage("account_disabled")).toContain("disabled")
   })
 
   test("surfaces an unknown code verbatim instead of staying silent", () => {
