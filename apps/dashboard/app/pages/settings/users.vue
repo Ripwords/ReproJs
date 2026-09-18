@@ -3,6 +3,7 @@ import RelativeTime from "~/components/common/relative-time.vue"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
 import type { InstallRole, UserDTO, UserStatus } from "@reprojs/shared"
+import { installRoleChangeConfirm } from "~/utils/role-change-confirm"
 
 definePageMeta({ middleware: "admin-only" })
 useHead({ title: "Users" })
@@ -15,6 +16,7 @@ const USelectMenu = resolveComponent("USelectMenu")
 
 const toast = useToast()
 const { confirm } = useConfirm()
+const { user: sessionUser } = useSession()
 
 const {
   data: users,
@@ -60,6 +62,14 @@ async function sendInvite() {
   } finally {
     inviting.value = false
   }
+}
+
+async function confirmRoleChange(u: UserDTO, next: InstallRole) {
+  const ok = await confirm(
+    installRoleChangeConfirm({ email: u.email, to: next, isSelf: u.id === sessionUser.value?.id }),
+  )
+  if (!ok) return
+  await updateRole(u.id, next)
 }
 
 async function updateRole(userId: string, next: InstallRole) {
@@ -163,7 +173,7 @@ const columns = computed<TableColumn<UserDTO>[]>(() => [
         class: "w-28",
         "onUpdate:modelValue": (v: { label: string; value: InstallRole }) => {
           if (v?.value && v.value !== row.original.role) {
-            void updateRole(row.original.id, v.value)
+            void confirmRoleChange(row.original, v.value)
           }
         },
       }),

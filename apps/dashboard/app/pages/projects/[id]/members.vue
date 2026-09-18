@@ -9,6 +9,7 @@ import type {
   ProjectMemberDTO,
   ProjectRole,
 } from "@reprojs/shared"
+import { projectRoleChangeConfirm } from "~/utils/role-change-confirm"
 
 const UAvatar = resolveComponent("UAvatar")
 const USelectMenu = resolveComponent("USelectMenu")
@@ -19,6 +20,7 @@ const route = useRoute()
 const projectId = computed(() => String(route.params.id))
 const toast = useToast()
 const { confirm } = useConfirm()
+const { user: sessionUser, isAdmin } = useSession()
 
 const { data: project } = await useApi<ProjectDTO>(`/api/projects/${projectId.value}`)
 const {
@@ -72,6 +74,19 @@ async function sendInvite() {
   } finally {
     inviting.value = false
   }
+}
+
+async function confirmRoleChange(member: ProjectMemberDTO, next: ProjectRole) {
+  const ok = await confirm(
+    projectRoleChangeConfirm({
+      email: member.email,
+      to: next,
+      isSelf: member.userId === sessionUser.value?.id,
+      selfIsAdmin: isAdmin.value,
+    }),
+  )
+  if (!ok) return
+  await updateRole(member.userId, next)
 }
 
 async function updateRole(userId: string, next: ProjectRole) {
@@ -218,7 +233,7 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
         size: "xs",
         "onUpdate:modelValue": (v: { label: string; value: ProjectRole }) => {
           if (v?.value && v.value !== row.original.role) {
-            void updateRole(row.original.userId, v.value)
+            void confirmRoleChange(row.original, v.value)
           }
         },
       })
