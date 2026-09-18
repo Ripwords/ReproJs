@@ -63,24 +63,29 @@ type TabId =
   | "raw"
 const activeTab = ref<TabId>("overview")
 
-// Logs attachment is lazy-loaded when a tab that needs it is opened. Matches
-// the drawer's behaviour so the Console/Network bundles aren't fetched up-front
-// for reports the reviewer never drills into.
-const logs = ref<LogsAttachment | null>(null)
-const logsLoaded = ref(false)
-async function ensureLogs() {
-  if (logsLoaded.value) return
-  logsLoaded.value = true
-  const res = await $fetch<LogsAttachment>(
-    `/api/projects/${projectId.value}/reports/${reportId.value}/attachment?kind=logs`,
-    { credentials: "include" },
-  ).catch(() => null)
-  logs.value = res ?? null
-}
+// Logs attachment is lazy-loaded when a tab that needs it is opened, so the
+// Console/Network bundles aren't fetched up-front for reports the reviewer
+// never drills into.
+const {
+  state: logsState,
+  ensure: ensureLogs,
+  retry: retryLogs,
+  reset: resetLogs,
+} = useReportLogs({
+  url: () => `/api/projects/${projectId.value}/reports/${reportId.value}/attachment?kind=logs`,
+  hasLogs: () => (report.value?.attachments ?? []).some((a) => a.kind === "logs"),
+  fetcher: (url) => $fetch<LogsAttachment>(url, { credentials: "include" }),
+})
+const needsLogs = (t: TabId) => t === "console" || t === "network"
 watch(activeTab, (t) => {
-  if (t === "console" || t === "network") ensureLogs()
+  if (needsLogs(t)) void ensureLogs()
+})
+watch(reportId, () => {
+  resetLogs()
+  if (needsLogs(activeTab.value)) void ensureLogs()
 })
 
+const logs = computed(() => (logsState.value.kind === "ready" ? logsState.value.logs : null))
 const consoleHasData = computed(
   () => logs.value !== null && (logs.value.console.length > 0 || logs.value.breadcrumbs.length > 0),
 )
@@ -244,8 +249,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
           :report="report"
           @select-tab="(t) => (activeTab = t)"
         />
-        <ConsoleTab v-else-if="activeTab === 'console'" :logs="logs" />
-        <NetworkTab v-else-if="activeTab === 'network'" :logs="logs" />
+        <ConsoleTab v-else-if="activeTab === 'console'" :state="logsState" @retry="retryLogs" />
+        <NetworkTab v-else-if="activeTab === 'network'" :state="logsState" @retry="retryLogs" />
         <ReplayTab
           v-else-if="activeTab === 'replay'"
           :key="report.id"
