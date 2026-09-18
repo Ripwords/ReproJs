@@ -2,6 +2,7 @@
 import PageHeader from "~/components/common/page-header.vue"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
+import type { McpConnectionListDTO } from "@reprojs/shared"
 import { computed, ref } from "vue"
 
 useHead({ title: "MCP / AI assistants" })
@@ -44,17 +45,8 @@ const cursorSnippet = computed(() =>
 
 const remoteCli = computed(() => `npx mcp-remote ${mcpUrl.value}`)
 
-interface Connection {
-  clientId: string
-  clientName: string
-  scopes: string[]
-  connectedAt: string
-  lastUsedAt: string | null
-}
-
-const { data: connectionsData, refresh } = await useApi<{ connections: Connection[] }>(
-  "/api/me/mcp-connections",
-)
+const { data: connectionsData, refresh } =
+  await useApi<McpConnectionListDTO>("/api/me/mcp-connections")
 
 const connections = computed(() => connectionsData.value?.connections ?? [])
 

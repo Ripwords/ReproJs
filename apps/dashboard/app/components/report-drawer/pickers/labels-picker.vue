@@ -9,7 +9,7 @@
      select we POST /labels to create it in the linked GitHub repo, refetch
      the list, and append it to the current selection. -->
 <script setup lang="ts">
-type RepoLabel = { name: string; color: string; description: string | null }
+import type { GithubRepoLabelListDTO } from "@reprojs/shared"
 
 const props = defineProps<{
   projectId: string
@@ -26,7 +26,7 @@ const emit = defineEmits<{
 const toast = useToast()
 const creating = ref(false)
 
-const { data, pending, error, refresh } = useFetch<{ items: RepoLabel[] }>(
+const { data, pending, error, refresh } = useFetch<GithubRepoLabelListDTO>(
   () => `/api/projects/${props.projectId}/integrations/github/labels`,
   { default: () => ({ items: [] }) },
 )

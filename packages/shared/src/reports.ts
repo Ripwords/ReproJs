@@ -290,6 +290,32 @@ export const ReportSummaryDTO = z.object({
 })
 export type ReportSummaryDTO = z.infer<typeof ReportSummaryDTO>
 
+/** Filter counts shown beside the inbox list, computed over the same filters. */
+export const ReportFacetsDTO = z.object({
+  status: z.record(ReportStatus, z.number().int()),
+  priority: z.record(ReportPriority, z.number().int()),
+  assignees: z.array(
+    z.object({ login: z.string(), avatarUrl: z.string().nullable(), count: z.number().int() }),
+  ),
+  tags: z.array(z.object({ name: z.string(), count: z.number().int() })),
+  /** `ios` and `android` are subsets of `expo`. */
+  source: z.object({
+    web: z.number().int(),
+    expo: z.number().int(),
+    ios: z.number().int(),
+    android: z.number().int(),
+  }),
+})
+export type ReportFacetsDTO = z.infer<typeof ReportFacetsDTO>
+
+/** GET /api/projects/:id/reports */
+export const ReportListDTO = z.object({
+  items: z.array(ReportSummaryDTO),
+  total: z.number().int(),
+  facets: ReportFacetsDTO,
+})
+export type ReportListDTO = z.infer<typeof ReportListDTO>
+
 export const ReportDetailDTO = ReportSummaryDTO.extend({
   attachments: z.array(AttachmentDTO),
 })

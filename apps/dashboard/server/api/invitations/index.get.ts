@@ -3,6 +3,7 @@ import { defineEventHandler } from "h3"
 import { db } from "../../db"
 import { projectInvitations, projects, user } from "../../db/schema"
 import { requireSession } from "../../lib/permissions"
+import type { PendingInvitationDTO } from "@reprojs/shared"
 
 // List the current user's pending invitations. Matched by normalized email
 // (invitations are sent to an email, not a userId, so a user with an account
@@ -13,7 +14,7 @@ import { requireSession } from "../../lib/permissions"
 // client-side here — a background job (or the token-detail endpoint on
 // visit) eventually flips them to status="expired", but this list should
 // stay clean without waiting for that.
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<PendingInvitationDTO[]> => {
   const session = await requireSession(event)
   const emailLower = session.email.toLowerCase()
   const now = new Date()

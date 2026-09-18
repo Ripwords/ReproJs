@@ -1,4 +1,5 @@
 // apps/dashboard/server/api/projects/[id]/integrations/github/repositories.get.ts
+import type { GithubRepositoryPageDTO } from "@reprojs/shared"
 import { createError, defineEventHandler, getQuery, getRouterParam } from "h3"
 import { eq } from "drizzle-orm"
 import { z } from "zod"
@@ -14,7 +15,7 @@ const querySchema = z.object({
   q: z.string().trim().max(200).optional(),
 })
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<GithubRepositoryPageDTO> => {
   const projectId = getRouterParam(event, "id")
   if (!projectId) throw createError({ statusCode: 400, statusMessage: "missing project id" })
   await requireProjectRole(event, projectId, "developer")

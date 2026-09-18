@@ -3,13 +3,14 @@ import { eq, desc, max } from "drizzle-orm"
 import { db } from "../../db"
 import { oauthConsent, oauthClient, oauthAccessToken } from "../../db/schema/auth-schema"
 import { requireSession } from "../../lib/permissions"
+import type { McpConnectionListDTO } from "@reprojs/shared"
 
 /**
  * Returns the OAuth consents (= connected MCP apps) for the current user.
  * Each entry includes the client name (from RFC 7591 registration), connected
  * date, last-used timestamp, and the scopes granted.
  */
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<McpConnectionListDTO> => {
   const session = await requireSession(event)
 
   const consents = await db
@@ -46,8 +47,8 @@ export default defineEventHandler(async (event) => {
       clientId: c.clientId,
       clientName: c.clientName ?? "Unknown",
       scopes: c.scopes ?? [],
-      connectedAt: c.createdAt,
-      lastUsedAt: lastUsedByClient.get(c.clientId) ?? null,
+      connectedAt: c.createdAt?.toISOString() ?? null,
+      lastUsedAt: lastUsedByClient.get(c.clientId)?.toISOString() ?? null,
     })),
   }
 })

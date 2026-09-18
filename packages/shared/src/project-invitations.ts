@@ -34,3 +34,16 @@ export const InvitationDetailDTO = z.object({
   expiresAt: z.string(),
 })
 export type InvitationDetailDTO = z.infer<typeof InvitationDetailDTO>
+
+/** One of the signed-in user's own pending invitations (GET /api/invitations). */
+export const PendingInvitationDTO = z.object({
+  token: z.string(),
+  projectId: z.uuid(),
+  projectName: z.string(),
+  role: ProjectRole,
+  inviterName: z.string().nullable(),
+  inviterEmail: z.email().nullable(),
+  invitedAt: z.string(),
+  expiresAt: z.string(),
+})
+export type PendingInvitationDTO = z.infer<typeof PendingInvitationDTO>

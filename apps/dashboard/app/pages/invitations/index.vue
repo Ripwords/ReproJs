@@ -1,27 +1,16 @@
 <script setup lang="ts">
 import RelativeTime from "~/components/common/relative-time.vue"
-import type { ProjectRole } from "@reprojs/shared"
-
-interface PendingInvitation {
-  token: string
-  projectId: string
-  projectName: string
-  role: ProjectRole
-  inviterName: string | null
-  inviterEmail: string | null
-  invitedAt: string
-  expiresAt: string
-}
+import type { PendingInvitationDTO } from "@reprojs/shared"
 
 useHead({ title: "Pending invitations" })
 
-const { data, pending, refresh } = await useApi<PendingInvitation[]>("/api/invitations", {
+const { data, pending, refresh } = await useApi<PendingInvitationDTO[]>("/api/invitations", {
   default: () => [],
 })
 
 const invites = computed(() => data.value ?? [])
 
-function inviterLabel(inv: PendingInvitation): string {
+function inviterLabel(inv: PendingInvitationDTO): string {
   return inv.inviterName || inv.inviterEmail || "Someone"
 }
 </script>

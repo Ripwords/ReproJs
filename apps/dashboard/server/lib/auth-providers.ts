@@ -1,3 +1,5 @@
+import type { AuthProvidersDTO } from "@reprojs/shared"
+
 /**
  * Which OAuth providers are configured on this deployment.
  *
@@ -6,10 +8,7 @@
  * than whatever was set when the Docker image was built. See `auth.ts` for
  * where these env vars actually enable the social providers.
  */
-export type AuthProviderStatus = {
-  github: boolean
-  google: boolean
-}
+export type AuthProviderStatus = AuthProvidersDTO
 
 type ProviderEnv = {
   GITHUB_CLIENT_ID: string

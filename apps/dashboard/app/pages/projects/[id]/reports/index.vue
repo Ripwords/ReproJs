@@ -4,7 +4,7 @@ import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
-import type { ReportPriority, ReportStatus, ReportSummaryDTO } from "@reprojs/shared"
+import type { ReportListDTO, ReportPriority, ReportStatus, ReportSummaryDTO } from "@reprojs/shared"
 import StatusTabs from "~/components/inbox/status-tabs.vue"
 import FacetSidebar from "~/components/inbox/facet-sidebar.vue"
 import SearchSort from "~/components/inbox/search-sort.vue"
@@ -29,21 +29,7 @@ useHead({ title: "Reports" })
 const { query, update, toApi } = useInboxQuery()
 
 const listUrl = computed(() => `/api/projects/${projectId.value}/reports?${toApi()}`)
-const { data, pending, refresh } = useApi<{
-  items: ReportSummaryDTO[]
-  total: number
-  facets: {
-    status: Record<ReportStatus, number>
-    priority: Record<ReportPriority, number>
-    assignees: Array<{
-      login: string
-      avatarUrl: string | null
-      count: number
-    }>
-    tags: Array<{ name: string; count: number }>
-    source: { web: number; expo: number; ios: number; android: number }
-  }
-}>(listUrl, { watch: [listUrl] })
+const { data, pending, refresh } = useApi<ReportListDTO>(listUrl, { watch: [listUrl] })
 
 const reports = computed<ReportSummaryDTO[]>(() => data.value?.items ?? [])
 

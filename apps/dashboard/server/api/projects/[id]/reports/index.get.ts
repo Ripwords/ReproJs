@@ -17,6 +17,8 @@ import {
 import {
   ReportPriority,
   ReportStatus,
+  type ReportFacetsDTO,
+  type ReportListDTO,
   type ReportSummaryDTO,
   type ReportContext,
 } from "@reprojs/shared"
@@ -35,7 +37,7 @@ function parseCsv(v: unknown): string[] {
     .slice(0, 10)
 }
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<ReportListDTO> => {
   const id = getRouterParam(event, "id")
   if (!id) throw new Error("missing project id")
   const { session } = await requireProjectRole(event, id, "viewer")
@@ -274,12 +276,12 @@ export default defineEventHandler(async (event) => {
     }
   })
 
-  const statusFacet: Record<string, number> = { open: 0, in_progress: 0, resolved: 0, closed: 0 }
+  const statusFacet: ReportFacetsDTO["status"] = { open: 0, in_progress: 0, resolved: 0, closed: 0 }
   for (const r of statusRows) statusFacet[r.key] = r.c
-  const priorityFacet: Record<string, number> = { low: 0, normal: 0, high: 0, urgent: 0 }
+  const priorityFacet: ReportFacetsDTO["priority"] = { low: 0, normal: 0, high: 0, urgent: 0 }
   for (const r of priorityRows) priorityFacet[r.key] = r.c
 
-  const sourceFacets = { web: 0, expo: 0, ios: 0, android: 0 }
+  const sourceFacets: ReportFacetsDTO["source"] = { web: 0, expo: 0, ios: 0, android: 0 }
   for (const r of sourceFacetRows) {
     if (r.source === "web") sourceFacets.web += r.c
     if (r.source === "expo") {
