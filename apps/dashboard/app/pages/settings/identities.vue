@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import SettingsIdentityRow from "~/components/settings/identity-row.vue"
 
 useHead({ title: "Linked accounts" })
@@ -52,12 +53,13 @@ async function disconnectGithub() {
 </script>
 
 <template>
-  <div class="max-w-2xl mx-auto py-8">
-    <h1 class="text-2xl font-semibold">Linked accounts</h1>
-    <p class="text-muted mt-1">
-      Connect your GitHub account so assignments, labels, and comments stay in sync both ways.
-    </p>
-    <div class="mt-6 space-y-3">
+  <div class="space-y-6 max-w-3xl">
+    <PageHeader
+      eyebrow="Account"
+      title="Linked accounts"
+      description="Connect your GitHub account so assignments, labels, and comments stay in sync both ways."
+    />
+    <div class="space-y-3">
       <SettingsIdentityRow
         provider="github"
         label="GitHub"

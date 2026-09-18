@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 import type { ProjectDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
@@ -71,25 +72,21 @@ async function createProject() {
 
 <template>
   <div class="space-y-8">
-    <header class="flex items-start justify-between gap-6">
-      <div class="min-w-0 flex-1">
-        <div class="text-sm font-medium uppercase tracking-[0.18em] text-muted">Workspace</div>
-        <h1 class="mt-1 text-3xl font-semibold text-default tracking-tight">Projects</h1>
-        <p class="mt-2 text-sm text-muted max-w-xl">
-          Each project carries its own SDK key, member list, and inbox. Pick one to triage, or spin
-          up a new one.
-        </p>
-      </div>
-      <UButton
-        v-if="canCreate"
-        label="New project"
-        icon="i-heroicons-plus"
-        color="primary"
-        size="md"
-        class="mt-7 shrink-0"
-        @click="newOpen = true"
-      />
-    </header>
+    <PageHeader
+      eyebrow="Workspace"
+      title="Projects"
+      description="Each project carries its own SDK key, member list, and inbox. Pick one to triage, or spin up a new one."
+    >
+      <template v-if="canCreate" #actions>
+        <UButton
+          label="New project"
+          icon="i-heroicons-plus"
+          color="primary"
+          size="md"
+          @click="newOpen = true"
+        />
+      </template>
+    </PageHeader>
 
     <AppEmptyState
       v-if="!pending && list.length === 0"

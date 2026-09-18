@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
@@ -279,21 +280,16 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
 
 <template>
   <div class="space-y-6">
-    <header class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold text-default">
-          {{ project?.name ? `${project.name} — Members` : "Members" }}
-        </h1>
-        <p class="text-sm text-muted mt-1">People with access to this project</p>
-      </div>
-      <UButton
-        v-if="isOwner"
-        label="Invite member"
-        icon="i-heroicons-plus"
-        color="primary"
-        @click="inviteOpen = true"
-      />
-    </header>
+    <PageHeader eyebrow="Project" title="Members" description="People with access to this project.">
+      <template v-if="isOwner" #actions>
+        <UButton
+          label="Invite member"
+          icon="i-heroicons-plus"
+          color="primary"
+          @click="inviteOpen = true"
+        />
+      </template>
+    </PageHeader>
 
     <UCard :ui="{ body: 'p-0' }">
       <UTable

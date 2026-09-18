@@ -1,5 +1,6 @@
 <!-- apps/dashboard/app/pages/projects/[id]/reports.vue -->
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
@@ -378,10 +379,11 @@ function onRowSelect(_e: Event, row: TableRowLike) {
     />
 
     <div class="flex-1 min-w-0 flex flex-col">
-      <header class="mb-4 flex items-baseline justify-between">
-        <h1 class="text-2xl font-semibold text-default">Reports</h1>
-        <span class="text-sm text-muted">{{ total }} matches</span>
-      </header>
+      <PageHeader eyebrow="Project" title="Reports" class="mb-4">
+        <template #actions>
+          <span class="text-sm text-muted">{{ total }} matches</span>
+        </template>
+      </PageHeader>
 
       <div class="mb-3">
         <BulkActionBar

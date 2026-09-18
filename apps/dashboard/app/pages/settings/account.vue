@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 import { computed, ref } from "vue"
 
@@ -49,10 +50,11 @@ async function signOutOtherSessions() {
 
 <template>
   <div class="space-y-6 max-w-3xl">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">Account</h1>
-      <p class="text-sm text-muted mt-1">Your profile and sign-in sessions.</p>
-    </header>
+    <PageHeader
+      eyebrow="Account"
+      title="Account"
+      description="Your profile and sign-in sessions."
+    />
 
     <UCard>
       <template #header>

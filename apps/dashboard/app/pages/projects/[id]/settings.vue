@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import { ref, computed, watch } from "vue"
@@ -331,12 +332,11 @@ async function confirmDelete() {
 
 <template>
   <div class="space-y-6">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">
-        {{ project?.name ? `${project.name} — Settings` : "Settings" }}
-      </h1>
-      <p class="text-sm text-muted mt-1">Configure the project's intake, triage, and security.</p>
-    </header>
+    <PageHeader
+      eyebrow="Project"
+      title="Settings"
+      description="Configure the project's intake, triage, and security."
+    />
 
     <UTabs v-model="activeTab" :items="tabs" value-key="value" :content="false" class="w-full" />
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { Orientation } from "@unovis/ts"
 import type { AdminOverviewDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
@@ -109,22 +110,21 @@ function describeEvent(e: AdminOverviewDTO["recentEvents"][number]): string {
 <template>
   <div class="space-y-8">
     <!-- Page header -->
-    <header class="flex items-end justify-between gap-4">
-      <div>
-        <div class="text-sm font-medium uppercase tracking-[0.18em] text-muted">Admin</div>
-        <h1 class="mt-1 text-3xl font-semibold text-default tracking-tight">Overview</h1>
-        <p class="mt-1.5 text-sm text-muted">
-          Snapshot of incoming reports, health, and recent team activity across all projects.
-        </p>
-      </div>
-      <UButton
-        to="/"
-        label="View all projects"
-        trailing-icon="i-heroicons-arrow-right"
-        color="primary"
-        size="md"
-      />
-    </header>
+    <PageHeader
+      eyebrow="Admin"
+      title="Overview"
+      description="Snapshot of incoming reports, health, and recent team activity across all projects."
+    >
+      <template #actions>
+        <UButton
+          to="/"
+          label="View all projects"
+          trailing-icon="i-heroicons-arrow-right"
+          color="primary"
+          size="md"
+        />
+      </template>
+    </PageHeader>
 
     <!-- Metric tiles -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

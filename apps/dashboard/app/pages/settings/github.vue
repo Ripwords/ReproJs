@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 definePageMeta({ middleware: "admin-only" })
 useHead({ title: "GitHub App" })
@@ -168,14 +169,11 @@ async function disconnect() {
 
 <template>
   <div class="space-y-6 max-w-3xl">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">GitHub integration</h1>
-      <p class="text-sm text-muted mt-1">
-        Connect this instance to GitHub so ticket triage can mirror to issues. A GitHub App is
-        installed on your organization or personal account — each self-hosted Repro instance creates
-        its own app with its own credentials.
-      </p>
-    </header>
+    <PageHeader
+      eyebrow="Admin"
+      title="GitHub integration"
+      description="Connect this instance to GitHub so ticket triage can mirror to issues. A GitHub App is installed on your organization or personal account — each self-hosted Repro instance creates its own app with its own credentials."
+    />
 
     <UAlert
       v-if="justCreated"

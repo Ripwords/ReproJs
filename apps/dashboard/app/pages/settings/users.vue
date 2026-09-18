@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
@@ -236,18 +237,16 @@ const columns = computed<TableColumn<UserDTO>[]>(() => [
 
 <template>
   <div class="space-y-6">
-    <header class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold text-default">Users</h1>
-        <p class="text-sm text-muted mt-1">Everyone with access to this install.</p>
-      </div>
-      <UButton
-        label="Invite user"
-        icon="i-heroicons-plus"
-        color="primary"
-        @click="inviteOpen = true"
-      />
-    </header>
+    <PageHeader eyebrow="Admin" title="Users" description="Everyone with access to this install.">
+      <template #actions>
+        <UButton
+          label="Invite user"
+          icon="i-heroicons-plus"
+          color="primary"
+          @click="inviteOpen = true"
+        />
+      </template>
+    </PageHeader>
 
     <UCard :ui="{ body: 'p-0' }">
       <UTable

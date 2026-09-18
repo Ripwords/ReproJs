@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { describeApiError } from "~/utils/api-error"
 import { computed, ref } from "vue"
@@ -100,13 +101,11 @@ async function copy(text: string): Promise<void> {
 
 <template>
   <div class="space-y-8 max-w-3xl">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">MCP / AI assistants</h1>
-      <p class="text-sm text-muted mt-1">
-        Connect an AI assistant (Claude Desktop, Cursor, ChatGPT, …) to triage your Repro tickets
-        through the Model Context Protocol.
-      </p>
-    </header>
+    <PageHeader
+      eyebrow="Account"
+      title="MCP / AI assistants"
+      description="Connect an AI assistant (Claude Desktop, Cursor, ChatGPT, …) to triage your Repro tickets through the Model Context Protocol."
+    />
 
     <!-- ── Connect section ─────────────────────────────────────────────── -->
     <section class="space-y-4">

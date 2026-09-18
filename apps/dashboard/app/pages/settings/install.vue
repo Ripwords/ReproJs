@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from "~/components/common/page-header.vue"
 import { computed, onMounted, ref } from "vue"
 
 definePageMeta({ middleware: "admin-only" })
@@ -194,13 +195,11 @@ const accordionItems = computed(() => [
 
 <template>
   <div class="space-y-6 max-w-4xl">
-    <header>
-      <h1 class="text-2xl font-semibold text-default">Install the SDK</h1>
-      <p class="text-sm text-muted mt-1">
-        Drop the widget into any web app in under a minute. Works with vanilla JS, React, Vue,
-        Svelte, Nuxt, Next, or any framework.
-      </p>
-    </header>
+    <PageHeader
+      eyebrow="Admin"
+      title="Install the SDK"
+      description="Drop the widget into any web app in under a minute. Works with vanilla JS, React, Vue, Svelte, Nuxt, Next, or any framework."
+    />
 
     <UAccordion :items="accordionItems" multiple>
       <template #script-body>
