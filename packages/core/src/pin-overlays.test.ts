@@ -20,8 +20,9 @@ beforeAll(async () => {
   ms = await import("modern-screenshot")
 })
 
-function stubScroll(el: Element, top: number) {
+function stubScroll(el: Element, top: number, left = 0) {
   Object.defineProperty(el, "scrollTop", { configurable: true, get: () => top })
+  Object.defineProperty(el, "scrollLeft", { configurable: true, get: () => left })
 }
 
 function stubRect(el: Element, x: number, y: number, width: number, height: number) {
@@ -103,5 +104,76 @@ describe("createOverlayPinner", () => {
     expect(pinnedCopies(cloned, "side")).toHaveLength(0)
     expect(pinnedCopies(cloned, "hdr")).toHaveLength(0)
     expect(cloned.querySelector("body #side")).not.toBeNull()
+  })
+
+  test("clips a pinned sticky cell to the scroll box it sits in", async () => {
+    document.body.innerHTML = `
+      <div id="cal" style="overflow-x:auto;width:700px">
+        <table><thead><tr>
+          <th id="gone" style="position:sticky;top:0">Sep 1</th>
+          <th id="part" style="position:sticky;top:0">Sep 17</th>
+        </tr></thead></table>
+      </div>`
+    stubScroll(document.documentElement, 0)
+    const cal = document.getElementById("cal")!
+    stubScroll(cal, 0, 2400)
+    stubRect(cal, 200, 0, 700, 400)
+    // Scrolled wholly out of the box, to its left.
+    stubRect(document.getElementById("gone")!, -100, 0, 140, 40)
+    // Half in: its left 50px are past the box's left edge.
+    stubRect(document.getElementById("part")!, 150, 0, 140, 40)
+
+    const cloned = await cloneWithPinner()
+
+    // Nothing of it shows on screen, so nothing is drawn; its slot still hides.
+    expect(pinnedCopies(cloned, "gone")).toHaveLength(0)
+    const goneSlot = cloned.querySelector("body #gone") as HTMLElement | null
+    expect(goneSlot?.style.opacity).toBe("0")
+    const [part] = pinnedCopies(cloned, "part")
+    expect(part).toBeDefined()
+    expect(part!.style.getPropertyValue("clip-path")).toBe("inset(0px 0px 0px 50px)")
+  })
+
+  test("keeps a pinned table cell's content vertically centred", async () => {
+    document.body.innerHTML = `
+      <div id="cal" style="overflow-x:auto;width:700px">
+        <table><tbody><tr>
+          <td id="tour" style="position:sticky;left:0;vertical-align:middle;height:90px">TOUR-1</td>
+        </tr></tbody></table>
+      </div>`
+    stubScroll(document.documentElement, 0)
+    const cal = document.getElementById("cal")!
+    stubScroll(cal, 0, 2400)
+    stubRect(cal, 200, 0, 700, 400)
+    const tourCell = document.getElementById("tour")!
+    stubRect(tourCell, 200, 40, 120, 90)
+    // happy-dom has no table layout and drops `display: table-cell`, so the
+    // cell reports the display every browser gives it.
+    const view = document.defaultView!
+    const realStyle = view.getComputedStyle.bind(view)
+    view.getComputedStyle = (el: Element) => {
+      const style = realStyle(el)
+      if (el !== tourCell) return style
+      return new Proxy(style, {
+        get: (target, key) => {
+          if (key === "display") return "table-cell"
+          const value = Reflect.get(target, key, target)
+          return typeof value === "function" ? value.bind(target) : value
+        },
+      })
+    }
+
+    let cloned: HTMLElement
+    try {
+      cloned = await cloneWithPinner()
+    } finally {
+      view.getComputedStyle = realStyle
+    }
+
+    const [tour] = pinnedCopies(cloned, "tour")
+    expect(tour).toBeDefined()
+    expect(tour!.style.display).toBe("flex")
+    expect(tour!.style.getPropertyValue("flex-direction")).toBe("column")
+    expect(tour!.style.getPropertyValue("justify-content")).toBe("center")
   })
 })

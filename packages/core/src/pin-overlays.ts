@@ -8,7 +8,9 @@
 // This pins each such element back to where it is on screen: the clone is
 // re-parented under the cloned root at its live rect. A sticky element still
 // holds space in the flow, so its original stays behind, invisible, and a copy
-// is pinned instead.
+// is pinned instead. Moved out from under its scroll boxes, a pinned element is
+// no longer clipped by them, so it carries their clip with it; and it leaves
+// table layout, so a cell keeps its vertical alignment by becoming a flex box.
 //
 // modern-screenshot hands its hooks the clone but not the source, so the
 // pairing relies on its traversal: `filter` sees each source child just before
@@ -22,11 +24,22 @@ export interface OverlayPinner {
   onCloneNode: (clone: Node) => void
 }
 
+interface Box {
+  top: number
+  left: number
+  right: number
+  bottom: number
+}
+
 interface Pin {
   source: Element
   clone: HTMLElement
   rect: DOMRect
+  // The part of `rect` its scroll boxes leave on screen; null when none is.
+  visible: Box | null
   sticky: boolean
+  // Set for a table cell: where its content sits in the flex box it becomes.
+  justify: string | null
 }
 
 function isElement(node: Node): node is Element {
@@ -46,7 +59,48 @@ function hasScrolledAncestor(el: Element): boolean {
   return false
 }
 
-function pinAt(el: HTMLElement, rect: DOMRect) {
+function styleOf(el: Element): CSSStyleDeclaration | null {
+  return el.ownerDocument.defaultView?.getComputedStyle(el) ?? null
+}
+
+// A sticky element is clipped by every overflow box it sits in, up to the
+// first fixed ancestor (the boxes above that one don't clip it).
+function visibleBox(source: Element, rect: DOMRect): Box | null {
+  const box = { top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom }
+  for (let a = parentAcrossShadow(source); a; a = parentAcrossShadow(a)) {
+    const style = styleOf(a)
+    if (!style) break
+    const clipsX = style.overflowX !== "visible" && style.overflowX !== ""
+    const clipsY = style.overflowY !== "visible" && style.overflowY !== ""
+    if (clipsX || clipsY) {
+      // The padding box: inside the borders, and clientWidth leaves out any
+      // scrollbar, as the live clip does.
+      const r = a.getBoundingClientRect()
+      const left = r.left + a.clientLeft
+      const top = r.top + a.clientTop
+      if (clipsX) {
+        box.left = Math.max(box.left, left)
+        box.right = Math.min(box.right, left + (a.clientWidth || r.width))
+      }
+      if (clipsY) {
+        box.top = Math.max(box.top, top)
+        box.bottom = Math.min(box.bottom, top + (a.clientHeight || r.height))
+      }
+    }
+    if (style.position === "fixed") break
+  }
+  return box.right > box.left && box.bottom > box.top ? box : null
+}
+
+function cellJustify(source: Element): string | null {
+  const style = styleOf(source)
+  if (style?.display !== "table-cell") return null
+  if (style.verticalAlign === "middle") return "center"
+  if (style.verticalAlign === "bottom") return "flex-end"
+  return "flex-start"
+}
+
+function pinAt(el: HTMLElement, rect: DOMRect, visible: Box, justify: string | null) {
   const set = (name: string, value: string) => el.style.setProperty(name, value, "important")
   set("position", "absolute")
   set("top", `${rect.top}px`)
@@ -62,6 +116,20 @@ function pinAt(el: HTMLElement, rect: DOMRect) {
   set("translate", "none")
   set("rotate", "none")
   set("scale", "none")
+  const cut = [
+    visible.top - rect.top,
+    rect.right - visible.right,
+    rect.bottom - visible.bottom,
+    visible.left - rect.left,
+  ]
+  if (cut.some((px) => px > 0)) {
+    set("clip-path", `inset(${cut.map((px) => `${Math.max(0, px)}px`).join(" ")})`)
+  }
+  if (justify) {
+    set("display", "flex")
+    set("flex-direction", "column")
+    set("justify-content", justify)
+  }
 }
 
 export function createOverlayPinner(root: Element, filter: (node: Node) => boolean): OverlayPinner {
@@ -88,11 +156,18 @@ export function createOverlayPinner(root: Element, filter: (node: Node) => boole
       // A canvas clones to an <img>, an iframe to <html>: not a reliable pair.
       if (source.localName !== clone.localName) return
       if (!hasScrolledAncestor(source)) return
+      const rect = source.getBoundingClientRect()
+      const sticky = position === "sticky"
       pins.push({
         source,
         clone,
-        rect: source.getBoundingClientRect(),
-        sticky: position === "sticky",
+        rect,
+        // A fixed element escapes its ancestors' overflow clip.
+        visible: sticky
+          ? visibleBox(source, rect)
+          : { top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom },
+        sticky,
+        justify: cellJustify(source),
       })
     },
 
@@ -104,14 +179,16 @@ export function createOverlayPinner(root: Element, filter: (node: Node) => boole
       }
       // Pins arrive deepest-first, so a sticky child is hidden and copied out
       // before any ancestor is copied with it.
-      const pinned = pins.map(({ source, clone: el, rect, sticky }) => {
+      const pinned = pins.flatMap(({ source, clone: el, rect, visible, sticky, justify }) => {
         let target = el
         if (sticky) {
           target = el.cloneNode(true) as HTMLElement
           el.style.setProperty("opacity", "0", "important")
         }
-        pinAt(target, rect)
-        return { source, target }
+        // Scrolled wholly out of its box: the live page shows none of it.
+        if (!visible) return []
+        pinAt(target, rect, visible, justify)
+        return [{ source, target }]
       })
       // Append in document order so an ancestor paints beneath its descendants.
       pinned.sort((a, b) =>
