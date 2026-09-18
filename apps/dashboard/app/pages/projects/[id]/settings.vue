@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import { ref, computed, watch } from "vue"
 import type { ProjectDTO, ProjectRole, SharedMediaDTO } from "@reprojs/shared"
-import { PROJECTS_LIST_KEY } from "~/composables/useApi"
 import ConfirmDeleteDialog from "~/components/common/confirm-delete-dialog.vue"
 
 const route = useRoute()
@@ -50,7 +50,6 @@ const retentionSaving = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 
-const activeTab = ref("general")
 const tabs = [
   { value: "general", label: "General", icon: "i-heroicons-cog-6-tooth" },
   { value: "triage", label: "Triage", icon: "i-heroicons-inbox" },
@@ -58,6 +57,10 @@ const tabs = [
   { value: "security", label: "Security", icon: "i-heroicons-key" },
   { value: "danger", label: "Danger zone", icon: "i-heroicons-exclamation-triangle" },
 ]
+// `?tab=security` opens a tab directly — the "View embed snippet" links on the
+// empty inbox and project overview land members on the Security tab.
+const requestedTab = route.query.tab
+const activeTab = ref(tabs.some((t) => t.value === requestedTab) ? String(requestedTab) : "general")
 
 // Shared-media list is fetched lazily the first time the Sharing tab is
 // activated, matching the report detail page's pattern of deferring
@@ -79,7 +82,7 @@ async function ensureSharedMedia() {
   } catch (err) {
     toast.add({
       title: "Could not load shared links",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -90,12 +93,6 @@ async function ensureSharedMedia() {
 watch(activeTab, (t) => {
   if (t === "sharing") void ensureSharedMedia()
 })
-
-function describeError(err: unknown): string | undefined {
-  if (err instanceof Error) return err.message
-  const e = err as { statusMessage?: string; data?: { statusMessage?: string } } | null
-  return e?.data?.statusMessage ?? e?.statusMessage
-}
 
 async function saveGeneral() {
   saving.value = true
@@ -114,11 +111,12 @@ async function saveGeneral() {
       },
     })
     toast.add({ title: "Saved", color: "success", icon: "i-heroicons-check-circle" })
-    await refresh()
+    // The name also shows in the sidebar, switcher and palette.
+    await Promise.all([refresh(), refreshProjectsList()])
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -140,7 +138,7 @@ async function updateReplayEnabled(enabled: boolean) {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -162,7 +160,7 @@ async function updateShareLinksEnabled(enabled: boolean) {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -189,7 +187,7 @@ async function saveRetention() {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -253,7 +251,7 @@ async function confirmRevoke(media: SharedMediaDTO) {
   } catch (err) {
     toast.add({
       title: "Could not revoke link",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -283,7 +281,7 @@ async function rotateKey() {
   } catch (err) {
     toast.add({
       title: "Could not rotate key",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -315,15 +313,14 @@ async function confirmDelete() {
       credentials: "include",
     })
     toast.add({ title: "Project deleted", color: "success", icon: "i-heroicons-check-circle" })
-    // The projects list (`/`) caches `/api/projects` under this key. Without
-    // clearing it, client-side nav back to `/` shows the deleted project
-    // until a hard refresh.
-    clearNuxtData(PROJECTS_LIST_KEY)
-    router.push("/")
+    // Drop the deleted project from the projects page, sidebar, switcher
+    // and palette, which all read the shared projects-list cache.
+    await refreshProjectsList()
+    await router.push("/")
   } catch (err) {
     toast.add({
       title: "Could not delete",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

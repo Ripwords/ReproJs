@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 
 interface Repo {
@@ -69,7 +70,7 @@ async function fetchPage(nextPage: number): Promise<void> {
     hasMore.value = res.hasMore
   } catch (err) {
     if (seq !== requestSeq.value) return
-    error.value = err instanceof Error ? err.message : "Failed to load repositories"
+    error.value = describeApiError(err, "Failed to load repositories")
     if (nextPage === 1) repos.value = []
   } finally {
     if (seq === requestSeq.value) loading.value = false

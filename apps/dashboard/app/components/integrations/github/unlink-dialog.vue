@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 /**
  * Dual-mode confirmation dialog:
  *
@@ -88,7 +89,7 @@ async function confirm() {
     } catch (err) {
       toast.add({
         title: "Could not disconnect",
-        description: err instanceof Error ? err.message : undefined,
+        description: describeApiError(err),
         color: "error",
         icon: "i-heroicons-exclamation-triangle",
       })

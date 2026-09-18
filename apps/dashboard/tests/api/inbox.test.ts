@@ -346,4 +346,71 @@ describe("ticket inbox API", () => {
     expect(body.items[0]?.actor?.email).toBe("owner@example.com")
     expect(body.items[1]?.kind).toBe("status_changed") // older
   })
+
+  describe("pagination", () => {
+    // One multi-row INSERT gives every row the same `created_at` (now() is the
+    // transaction timestamp), which is exactly the case a sort without a
+    // tie-breaker pages non-deterministically.
+    async function seedMany(projectId: string, n: number): Promise<string[]> {
+      const rows = await db
+        .insert(reports)
+        .values(
+          Array.from({ length: n }, (_, i) => ({
+            projectId,
+            title: `Paged ${i}`,
+            context: {
+              pageUrl: "http://localhost:4000/p",
+              userAgent: "UA",
+              viewport: { w: 1000, h: 800 },
+              timestamp: new Date().toISOString(),
+            } as (typeof reports.$inferInsert)["context"],
+          })),
+        )
+        .returning({ id: reports.id })
+      return rows.map((r) => r.id)
+    }
+
+    for (const sort of ["newest", "oldest", "priority", "updated"] as const) {
+      test(`offset pages are disjoint and cover every row (sort=${sort})`, async () => {
+        const owner = await createUser("owner@example.com", "admin")
+        const pid = await seedProject({
+          name: "Inbox",
+          publicKey: PK,
+          allowedOrigins: [ORIGIN],
+          createdBy: owner,
+        })
+        const ids = await seedMany(pid, 600)
+        const cookie = await signIn("owner@example.com")
+        const page = (offset: number) =>
+          apiFetch<{ items: Array<{ id: string }>; total: number }>(
+            `/api/projects/${pid}/reports?sort=${sort}&limit=100&offset=${offset}`,
+            { headers: { cookie } },
+          )
+        const pages = await Promise.all(Array.from({ length: 6 }, (_, i) => page(i * 100)))
+        expect(pages[0]?.body.total).toBe(600)
+        const seen = pages.flatMap((p) => p.body.items.map((r) => r.id))
+        expect(seen.length).toBe(600)
+        expect(new Set(seen).size).toBe(600)
+        expect(new Set(seen)).toEqual(new Set(ids))
+      })
+    }
+
+    test("non-numeric limit/offset fall back to defaults instead of failing", async () => {
+      const owner = await createUser("owner@example.com", "admin")
+      const pid = await seedProject({
+        name: "Inbox",
+        publicKey: PK,
+        allowedOrigins: [ORIGIN],
+        createdBy: owner,
+      })
+      await seedMany(pid, 3)
+      const cookie = await signIn("owner@example.com")
+      const { status, body } = await apiFetch<{ items: unknown[]; total: number }>(
+        `/api/projects/${pid}/reports?limit=abc&offset=xyz`,
+        { headers: { cookie } },
+      )
+      expect(status).toBe(200)
+      expect(body.items.length).toBe(3)
+    })
+  })
 })

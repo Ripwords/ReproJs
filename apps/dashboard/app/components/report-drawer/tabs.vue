@@ -18,9 +18,10 @@ const emit = defineEmits<{ "update:modelValue": [string] }>()
 <template>
   <nav class="flex overflow-x-auto">
     <button
-      v-for="tab in tabs"
+      v-for="(tab, index) in tabs"
       :key="tab.id"
       type="button"
+      :aria-keyshortcuts="tabShortcutKey(index) ?? undefined"
       :class="[
         'relative px-4 h-11 text-sm whitespace-nowrap transition-colors -mb-px',
         modelValue === tab.id

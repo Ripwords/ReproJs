@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import type { AppSettingsDTO } from "@reprojs/shared"
 
 definePageMeta({ middleware: "admin-only" })
@@ -74,7 +75,7 @@ async function save() {
   } catch (err) {
     toast.add({
       title: "Could not save access settings",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
