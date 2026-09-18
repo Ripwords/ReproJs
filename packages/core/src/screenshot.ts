@@ -68,6 +68,11 @@ async function captureViaDom(opts: CaptureOptions): Promise<Blob | null> {
       scale: window.devicePixelRatio || 1,
       width: window.innerWidth,
       height: window.innerHeight,
+      // Opt-in in modern-screenshot (every other feature defaults on). Without
+      // it the clone renders from scroll offset zero, so a scrolled page — or a
+      // scrolled sidebar/table/list inside it — captures its top, not what the
+      // reporter was looking at.
+      features: { restoreScrollPosition: true },
       filter: buildFilter(opts),
     })
   } catch (err) {
