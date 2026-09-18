@@ -146,6 +146,37 @@ describe("project invitations API", () => {
     expect(status).toBe(400)
   })
 
+  test("domain allowlist blocks invites even when sign-up is open", async () => {
+    // Sign-in enforces the allowlist regardless of signup_gated, so an
+    // off-list invite would strand the invitee on domain_not_allowed.
+    await createUser("owner@example.com", "admin")
+    const ownerCookie = await signIn("owner@example.com")
+    const { body: project } = await apiFetch<ProjectDTO>("/api/projects", {
+      method: "POST",
+      headers: { cookie: ownerCookie },
+      body: JSON.stringify({ name: "Test Project" }),
+    })
+    const projectId = (project as ProjectDTO).id
+
+    await db.execute(
+      sql`UPDATE app_settings SET signup_gated = false, allowed_email_domains = '{"example.com"}'::text[] WHERE id = 1`,
+    )
+
+    const { status, body } = await apiFetch<{ statusMessage?: string }>(
+      `/api/projects/${projectId}/invitations`,
+      {
+        method: "POST",
+        headers: { cookie: ownerCookie },
+        body: JSON.stringify({ email: "outsider@other.com", role: "developer" }),
+      },
+    )
+    expect(status).toBe(400)
+    expect(body.statusMessage).toContain("other.com")
+
+    const [row] = await db.select().from(user).where(eq(user.email, "outsider@other.com"))
+    expect(row).toBeUndefined()
+  })
+
   test("non-owner cannot create an invitation", async () => {
     await createUser("owner@example.com", "admin")
     await createUser("viewer@example.com", "member")

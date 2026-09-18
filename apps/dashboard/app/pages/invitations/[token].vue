@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { InvitationDetailDTO } from "@reprojs/shared"
+import { signInPathFor } from "~~/shared/auth-redirect"
 
 // $fetch in SSR does NOT forward the incoming request's cookies even with
 // `credentials: "include"` — that option is a browser concept. The server
@@ -33,9 +34,7 @@ async function load() {
   } catch (err: unknown) {
     const status = (err as { statusCode?: number }).statusCode
     if (status === 401) {
-      await nuxtApp.runWithContext(() =>
-        navigateTo(`/auth/sign-in?returnTo=/invitations/${token.value}`),
-      )
+      await nuxtApp.runWithContext(() => navigateTo(signInPathFor(`/invitations/${token.value}`)))
       return
     }
     if (status === 409) {
@@ -119,7 +118,7 @@ async function decline() {
       </p>
       <UButton
         label="Sign out"
-        @click="signOut({ redirectTo: `/auth/sign-in?returnTo=/invitations/${token}` })"
+        @click="signOut({ redirectTo: signInPathFor(`/invitations/${token}`) })"
       />
     </UCard>
 

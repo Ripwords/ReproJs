@@ -1,18 +1,18 @@
-import { safeNextPath, SIGN_IN_PATH } from "~~/shared/auth-redirect"
+import { MAGIC_LINK_LANDING_PATH, safeNextPath, SIGN_IN_PATH } from "~~/shared/auth-redirect"
 
 // Any absolute base works — only the path half is ever read back out.
 const PARSE_BASE = "https://repro.invalid"
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  const publicPaths = [SIGN_IN_PATH, "/s/"]
+  const publicPaths = [SIGN_IN_PATH, MAGIC_LINK_LANDING_PATH, "/s/"]
   if (publicPaths.some((p) => to.path.startsWith(p))) return
 
   // useRequestFetch() forwards the incoming request's cookie during SSR.
   // authClient.getSession() uses $fetch without cookie forwarding, so it
   // returns null on every SSR render and wrongly triggers a redirect.
+  const fetchWithCookies = useRequestFetch()
   let isAuthenticated = false
   try {
-    const fetchWithCookies = useRequestFetch()
     const session = await fetchWithCookies<{ user?: unknown }>("/api/auth/get-session")
     isAuthenticated = !!session?.user
   } catch {
@@ -33,7 +33,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // themselves, but links already sitting in inboxes — and any future flow
   // that redirects with `?error=` — still route through here.
   const url = new URL(to.fullPath, PARSE_BASE)
-  const errorCode = url.searchParams.get("error")
+  const errorCode = url.searchParams.get("error") ?? (await sessionEndedReason(fetchWithCookies))
   url.searchParams.delete("error")
 
   const params = new URLSearchParams()
@@ -44,3 +44,20 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const search = params.toString()
   return navigateTo(search ? `${SIGN_IN_PATH}?${search}` : SIGN_IN_PATH)
 })
+
+/**
+ * When the server ended this browser's session on purpose (today: an admin
+ * disabled the account), say so on the sign-in page. Otherwise the user is
+ * dropped on a bare login form, and a disabled user tries to sign back in
+ * with no idea why it keeps failing.
+ */
+async function sessionEndedReason(
+  fetchWithCookies: ReturnType<typeof useRequestFetch>,
+): Promise<string | null> {
+  try {
+    const { reason } = await fetchWithCookies<{ reason: string | null }>("/api/auth/session-ended")
+    return reason
+  } catch {
+    return null
+  }
+}

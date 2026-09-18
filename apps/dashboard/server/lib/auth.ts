@@ -1,13 +1,18 @@
 import { count, eq, sql } from "drizzle-orm"
-import { betterAuth } from "better-auth"
+import { betterAuth, type GenericEndpointContext } from "better-auth"
 import { APIError, createAuthMiddleware } from "better-auth/api"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { magicLink } from "better-auth/plugins/magic-link"
 import { jwt } from "better-auth/plugins/jwt"
 import { oauthProvider } from "@better-auth/oauth-provider"
 import { db } from "../db"
-import { pinMagicLinkRedirects } from "../../shared/auth-redirect"
+import {
+  magicLinkLandingUrl,
+  pinMagicLinkRedirects,
+  SIGN_IN_PATH,
+} from "../../shared/auth-redirect"
 import { appSettings, session, user } from "../db/schema"
+import { isEmailDomainOnAllowlist } from "./email-domain"
 import { env, getAuthRateLimitEnabled } from "./env"
 import { renderTemplate } from "./render-template"
 import { sendMail } from "./email"
@@ -56,17 +61,15 @@ async function loadAppSettings() {
  */
 async function isEmailDomainAllowed(email: string): Promise<boolean> {
   const settings = await loadAppSettings()
-  if (settings.allowedEmailDomains.length === 0) return true
-  const domain = email.toLowerCase().split("@")[1] ?? ""
-  return settings.allowedEmailDomains.includes(domain)
+  return isEmailDomainOnAllowlist(email, settings.allowedEmailDomains)
 }
 
 /**
- * Revoke the session better-auth just planted for `userId`. Used on the
- * "existing user's domain is no longer on the allowlist" path: the user
- * already has their row + memberships + OAuth linkage provisioned from
- * before the allowlist tightened, and we must NOT cascade-delete those
- * assets just because policy changed. Dropping the session row
+ * Revoke the session better-auth just planted for `userId`. Used when an
+ * existing user is refused at sign-in (account disabled, or a domain that is
+ * no longer on the allowlist): the user already has their row + memberships
+ * + OAuth linkage, and we must NOT cascade-delete those assets just because
+ * policy changed. Dropping the session row
  * invalidates the cookie that `setSessionCookie` already sent.
  */
 async function revokeJustCreatedSession(userId: string): Promise<void> {
@@ -110,8 +113,47 @@ async function bootstrapFirstUserAsAdmin(userId: string): Promise<void> {
   })
 }
 
+/**
+ * Refuse a brand-new user row so the browser ends up on
+ * `/auth/sign-in?error=<code>` whichever sign-in path created it.
+ *
+ * The two paths handle a throw from `create.before` differently:
+ *
+ *  - Magic-link verify lets an APIError propagate, and better-auth passes a
+ *    redirect (`APIError("FOUND")`) straight through as a 302 — so we
+ *    redirect to the sign-in page ourselves.
+ *  - The OAuth callback wraps user creation in handleOAuthUserInfo
+ *    (oauth2/link-account), which catches any APIError and returns
+ *    `{ error: e.message }`; the callback then redirects to the client's
+ *    `errorCallbackURL` with `?error=<message>`. A redirect's message is
+ *    empty, so `if (result.error)` was falsy and the callback crashed with a
+ *    bare 500 destructuring `result.data` (null). Throwing an APIError whose
+ *    message IS the code lets better-auth do the redirect — the sign-in page
+ *    passes `/auth/sign-in` as errorCallbackURL.
+ *
+ * Without an endpoint ctx (programmatic auth.api.createUser) the plain
+ * APIError is the clearest refusal.
+ */
+function rejectSignup(
+  ctx: GenericEndpointContext | null,
+  code: "domain_not_allowed" | "not_invited",
+): never {
+  if (!ctx || ctx.path.startsWith("/callback/")) {
+    throw new APIError("FORBIDDEN", { message: code })
+  }
+  throw ctx.redirect(signInErrorURL(ctx.context.baseURL, code))
+}
+
+function signInErrorURL(baseURL: string, code: string): string {
+  const url = new URL(SIGN_IN_PATH, baseURL)
+  url.searchParams.set("error", code)
+  return url.toString()
+}
+
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
+  // BETTER_AUTH_URL's origin is always trusted; these are the extras.
+  trustedOrigins: env.BETTER_AUTH_TRUSTED_ORIGINS,
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "pg" }),
   rateLimit: {
@@ -158,17 +200,15 @@ export const auth = betterAuth({
       //
       // allowedAttempts is better-auth's default (1), spelled out because its
       // failure mode is easy to misread: the verify endpoint increments the
-      // counter on EVERY GET of the link — including the successful one — so
-      // the link is strictly single-use. A mail gateway that prefetches links
-      // (Outlook Safe Links, Proofpoint, most AV scanners) therefore burns
-      // the attempt before the human clicks, and the human sees
-      // ATTEMPTS_EXCEEDED on what looks like their first click. Raising this
-      // trades that away for a link that stays replayable from the inbox for
-      // its full 5-minute window; keep it at 1 unless a deployment's mail
-      // path makes prefetching unavoidable.
+      // counter on EVERY GET of the verify URL — including the successful
+      // one — so the link is strictly single-use. Mail gateways that
+      // prefetch links (Outlook Safe Links, Proofpoint, most AV scanners)
+      // would spend it before the human clicks, so the email never contains
+      // the verify URL: it links to a landing page whose button sends the
+      // verify request (see magicLinkLandingUrl).
       allowedAttempts: 1,
       sendMagicLink: async ({ email, url }) => {
-        const html = await renderTemplate("magic-link", { url })
+        const html = await renderTemplate("magic-link", { url: magicLinkLandingUrl(url) })
         await sendMail({
           to: email,
           subject: "Your sign-in link",
@@ -210,14 +250,9 @@ export const auth = betterAuth({
         // Signup gate. Fires ONLY when a brand-new user row is about to be
         // inserted — which means neither an existing account nor a pre-seeded
         // `invited` row matched the email (better-auth resolves those via
-        // findUserByEmail before ever calling create). We redirect to the
-        // sign-in page with ?error=not_invited to match the domain-gate UX;
-        // ctx.redirect throws an APIError(FOUND) internally, which better-
-        // auth's error pipeline passes through as a 302 (see api/index.mjs
-        // onError — it explicitly lets `FOUND` errors propagate untouched).
-        // Fallback to a plain APIError when ctx is missing (non-endpoint
-        // caller, e.g. programmatic auth.api.createUser) so callers still
-        // get a clear refusal.
+        // findUserByEmail before ever calling create). See rejectSignup for
+        // how each sign-in path turns the refusal into
+        // /auth/sign-in?error=<code>.
         before: async (newUser, ctx) => {
           // Domain allowlist: a new sign-up from an off-allowlist domain
           // is rejected at insert time so no orphan user row is ever
@@ -225,12 +260,7 @@ export const auth = betterAuth({
           // handled in the after-hook (see revokeJustCreatedSession).
           const emailLower = newUser.email.toLowerCase()
           if (!(await isEmailDomainAllowed(emailLower))) {
-            if (!ctx) throw new APIError("FORBIDDEN", { message: "domain_not_allowed" })
-            const url = new URL(
-              "/auth/sign-in?error=domain_not_allowed",
-              ctx.context.baseURL,
-            ).toString()
-            throw ctx.redirect(url)
+            rejectSignup(ctx, "domain_not_allowed")
           }
 
           // Signup gate. loadAppSettings throws if the settings row is
@@ -238,9 +268,7 @@ export const auth = betterAuth({
           // let the create proceed.
           const settings = await loadAppSettings()
           if (!settings.signupGated) return { data: newUser }
-          if (!ctx) throw new APIError("FORBIDDEN", { message: "not_invited" })
-          const url = new URL("/auth/sign-in?error=not_invited", ctx.context.baseURL).toString()
-          throw ctx.redirect(url)
+          rejectSignup(ctx, "not_invited")
         },
         // First-user bootstrap lives here (not in the auth after-hook) so
         // we have an unambiguous "brand-new row just inserted" signal
@@ -289,6 +317,19 @@ export const auth = betterAuth({
       const newSession = ctx.context.newSession
       const newUser = newSession?.user
       if (!newUser?.id || !newUser.email) return
+
+      // A disabled user can still complete a magic link or an OAuth round
+      // trip; better-auth knows nothing about our `status` column. Drop the
+      // session it just planted and say why, rather than let them land on a
+      // dashboard where every request answers 403.
+      const [row] = await db
+        .select({ status: user.status })
+        .from(user)
+        .where(eq(user.id, newUser.id))
+      if (row?.status === "disabled") {
+        await revokeJustCreatedSession(newUser.id)
+        throw ctx.redirect(signInErrorURL(ctx.context.baseURL, "account_disabled"))
+      }
 
       // Post-hoc domain allowlist tightening: an existing user whose
       // row was provisioned when their domain was allowed but no longer

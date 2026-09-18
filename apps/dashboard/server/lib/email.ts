@@ -93,7 +93,7 @@ export async function sendMail(opts: SendMailOpts): Promise<void> {
   // dev flow unblocked without SMTP; no leak to external services.
   if (resolvedProvider === "console") {
     const text = opts.text ?? stripHtml(opts.html)
-    const firstUrl = /https?:\/\/[^\s"'<>]+/.exec(opts.html)?.[0]
+    const firstUrl = firstLinkIn(opts.html)
     console.info(
       `[email:console] to=${opts.to} subject="${opts.subject}"${firstUrl ? `\n  link: ${firstUrl}` : `\n  body: ${text.slice(0, 400)}`}`,
     )
@@ -116,6 +116,16 @@ export async function sendMail(opts: SendMailOpts): Promise<void> {
   } else if ("message" in info && typeof info.message === "string") {
     console.info(`[email] jsonTransport captured:\n${info.message}`)
   }
+}
+
+/**
+ * The first URL in an email body, unescaped the way a browser reads an href.
+ * Templates write `&` as `&amp;`; printed raw, a pasted link keeps only its
+ * first query parameter.
+ */
+export function firstLinkIn(html: string): string | null {
+  const match = /https?:\/\/[^\s"'<>]+/.exec(html)?.[0]
+  return match ? match.replaceAll("&amp;", "&") : null
 }
 
 function stripHtml(html: string): string {

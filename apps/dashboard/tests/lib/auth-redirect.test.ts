@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import {
   authErrorMessage,
+  MAGIC_LINK_LANDING_PATH,
+  magicLinkLandingUrl,
+  magicLinkVerifyPath,
   pinMagicLinkRedirects,
   safeNextPath,
   SIGN_IN_PATH,
+  signInFailureMessage,
+  signInPathFor,
 } from "../../shared/auth-redirect"
 
 describe("safeNextPath", () => {
@@ -89,6 +94,7 @@ describe("authErrorMessage", () => {
   test("keeps explaining the workspace gates", () => {
     expect(authErrorMessage("domain_not_allowed")).toContain("domain")
     expect(authErrorMessage("not_invited")).toContain("invite")
+    expect(authErrorMessage("account_disabled")).toContain("disabled")
   })
 
   test("surfaces an unknown code verbatim instead of staying silent", () => {
@@ -179,5 +185,95 @@ describe("pinMagicLinkRedirects", () => {
     expect(pinned.email).toBe("a@b.com")
     expect(pinned.name).toBe("Ada")
     expect(pinned.extra).toBe(1)
+  })
+})
+
+describe("signInPathFor", () => {
+  test("carries the destination in `next`, the only param the sign-in page reads", () => {
+    // The invitation page used to send `?returnTo=`, which the sign-in page
+    // ignores, so "Sign out" on a wrong-account invite dropped the invite link.
+    const url = new URL(signInPathFor("/invitations/abc123"), "https://x.invalid")
+    expect(url.pathname).toBe(SIGN_IN_PATH)
+    expect(url.searchParams.get("next")).toBe("/invitations/abc123")
+    expect(url.searchParams.has("returnTo")).toBe(false)
+  })
+
+  test("encodes a destination that has its own query string", () => {
+    const url = new URL(signInPathFor("/projects/a?status=open&tag=ui"), "https://x.invalid")
+    expect(url.searchParams.get("next")).toBe("/projects/a?status=open&tag=ui")
+  })
+
+  test("drops a destination the sign-in page would refuse anyway", () => {
+    expect(signInPathFor("//evil.com")).toBe(SIGN_IN_PATH)
+    expect(signInPathFor("/api/intake/reports")).toBe(SIGN_IN_PATH)
+  })
+})
+
+describe("signInFailureMessage", () => {
+  test("a rate-limited attempt says so instead of failing silently", () => {
+    // better-auth's client resolves (never throws) with `{ error }` on a
+    // 429, and its message is often empty.
+    const msg = signInFailureMessage({ status: 429, statusText: "Too Many Requests" })
+    expect(msg).toMatch(/too many sign-in attempts/i)
+  })
+
+  test("uses the server's message when there is one", () => {
+    expect(
+      signInFailureMessage({ status: 400, statusText: "", message: "Provider not found" }),
+    ).toBe("Provider not found")
+  })
+
+  test("falls back to the status line, then to generic copy", () => {
+    expect(signInFailureMessage({ status: 502, statusText: "Bad Gateway" })).toBe("Bad Gateway")
+    expect(signInFailureMessage({ status: 0, statusText: "" })).toMatch(/try again/i)
+  })
+})
+
+describe("magicLinkLandingUrl", () => {
+  const verifyUrl =
+    "https://repro.example.com/api/auth/magic-link/verify?token=abc123&callbackURL=%2Fprojects%2Fp1&errorCallbackURL=%2Fauth%2Fsign-in"
+
+  test("points the emailed link at the landing page, not the verify endpoint", () => {
+    const landing = new URL(magicLinkLandingUrl(verifyUrl))
+    expect(landing.origin).toBe("https://repro.example.com")
+    expect(landing.pathname).toBe(MAGIC_LINK_LANDING_PATH)
+  })
+
+  test("carries the token and destination over unchanged", () => {
+    const landing = new URL(magicLinkLandingUrl(verifyUrl))
+    expect(landing.searchParams.get("token")).toBe("abc123")
+    expect(landing.searchParams.get("callbackURL")).toBe("/projects/p1")
+  })
+})
+
+const parse = (path: string | null) => new URL(path ?? "", "https://repro.invalid")
+
+describe("magicLinkVerifyPath", () => {
+  test("builds the verify request the landing page's button navigates to", () => {
+    const url = parse(magicLinkVerifyPath({ token: "abc123", callbackURL: "/projects/p1" }))
+    expect(url.pathname).toBe("/api/auth/magic-link/verify")
+    expect(url.searchParams.get("token")).toBe("abc123")
+    expect(url.searchParams.get("callbackURL")).toBe("/projects/p1")
+    expect(url.searchParams.get("errorCallbackURL")).toBe(SIGN_IN_PATH)
+  })
+
+  test("an off-site or API destination falls back to the dashboard root", () => {
+    const offSite = parse(magicLinkVerifyPath({ token: "t", callbackURL: "https://evil.example" }))
+    expect(offSite.searchParams.get("callbackURL")).toBe("/")
+    const api = parse(magicLinkVerifyPath({ token: "t", callbackURL: "/api/intake/reports" }))
+    expect(api.searchParams.get("callbackURL")).toBe("/")
+  })
+
+  test("a used link no longer blames a scanner opening it first", () => {
+    // Scanners now only load the landing page, which spends nothing.
+    const copy = authErrorMessage("ATTEMPTS_EXCEEDED") ?? ""
+    expect(copy).toContain("already been used")
+    expect(copy).not.toMatch(/first click|open links automatically/)
+  })
+
+  test("returns null without a usable token", () => {
+    expect(magicLinkVerifyPath({ token: undefined, callbackURL: "/" })).toBeNull()
+    expect(magicLinkVerifyPath({ token: "", callbackURL: "/" })).toBeNull()
+    expect(magicLinkVerifyPath({ token: ["a", "b"], callbackURL: "/" })).toBeNull()
   })
 })
