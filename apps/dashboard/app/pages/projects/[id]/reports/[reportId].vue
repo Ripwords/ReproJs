@@ -246,6 +246,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
           v-if="activeTab === 'overview'"
           :project-id="projectId"
           :report="report"
+          :can-comment="canEdit"
           @select-tab="(t) => (activeTab = t)"
         />
         <ConsoleTab v-else-if="activeTab === 'console'" :logs="logs" />
@@ -268,6 +269,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
           ref="commentsRef"
           :project-id="projectId"
           :report-id="report.id"
+          :can-comment="canEdit"
         />
         <CookiesTab v-else-if="activeTab === 'cookies'" :project-id="projectId" :report="report" />
         <AttachmentsTab

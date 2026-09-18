@@ -14,6 +14,9 @@ interface Props {
   reportId: string
   /** Hide the section title strip — the embedding card already provides one. */
   hideHeader?: boolean
+  /** Posting, editing and deleting comments is manager+ on the server;
+   *  viewers get a read-only thread. */
+  canComment: boolean
 }
 const props = defineProps<Props>()
 
@@ -294,7 +297,7 @@ function relTime(iso: string | Date): string {
     <!-- Bubble list. Empty-state copy sits inside the same vertical rhythm. -->
     <div class="px-5 py-4 space-y-4 text-sm">
       <p v-if="!data?.items?.length" class="text-muted text-center py-8">
-        No comments yet — start the conversation below.
+        {{ canComment ? "No comments yet — start the conversation below." : "No comments yet." }}
       </p>
 
       <div
@@ -371,7 +374,7 @@ function relTime(iso: string | Date): string {
               ]"
             >
               <span>{{ relTime(comment.createdAt) }}</span>
-              <template v-if="isOwn(comment)">
+              <template v-if="canComment && isOwn(comment)">
                 <button
                   type="button"
                   class="hover:text-default transition-colors"
@@ -399,7 +402,10 @@ function relTime(iso: string | Date): string {
          server returns), so the typed body stays clean and the user
          actually sees what they pasted. Markdown image syntax is only
          spliced in at submit time. -->
-    <div class="px-5 py-3 border-t border-default">
+    <p v-if="!canComment" class="px-5 py-3 border-t border-default text-sm text-muted">
+      Viewers can read comments but not post them.
+    </p>
+    <div v-else class="px-5 py-3 border-t border-default">
       <label class="sr-only" for="comment-composer">Add a comment</label>
 
       <!-- Attachment thumbnail strip -->
