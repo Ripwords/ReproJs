@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import { ref, computed, watch } from "vue"
 import type { ProjectDTO, ProjectRole, SharedMediaDTO } from "@reprojs/shared"
 import { PROJECTS_LIST_KEY } from "~/composables/useApi"
@@ -79,7 +80,7 @@ async function ensureSharedMedia() {
   } catch (err) {
     toast.add({
       title: "Could not load shared links",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -90,12 +91,6 @@ async function ensureSharedMedia() {
 watch(activeTab, (t) => {
   if (t === "sharing") void ensureSharedMedia()
 })
-
-function describeError(err: unknown): string | undefined {
-  if (err instanceof Error) return err.message
-  const e = err as { statusMessage?: string; data?: { statusMessage?: string } } | null
-  return e?.data?.statusMessage ?? e?.statusMessage
-}
 
 async function saveGeneral() {
   saving.value = true
@@ -118,7 +113,7 @@ async function saveGeneral() {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -140,7 +135,7 @@ async function updateReplayEnabled(enabled: boolean) {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -162,7 +157,7 @@ async function updateShareLinksEnabled(enabled: boolean) {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -189,7 +184,7 @@ async function saveRetention() {
   } catch (err) {
     toast.add({
       title: "Could not save",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -253,7 +248,7 @@ async function confirmRevoke(media: SharedMediaDTO) {
   } catch (err) {
     toast.add({
       title: "Could not revoke link",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -283,7 +278,7 @@ async function rotateKey() {
   } catch (err) {
     toast.add({
       title: "Could not rotate key",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -323,7 +318,7 @@ async function confirmDelete() {
   } catch (err) {
     toast.add({
       title: "Could not delete",
-      description: describeError(err),
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

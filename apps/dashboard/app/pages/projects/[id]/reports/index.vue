@@ -1,5 +1,6 @@
 <!-- apps/dashboard/app/pages/projects/[id]/reports.vue -->
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
 import type { ReportPriority, ReportStatus, ReportSummaryDTO } from "@reprojs/shared"
@@ -80,7 +81,7 @@ async function bulkStatus(status: ReportStatus) {
   } catch (err) {
     toast.add({
       title: "Could not update reports",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -107,7 +108,7 @@ async function bulkAssign(login: string | null) {
   } catch (err) {
     toast.add({
       title: "Could not update reports",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

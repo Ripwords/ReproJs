@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import { computed, ref } from "vue"
 
 useHead({ title: "Account" })
@@ -36,7 +37,7 @@ async function signOutOtherSessions() {
   } catch (err) {
     toast.add({
       title: "Could not sign out other sessions",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

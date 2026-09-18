@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import type { ProjectDTO } from "@reprojs/shared"
 import { PROJECTS_LIST_KEY } from "~/composables/useApi"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
@@ -66,7 +67,7 @@ async function createProject() {
   } catch (err) {
     toast.add({
       title: "Could not create project",
-      description: err instanceof Error ? err.message : undefined,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

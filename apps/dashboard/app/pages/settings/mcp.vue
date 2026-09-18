@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 import { computed, ref } from "vue"
 
 useHead({ title: "MCP / AI assistants" })
@@ -71,10 +72,9 @@ async function revoke(clientId: string): Promise<void> {
       icon: "i-heroicons-check-circle",
     })
   } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
     toast.add({
       title: "Could not disconnect",
-      description: err.statusMessage ?? err.message ?? "Unknown error",
+      description: describeApiError(e),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })

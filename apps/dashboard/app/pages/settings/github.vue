@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeApiError } from "~/utils/api-error"
 definePageMeta({ middleware: "admin-only" })
 useHead({ title: "GitHub App" })
 
@@ -76,8 +77,7 @@ async function revealSecret() {
     }, 1000)
     hideTimer = setTimeout(clearRevealed, 30_000)
   } catch (e: unknown) {
-    const err = e as { statusCode?: number; statusMessage?: string; message?: string }
-    revealError.value = err.statusMessage ?? err.message ?? "Failed to reveal — try again"
+    revealError.value = describeApiError(e, "Failed to reveal — try again")
   } finally {
     revealing.value = false
   }
@@ -154,10 +154,9 @@ async function disconnect() {
       icon: "i-heroicons-check-circle",
     })
   } catch (e: unknown) {
-    const err = e as { statusCode?: number; statusMessage?: string; message?: string }
     toast.add({
       title: "Could not disconnect",
-      description: err.statusMessage ?? err.message ?? "Unknown error",
+      description: describeApiError(e),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
