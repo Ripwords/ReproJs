@@ -1,5 +1,6 @@
 import { domToBlob } from "modern-screenshot"
 import { captureViaDisplayMedia } from "./display-media"
+import { createOverlayPinner } from "./pin-overlays"
 
 const HOST_ID = "repro-host"
 
@@ -63,8 +64,10 @@ async function withHiddenHost<T>(work: () => Promise<T>): Promise<T> {
 }
 
 async function captureViaDom(opts: CaptureOptions): Promise<Blob | null> {
+  const root = document.documentElement
+  const pinner = createOverlayPinner(root, buildFilter(opts))
   try {
-    return await domToBlob(document.documentElement, {
+    return await domToBlob(root, {
       scale: window.devicePixelRatio || 1,
       width: window.innerWidth,
       height: window.innerHeight,
@@ -72,8 +75,12 @@ async function captureViaDom(opts: CaptureOptions): Promise<Blob | null> {
       // it the clone renders from scroll offset zero, so a scrolled page — or a
       // scrolled sidebar/table/list inside it — captures its top, not what the
       // reporter was looking at.
+      // Those shifts drag fixed and sticky elements out of frame too; the
+      // pinner puts them back where they are on screen.
       features: { restoreScrollPosition: true },
-      filter: buildFilter(opts),
+      filter: pinner.filter,
+      onCloneEachNode: pinner.onCloneEachNode,
+      onCloneNode: pinner.onCloneNode,
     })
   } catch (err) {
     console.warn("[repro] screenshot capture failed:", err)
