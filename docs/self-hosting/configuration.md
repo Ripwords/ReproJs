@@ -72,7 +72,7 @@ Magic-link sign-in + invite delivery.
 | `SMTP_PASS`      | —                                       | SMTP auth password.                                                                       |
 | `SMTP_FROM`      | `Repro <no-reply@localhost>`            | `From:` header on sent mail.                                                              |
 
-`console` is the right default for the first boot — grab the magic-link URL from `docker compose logs dashboard | grep link:` and paste it into your browser. Switch to `smtp` once you want real users to receive email.
+`console` is the right default for the first boot — grab the magic-link URL from `docker compose logs dashboard | grep link:`, paste it into your browser, and press **Sign in** on the page that opens. Switch to `smtp` once you want real users to receive email.
 
 ## OAuth sign-in
 

@@ -84,11 +84,10 @@ export function signInPathFor(next: string): string {
  *    failed_to_create_user, failed_to_create_session,
  *    new_user_signup_disabled.
  *
- * ATTEMPTS_EXCEEDED is the common one in the wild: the plugin defaults to
- * `allowedAttempts: 1` and bumps the counter on *every* GET of the verify
- * URL, so a mail gateway that prefetches links (Outlook Safe Links,
- * Proofpoint, antivirus scanners) burns the single attempt before the human
- * clicks.
+ * ATTEMPTS_EXCEEDED means the verify URL was already requested once: the
+ * plugin bumps its counter on every GET, and `allowedAttempts` is 1. Emails
+ * link to MAGIC_LINK_LANDING_PATH rather than the verify URL so that mail
+ * scanners prefetching the link can't be the ones to spend it.
  */
 export const AUTH_ERROR_MESSAGES: Record<string, string> = {
   // Workspace gates — server/lib/auth.ts
@@ -105,7 +104,7 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
   EXPIRED_TOKEN:
     "That sign-in link expired — links are only good for 5 minutes. Request a fresh one below.",
   ATTEMPTS_EXCEEDED:
-    "That sign-in link has already been used. Some email providers open links automatically, so this can happen on the first click — request a fresh one below.",
+    "That sign-in link has already been used. Each link signs you in once — request a fresh one below.",
   failed_to_create_user:
     "We couldn't create your account. Ask a workspace admin to check the server logs.",
   failed_to_create_session: "We couldn't start your session. Try signing in again.",
@@ -206,4 +205,42 @@ export function pinMagicLinkRedirects<T extends Record<string, unknown>>(
     callbackURL: safeNextPath(body.callbackURL),
     errorCallbackURL: SIGN_IN_PATH,
   }
+}
+
+/**
+ * Where the emailed magic link points. The page there does nothing on load
+ * and shows a "Sign in" button; only the button spends the token.
+ *
+ * The link is single-use (`allowedAttempts: 1`), and mail gateways such as
+ * Microsoft 365 Safe Links and Proofpoint GET every link in a message before
+ * the person sees it. Pointed at the verify endpoint directly, that prefetch
+ * spent the token and the person's own click failed with ATTEMPTS_EXCEEDED.
+ */
+export const MAGIC_LINK_LANDING_PATH = "/auth/verify"
+
+const MAGIC_LINK_VERIFY_PATH = "/api/auth/magic-link/verify"
+
+/** Rewrites better-auth's verify URL into the landing-page URL for the email. */
+export function magicLinkLandingUrl(verifyUrl: string): string {
+  const url = new URL(verifyUrl)
+  url.pathname = MAGIC_LINK_LANDING_PATH
+  return url.toString()
+}
+
+/**
+ * The verify request the landing page's button navigates to, or null when
+ * the link carries no usable token. The destination is re-validated here
+ * because the landing URL's query is whatever arrived in the address bar.
+ */
+export function magicLinkVerifyPath(query: {
+  token: unknown
+  callbackURL: unknown
+}): string | null {
+  if (typeof query.token !== "string" || query.token === "") return null
+  const params = new URLSearchParams({
+    token: query.token,
+    callbackURL: safeNextPath(query.callbackURL),
+    errorCallbackURL: SIGN_IN_PATH,
+  })
+  return `${MAGIC_LINK_VERIFY_PATH}?${params.toString()}`
 }

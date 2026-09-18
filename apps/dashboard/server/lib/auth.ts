@@ -6,7 +6,11 @@ import { magicLink } from "better-auth/plugins/magic-link"
 import { jwt } from "better-auth/plugins/jwt"
 import { oauthProvider } from "@better-auth/oauth-provider"
 import { db } from "../db"
-import { pinMagicLinkRedirects, SIGN_IN_PATH } from "../../shared/auth-redirect"
+import {
+  magicLinkLandingUrl,
+  pinMagicLinkRedirects,
+  SIGN_IN_PATH,
+} from "../../shared/auth-redirect"
 import { appSettings, session, user } from "../db/schema"
 import { isEmailDomainOnAllowlist } from "./email-domain"
 import { env, getAuthRateLimitEnabled } from "./env"
@@ -196,17 +200,15 @@ export const auth = betterAuth({
       //
       // allowedAttempts is better-auth's default (1), spelled out because its
       // failure mode is easy to misread: the verify endpoint increments the
-      // counter on EVERY GET of the link — including the successful one — so
-      // the link is strictly single-use. A mail gateway that prefetches links
-      // (Outlook Safe Links, Proofpoint, most AV scanners) therefore burns
-      // the attempt before the human clicks, and the human sees
-      // ATTEMPTS_EXCEEDED on what looks like their first click. Raising this
-      // trades that away for a link that stays replayable from the inbox for
-      // its full 5-minute window; keep it at 1 unless a deployment's mail
-      // path makes prefetching unavoidable.
+      // counter on EVERY GET of the verify URL — including the successful
+      // one — so the link is strictly single-use. Mail gateways that
+      // prefetch links (Outlook Safe Links, Proofpoint, most AV scanners)
+      // would spend it before the human clicks, so the email never contains
+      // the verify URL: it links to a landing page whose button sends the
+      // verify request (see magicLinkLandingUrl).
       allowedAttempts: 1,
       sendMagicLink: async ({ email, url }) => {
-        const html = await renderTemplate("magic-link", { url })
+        const html = await renderTemplate("magic-link", { url: magicLinkLandingUrl(url) })
         await sendMail({
           to: email,
           subject: "Your sign-in link",

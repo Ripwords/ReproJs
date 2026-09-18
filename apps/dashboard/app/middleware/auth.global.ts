@@ -1,10 +1,10 @@
-import { safeNextPath, SIGN_IN_PATH } from "~~/shared/auth-redirect"
+import { MAGIC_LINK_LANDING_PATH, safeNextPath, SIGN_IN_PATH } from "~~/shared/auth-redirect"
 
 // Any absolute base works — only the path half is ever read back out.
 const PARSE_BASE = "https://repro.invalid"
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  const publicPaths = [SIGN_IN_PATH, "/s/"]
+  const publicPaths = [SIGN_IN_PATH, MAGIC_LINK_LANDING_PATH, "/s/"]
   if (publicPaths.some((p) => to.path.startsWith(p))) return
 
   // useRequestFetch() forwards the incoming request's cookie during SSR.
