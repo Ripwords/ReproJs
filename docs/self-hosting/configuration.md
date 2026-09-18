@@ -21,7 +21,13 @@ Sign-in only accepts requests whose origin is `BETTER_AUTH_URL`. If people reach
 
 | Variable                       | Default | Description                                                                                                                                              |
 | ------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BETTER_AUTH_TRUSTED_ORIGINS`  | —       | Extra origins, comma-separated, e.g. `https://feedback.internal.example.com, https://*.example.com`. Each entry needs its scheme; the dashboard refuses to boot otherwise. |
+| `BETTER_AUTH_TRUSTED_ORIGINS`  | —       | Extra origins, comma-separated. Each entry needs its scheme; the dashboard refuses to boot otherwise. |
+
+For example:
+
+```bash
+BETTER_AUTH_TRUSTED_ORIGINS=https://feedback.internal.example.com,https://*.example.com
+```
 
 This only relaxes the origin check. Session cookies still belong to the hostname that set them, so someone who signs in on one hostname is signed out on the other, and OAuth callbacks and emailed magic links always use `BETTER_AUTH_URL`. For most installs, one canonical hostname (with the others redirecting to it at the proxy) is simpler.
 
