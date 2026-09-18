@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import {
   authErrorMessage,
+  MAGIC_LINK_LANDING_PATH,
+  magicLinkLandingUrl,
+  magicLinkVerifyPath,
   pinMagicLinkRedirects,
   safeNextPath,
   SIGN_IN_PATH,
@@ -223,5 +226,54 @@ describe("signInFailureMessage", () => {
   test("falls back to the status line, then to generic copy", () => {
     expect(signInFailureMessage({ status: 502, statusText: "Bad Gateway" })).toBe("Bad Gateway")
     expect(signInFailureMessage({ status: 0, statusText: "" })).toMatch(/try again/i)
+  })
+})
+
+describe("magicLinkLandingUrl", () => {
+  const verifyUrl =
+    "https://repro.example.com/api/auth/magic-link/verify?token=abc123&callbackURL=%2Fprojects%2Fp1&errorCallbackURL=%2Fauth%2Fsign-in"
+
+  test("points the emailed link at the landing page, not the verify endpoint", () => {
+    const landing = new URL(magicLinkLandingUrl(verifyUrl))
+    expect(landing.origin).toBe("https://repro.example.com")
+    expect(landing.pathname).toBe(MAGIC_LINK_LANDING_PATH)
+  })
+
+  test("carries the token and destination over unchanged", () => {
+    const landing = new URL(magicLinkLandingUrl(verifyUrl))
+    expect(landing.searchParams.get("token")).toBe("abc123")
+    expect(landing.searchParams.get("callbackURL")).toBe("/projects/p1")
+  })
+})
+
+const parse = (path: string | null) => new URL(path ?? "", "https://repro.invalid")
+
+describe("magicLinkVerifyPath", () => {
+  test("builds the verify request the landing page's button navigates to", () => {
+    const url = parse(magicLinkVerifyPath({ token: "abc123", callbackURL: "/projects/p1" }))
+    expect(url.pathname).toBe("/api/auth/magic-link/verify")
+    expect(url.searchParams.get("token")).toBe("abc123")
+    expect(url.searchParams.get("callbackURL")).toBe("/projects/p1")
+    expect(url.searchParams.get("errorCallbackURL")).toBe(SIGN_IN_PATH)
+  })
+
+  test("an off-site or API destination falls back to the dashboard root", () => {
+    const offSite = parse(magicLinkVerifyPath({ token: "t", callbackURL: "https://evil.example" }))
+    expect(offSite.searchParams.get("callbackURL")).toBe("/")
+    const api = parse(magicLinkVerifyPath({ token: "t", callbackURL: "/api/intake/reports" }))
+    expect(api.searchParams.get("callbackURL")).toBe("/")
+  })
+
+  test("a used link no longer blames a scanner opening it first", () => {
+    // Scanners now only load the landing page, which spends nothing.
+    const copy = authErrorMessage("ATTEMPTS_EXCEEDED") ?? ""
+    expect(copy).toContain("already been used")
+    expect(copy).not.toMatch(/first click|open links automatically/)
+  })
+
+  test("returns null without a usable token", () => {
+    expect(magicLinkVerifyPath({ token: undefined, callbackURL: "/" })).toBeNull()
+    expect(magicLinkVerifyPath({ token: "", callbackURL: "/" })).toBeNull()
+    expect(magicLinkVerifyPath({ token: ["a", "b"], callbackURL: "/" })).toBeNull()
   })
 })

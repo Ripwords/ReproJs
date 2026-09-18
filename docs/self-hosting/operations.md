@@ -121,6 +121,14 @@ Not usually needed for small deployments, but worth a note:
 
 ## Sign-in problems
 
+### How magic-link sign-in works
+
+The emailed link opens a **Finish signing in** page with a **Sign in** button. Opening the page does not sign anyone in; pressing the button does. The extra press is deliberate. Each link signs in once, and mail security scanners (Microsoft 365 Safe Links, Proofpoint, antivirus gateways) open every link in an incoming email before the recipient sees it. If the link signed in on open, the scanner would use it up, and the recipient's own click would fail with "already been used".
+
+The link expires 5 minutes after it was sent. The page opens in whichever browser the person clicks it in, and the session belongs to that browser.
+
+### Error messages
+
 When sign-in fails, the sign-in page shows the reason. The common ones:
 
 | Message on the sign-in page | Cause | Fix |
@@ -129,7 +137,7 @@ When sign-in fails, the sign-in page shows the reason. The common ones:
 | Your email domain isn't allowed on this workspace. | The email's domain isn't in **Allowed email domains**. | Add the domain, or invite an address on an allowed domain. |
 | Your account has been disabled, so you were signed out. | An admin disabled the account. | **Reactivate** it under **Settings → Users**. |
 | Too many sign-in attempts from your network. | The auth rate limit (`AUTH_RATE_PER_IP_PER_15MIN`, 5 per 15 minutes by default) was hit. Everyone behind one office NAT or VPN shares it. | Wait 15 minutes. If it keeps happening, check the proxy sets `X-Forwarded-For` (see [Auth rate limits](./configuration#auth-rate-limits)) and raise the limit. |
-| That sign-in link has already been used. | Magic links work once. A mail security scanner may have opened it first. | Request a fresh link. |
+| That sign-in link has already been used. | Each magic link signs in once. **Sign in** was already pressed for this link, possibly in another browser or on another device. | Request a fresh link. |
 | That sign-in link expired. | Links last 5 minutes. | Request a fresh link. |
 
 **Signed in, then straight back to the sign-in page with no message.** The browser dropped the session cookie. The usual cause is visiting the dashboard over plain `http://` while `BETTER_AUTH_URL` starts with `https://`: the cookie is then marked `Secure` (and named `__Secure-…`), and browsers discard it on an `http://` page. Always open the dashboard at exactly the `BETTER_AUTH_URL` address, through the TLS proxy. Opening `http://<server-ip>:3000` directly doesn't work once `BETTER_AUTH_URL` is https.
@@ -142,7 +150,7 @@ When sign-in fails, the sign-in page shows the reason. The common ones:
 
 **`POSTGRES_PASSWORD is required`** — compose refuses to start. Set it in `.env`, `docker compose up -d`.
 
-**Magic-link email never arrives in console mode** — working as intended. `docker compose logs dashboard | grep link:` gives you the URL to paste.
+**Magic-link email never arrives in console mode** — working as intended. `docker compose logs dashboard | grep link:` gives you the URL to paste. Open it, then press **Sign in**.
 
 **`S3 credentials missing` on first intake** — `STORAGE_DRIVER=s3` is set but the access-key vars are blank. Re-check `.env`, `docker compose up -d`.
 
