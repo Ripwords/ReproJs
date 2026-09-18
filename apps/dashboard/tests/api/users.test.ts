@@ -179,7 +179,12 @@ describe("users API", () => {
         body: JSON.stringify({ role: "member" }),
       })
     const results = await Promise.all([demote(aId), demote(bId)])
-    expect(results.map((r) => r.status).toSorted()).toEqual([200, 409])
+    // Exactly one demotion wins. The loser gets 409 when both requests reach
+    // the row lock together, or 403 when "demote self" commits first and the
+    // caller is no longer an admin by the time the other request is checked.
+    const [first, second] = results.map((r) => r.status).toSorted()
+    expect(first).toBe(200)
+    expect([403, 409]).toContain(second)
 
     const admins = await db.select().from(user).where(eq(user.role, "admin"))
     expect(admins).toHaveLength(1)
