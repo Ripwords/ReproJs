@@ -243,6 +243,9 @@ const priorityDotClass = computed<string>(() => {
   <div class="divide-y divide-default/60">
     <!-- Properties -->
     <section class="py-4 first:pt-0">
+      <p v-if="!canEdit" class="pb-3 text-sm text-muted">
+        Only project managers, developers, and owners can change triage.
+      </p>
       <button
         type="button"
         class="flex w-full items-center gap-2 pb-3 text-sm font-semibold text-default hover:text-primary transition-colors"
@@ -354,8 +357,8 @@ const priorityDotClass = computed<string>(() => {
         <template v-else>
           <div class="flex flex-col gap-2">
             <UInput
-              v-if="canEdit"
               v-model="tagDraft"
+              :disabled="!canEdit || posting"
               placeholder="Add a label…"
               size="md"
               variant="outline"
@@ -382,7 +385,6 @@ const priorityDotClass = computed<string>(() => {
                 </button>
               </span>
             </div>
-            <span v-else-if="!canEdit" class="text-sm text-muted italic">None</span>
           </div>
         </template>
       </div>
@@ -441,7 +443,7 @@ const priorityDotClass = computed<string>(() => {
         </template>
 
         <UButton
-          v-else-if="canEdit && githubReady"
+          v-else-if="githubReady"
           size="md"
           color="neutral"
           variant="outline"
@@ -449,6 +451,7 @@ const priorityDotClass = computed<string>(() => {
           :loading="ghSubmitting"
           :label="ghSubmitting ? 'Creating…' : 'Create GitHub issue'"
           block
+          :disabled="!canEdit"
           @click="createIssue"
         />
 
@@ -476,7 +479,7 @@ const priorityDotClass = computed<string>(() => {
             block
           />
         </div>
-        <span v-else class="text-sm text-muted italic">Not linked</span>
+        <p v-else class="text-sm text-muted">GitHub isn't connected to this project.</p>
       </div>
     </section>
 

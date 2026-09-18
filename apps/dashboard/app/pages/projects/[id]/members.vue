@@ -182,14 +182,6 @@ async function confirmRemove(member: ProjectMemberDTO) {
   void removeMember(member.userId)
 }
 
-function roleColor(role: string): "primary" | "neutral" | "warning" | "success" | "info" {
-  if (role === "owner") return "warning"
-  if (role === "developer") return "primary"
-  if (role === "manager") return "info"
-  if (role === "viewer") return "neutral"
-  return "neutral"
-}
-
 function initials(name: string | null, email: string): string {
   const base = name?.trim() || email
   return base.slice(0, 2).toUpperCase()
@@ -219,26 +211,19 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
   {
     accessorKey: "role",
     header: "Role",
-    cell: ({ row }) => {
-      if (!isOwner.value) {
-        const UBadge = resolveComponent("UBadge")
-        return h(
-          UBadge,
-          { color: roleColor(row.original.role), variant: "subtle", size: "sm" },
-          () => row.original.role,
-        )
-      }
-      return h(USelectMenu, {
+    // Non-owners see the same control, disabled; the header note says why.
+    cell: ({ row }) =>
+      h(USelectMenu, {
         modelValue: roleOptions.find((o) => o.value === row.original.role),
         items: roleOptions,
         size: "xs",
+        disabled: !isOwner.value,
         "onUpdate:modelValue": (v: { label: string; value: ProjectRole }) => {
           if (v?.value && v.value !== row.original.role) {
             void confirmRoleChange(row.original, v.value)
           }
         },
-      })
-    },
+      }),
   },
   {
     accessorKey: "joinedAt",
@@ -281,15 +266,19 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
 <template>
   <div class="space-y-6">
     <PageHeader eyebrow="Project" title="Members" description="People with access to this project.">
-      <template v-if="isOwner" #actions>
+      <template #actions>
         <UButton
           label="Invite member"
           icon="i-heroicons-plus"
           color="primary"
+          :disabled="!isOwner"
           @click="inviteOpen = true"
         />
       </template>
     </PageHeader>
+    <p v-if="project && !isOwner" class="-mt-3 text-sm text-muted">
+      Only project owners can invite or remove members and change roles.
+    </p>
 
     <UCard :ui="{ body: 'p-0' }">
       <UTable
