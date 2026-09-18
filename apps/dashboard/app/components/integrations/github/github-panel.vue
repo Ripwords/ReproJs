@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { GithubConfigDTO } from "@reprojs/shared"
+import type { GithubConfigDTO, ProjectDTO } from "@reprojs/shared"
+import { hasProjectRole } from "~/utils/project-role"
 import RepoPicker from "./repo-picker.vue"
 import SyncStatus from "./sync-status.vue"
 import UnlinkDialog from "./unlink-dialog.vue"
@@ -14,6 +15,14 @@ const toast = useToast()
 const { data, refresh } = useApi<GithubConfigDTO>(
   `/api/projects/${props.projectId}/integrations/github`,
 )
+
+// Same role source as the project settings and members pages. Install,
+// save and disconnect are owner-only on the server; bulk retry is
+// developer+ and a single-report retry is manager+.
+const { data: project } = useApi<ProjectDTO>(`/api/projects/${props.projectId}`)
+const isOwner = computed(() => hasProjectRole(project.value?.effectiveRole, "owner"))
+const canRetryAll = computed(() => hasProjectRole(project.value?.effectiveRole, "developer"))
+const canRetryOne = computed(() => hasProjectRole(project.value?.effectiveRole, "manager"))
 
 const selectedRepo = ref({ owner: "", name: "" })
 const labelsText = ref("")
@@ -147,9 +156,13 @@ async function saveRepo() {
       <p class="text-sm text-muted leading-relaxed">
         Install the GitHub App on a repository to start syncing reports as issues.
       </p>
+      <p v-if="!isOwner" class="text-sm text-muted">
+        Only project owners can connect the GitHub App.
+      </p>
       <UButton
         :label="ctaLabel"
         :loading="installing"
+        :disabled="!isOwner"
         icon="i-simple-icons-github"
         color="neutral"
         variant="solid"
@@ -167,9 +180,13 @@ async function saveRepo() {
         title="Integration disconnected"
         description="The GitHub App was uninstalled or access was revoked. Reconnect to resume syncing."
       />
+      <p v-if="!isOwner" class="text-sm text-muted">
+        Only project owners can connect the GitHub App.
+      </p>
       <UButton
         :label="ctaLabel"
         :loading="installing"
+        :disabled="!isOwner"
         icon="i-simple-icons-github"
         color="neutral"
         variant="solid"
@@ -180,24 +197,42 @@ async function saveRepo() {
 
     <!-- Installed + connected -->
     <div v-else class="space-y-5">
+      <p v-if="!isOwner" class="text-sm text-muted">
+        Only project owners can change the repository, defaults, or connection.
+      </p>
       <div>
         <div class="text-sm font-semibold uppercase tracking-[0.14em] text-muted mb-2">
           Repository
         </div>
-        <RepoPicker v-model="selectedRepo" :project-id="projectId" @update:model-value="saveRepo" />
+        <RepoPicker
+          v-model="selectedRepo"
+          :project-id="projectId"
+          :disabled="!isOwner"
+          @update:model-value="saveRepo"
+        />
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <UFormField label="Default labels">
-          <UInput v-model="labelsText" placeholder="bug, triage" class="w-full" />
+          <UInput
+            v-model="labelsText"
+            placeholder="bug, triage"
+            :disabled="!isOwner"
+            class="w-full"
+          />
         </UFormField>
         <UFormField label="Default assignees">
-          <UInput v-model="assigneesText" placeholder="octocat, hubot" class="w-full" />
+          <UInput
+            v-model="assigneesText"
+            placeholder="octocat, hubot"
+            :disabled="!isOwner"
+            class="w-full"
+          />
         </UFormField>
       </div>
 
       <div class="flex items-center gap-3">
-        <USwitch v-model="pushOnEdit" />
+        <USwitch v-model="pushOnEdit" :disabled="!isOwner" />
         <div>
           <p class="text-sm font-medium text-default">Push edits to GitHub</p>
           <p class="text-sm text-muted">
@@ -209,7 +244,7 @@ async function saveRepo() {
       <div class="flex items-center gap-3">
         <USwitch
           v-model="autoCreateOnIntake"
-          :disabled="!selectedRepo.owner || !selectedRepo.name"
+          :disabled="!isOwner || !selectedRepo.owner || !selectedRepo.name"
         />
         <div>
           <p
@@ -232,6 +267,7 @@ async function saveRepo() {
           variant="solid"
           size="md"
           :loading="saving"
+          :disabled="!isOwner"
           @click="saveRepo"
         />
       </div>
@@ -240,7 +276,12 @@ async function saveRepo() {
         <div class="text-sm font-semibold uppercase tracking-[0.14em] text-muted mb-2">
           Sync status
         </div>
-        <SyncStatus :project-id="projectId" @retried="refresh" />
+        <SyncStatus
+          :project-id="projectId"
+          :can-retry-all="canRetryAll"
+          :can-retry-one="canRetryOne"
+          @retried="refresh"
+        />
       </div>
 
       <div class="pt-3 border-t border-default">
@@ -249,6 +290,7 @@ async function saveRepo() {
           color="error"
           variant="soft"
           size="md"
+          :disabled="!isOwner"
           @click="unlinkOpen = true"
         />
       </div>

@@ -62,7 +62,9 @@ export default defineEventHandler(
     if (!projectId || !reportId) {
       throw createError({ statusCode: 400, statusMessage: "missing params" })
     }
-    await requireProjectRole(event, projectId, "developer")
+    // Same floor as posting a comment (index.post.ts): the only consumer of
+    // an upload is a comment body, so anyone who may comment may attach.
+    await requireProjectRole(event, projectId, "manager")
 
     const parts = await readMultipartFormData(event)
     if (!parts || parts.length === 0) {

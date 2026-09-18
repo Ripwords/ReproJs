@@ -22,7 +22,7 @@ import {
 } from "~/composables/use-report-format"
 import CommentsTab from "./comments-tab.vue"
 
-const props = defineProps<{ projectId: string; report: ReportDetailDTO }>()
+const props = defineProps<{ projectId: string; report: ReportDetailDTO; canComment: boolean }>()
 const emit = defineEmits<{
   "select-tab": [tab: "console" | "network" | "replay" | "attachments"]
 }>()
@@ -226,7 +226,7 @@ const descriptionHtml = computed(() =>
         <UIcon name="i-heroicons-chat-bubble-left-right" class="size-4 text-primary" />
         <h3 class="text-sm font-medium text-primary tracking-tight">Comments</h3>
       </header>
-      <CommentsTab :project-id="projectId" :report-id="report.id" />
+      <CommentsTab :project-id="projectId" :report-id="report.id" :can-comment="canComment" />
     </section>
 
     <!-- Lightbox — full-resolution screenshot. Click the backdrop or press
