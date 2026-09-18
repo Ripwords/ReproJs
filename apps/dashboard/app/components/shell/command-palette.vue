@@ -12,7 +12,6 @@
 -->
 <script setup lang="ts">
 import { computed } from "vue"
-import type { ProjectDTO } from "@reprojs/shared"
 import { _useCommandPaletteHost } from "~/composables/use-command-palette"
 
 const { open } = _useCommandPaletteHost()
@@ -21,11 +20,9 @@ const router = useRouter()
 const colorMode = useColorMode()
 const { isAdmin } = useSession()
 
-// Piggybacks on the same `/api/projects` request as the sidebar + switcher —
-// Nuxt's useFetch dedupes by URL, so no extra round-trip.
-const { data: projectsData } = await useApi<ProjectDTO[]>("/api/projects", {
-  default: () => [],
-})
+// Shared projects-list cache (same key as the sidebar, switcher and
+// projects page), so it's one request and stays current after edits.
+const { data: projectsData } = await useProjectsList()
 
 const routeProjectId = computed(() => {
   const m = /^\/projects\/([^/]+)/.exec(route.path)

@@ -2,7 +2,6 @@
 import { describeApiError } from "~/utils/api-error"
 import { ref, computed, watch } from "vue"
 import type { ProjectDTO, ProjectRole, SharedMediaDTO } from "@reprojs/shared"
-import { PROJECTS_LIST_KEY } from "~/composables/useApi"
 import ConfirmDeleteDialog from "~/components/common/confirm-delete-dialog.vue"
 
 const route = useRoute()
@@ -109,7 +108,8 @@ async function saveGeneral() {
       },
     })
     toast.add({ title: "Saved", color: "success", icon: "i-heroicons-check-circle" })
-    await refresh()
+    // The name also shows in the sidebar, switcher and palette.
+    await Promise.all([refresh(), refreshProjectsList()])
   } catch (err) {
     toast.add({
       title: "Could not save",
@@ -310,11 +310,10 @@ async function confirmDelete() {
       credentials: "include",
     })
     toast.add({ title: "Project deleted", color: "success", icon: "i-heroicons-check-circle" })
-    // The projects list (`/`) caches `/api/projects` under this key. Without
-    // clearing it, client-side nav back to `/` shows the deleted project
-    // until a hard refresh.
-    clearNuxtData(PROJECTS_LIST_KEY)
-    router.push("/")
+    // Drop the deleted project from the projects page, sidebar, switcher
+    // and palette, which all read the shared projects-list cache.
+    await refreshProjectsList()
+    await router.push("/")
   } catch (err) {
     toast.add({
       title: "Could not delete",
