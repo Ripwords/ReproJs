@@ -96,6 +96,9 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
   not_invited: "Sign-up is invite-only. Ask an admin to invite you first.",
   account_disabled:
     "Your account has been disabled, so you were signed out. Ask a workspace admin to re-enable it.",
+  // Auth rate limiter on /magic-link/verify — server/api/auth/[...].ts
+  rate_limited:
+    "Too many sign-in attempts from your network. Wait a few minutes, then request a fresh link.",
 
   // better-auth magic-link verify
   INVALID_TOKEN: "That sign-in link is no longer valid. Request a fresh one below.",
