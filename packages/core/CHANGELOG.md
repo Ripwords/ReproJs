@@ -1,5 +1,48 @@
 # Changelog
 
+## sdk-v0.5.0
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.4.2...sdk-v0.5.0)
+
+### 🚀 Enhancements
+
+- **shared:** Media attachment kind, media-meta contract, share-link DTOs ([128ad93](https://github.com/Ripwords/ReproJs/commit/128ad93))
+- **sdk-utils:** Shared formatBytes and media selection limits ([6e5eb6e](https://github.com/Ripwords/ReproJs/commit/6e5eb6e))
+- **core:** Screen recording session with auto-stop, cancel and snapshot ([da08221](https://github.com/Ripwords/ReproJs/commit/da08221))
+- **ui:** IndexedDB gallery store with quota eviction and thumbnail helper ([793ec71](https://github.com/Ripwords/ReproJs/commit/793ec71))
+- **ui:** Recording control bar, metadata trim screen and outcome bar ([906d77c](https://github.com/Ripwords/ReproJs/commit/906d77c))
+- **ui:** Launcher menu, capture flow with outcome bar, gallery view ([917e7b0](https://github.com/Ripwords/ReproJs/commit/917e7b0))
+- **ui:** Two-step report wizard fed by the gallery media picker ([d3592c2](https://github.com/Ripwords/ReproJs/commit/d3592c2))
+- **sdk:** 3-mode launcher menu, recording flow wiring, media intake parts and open-menu hotkey ([7011629](https://github.com/Ripwords/ReproJs/commit/7011629))
+- **sdk:** Mint share links from the gallery with graceful old-server fallback ([1ab1bcb](https://github.com/Ripwords/ReproJs/commit/1ab1bcb))
+
+### 🩹 Fixes
+
+- **changelog:** Restore history eroded by the path filter ([a0a5b91](https://github.com/Ripwords/ReproJs/commit/a0a5b91))
+- **core:** Fix first-termination-trigger race in screen recorder ([dbc6406](https://github.com/Ripwords/ReproJs/commit/dbc6406))
+- **ui:** Prune stale preselected media ids from the report wizard ([80879c0](https://github.com/Ripwords/ReproJs/commit/80879c0))
+- **ui:** Release recording stream and listeners on widget unmount ([e14767c](https://github.com/Ripwords/ReproJs/commit/e14767c))
+- **ui:** Re-mint expired share links instead of copying dead URLs ([cc39d2d](https://github.com/Ripwords/ReproJs/commit/cc39d2d))
+- **sdk:** Report container mime from screen recordings ([48ed3e9](https://github.com/Ripwords/ReproJs/commit/48ed3e9))
+- Close media validation and widget re-entry gaps from final review ([1c1c1cf](https://github.com/Ripwords/ReproJs/commit/1c1c1cf))
+- **expo:** Serialize console args to strings so intake stops rejecting reports ([fc639e8](https://github.com/Ripwords/ReproJs/commit/fc639e8))
+- **intake:** Keep the report when the logs part is invalid ([1433286](https://github.com/Ripwords/ReproJs/commit/1433286))
+- **sdk-utils:** Make the JWT redactor linear on adversarial input ([3ac6637](https://github.com/Ripwords/ReproJs/commit/3ac6637))
+- **core:** Capture the scrolled viewport in DOM screenshots ([5723b71](https://github.com/Ripwords/ReproJs/commit/5723b71))
+
+### 💅 Refactors
+
+- **dashboard:** Take API response types from @reprojs/shared ([06b0750](https://github.com/Ripwords/ReproJs/commit/06b0750))
+
+### ✅ Tests
+
+- **ui:** Cover trim-screen CSP fallback and objectURL revoke ([eba439b](https://github.com/Ripwords/ReproJs/commit/eba439b))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+- Ainmutaqorrobin <ainmutaqorrobin@gmail.com>
+
 ## sdk-v0.4.2
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.4.1...sdk-v0.4.2)

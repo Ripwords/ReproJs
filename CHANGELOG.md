@@ -1,5 +1,74 @@
 # Changelog
 
+## v0.7.0
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.6...v0.7.0)
+
+### 🚀 Enhancements
+
+- **inbox:** Paginate the report list ([73b0af4](https://github.com/Ripwords/ReproJs/commit/73b0af4))
+- **auth:** Accept extra sign-in origins from BETTER_AUTH_TRUSTED_ORIGINS ([d5510ef](https://github.com/Ripwords/ReproJs/commit/d5510ef))
+
+### 🩹 Fixes
+
+- **auth:** Surface sign-in failures instead of silently bouncing to login ([b5a9452](https://github.com/Ripwords/ReproJs/commit/b5a9452))
+- **auth:** Explain the three OAuth codes the map was missing ([b1930b0](https://github.com/Ripwords/ReproJs/commit/b1930b0))
+- **auth:** Only echo an error code that looks like a code ([00e6c7b](https://github.com/Ripwords/ReproJs/commit/00e6c7b))
+- **comments:** Only the author may edit or delete a comment ([e7a3462](https://github.com/Ripwords/ReproJs/commit/e7a3462))
+- **inbox:** Break sort ties on id so offset pages don't repeat rows ([0ccd090](https://github.com/Ripwords/ReproJs/commit/0ccd090))
+- **comments:** Let managers attach images to the comments they can post ([c37f909](https://github.com/Ripwords/ReproJs/commit/c37f909))
+- **auth:** Send OAuth sign-ups refused by the workspace gates to sign-in ([b9f5431](https://github.com/Ripwords/ReproJs/commit/b9f5431))
+- **dashboard:** Show the server's error message instead of the raw fetch line ([05a807a](https://github.com/Ripwords/ReproJs/commit/05a807a))
+- **invites:** Enforce the email domain allowlist on every invite ([143f3a2](https://github.com/Ripwords/ReproJs/commit/143f3a2))
+- **report:** Tell loading, no logs and a failed load apart on Console/Network ([79fc282](https://github.com/Ripwords/ReproJs/commit/79fc282))
+- **report:** Keep the report mounted while it refreshes ([c6a9b03](https://github.com/Ripwords/ReproJs/commit/c6a9b03))
+- **integrations:** Disable GitHub controls the caller's role can't use ([3bdedd9](https://github.com/Ripwords/ReproJs/commit/3bdedd9))
+- **labels:** Only offer "Create label" to developers and above ([9bfe9c7](https://github.com/Ripwords/ReproJs/commit/9bfe9c7))
+- **report:** Derive number shortcuts from the tabs actually shown ([7ea54e4](https://github.com/Ripwords/ReproJs/commit/7ea54e4))
+- **comments:** Give viewers a read-only comment thread ([c4f2a5c](https://github.com/Ripwords/ReproJs/commit/c4f2a5c))
+- **comments:** Confirm before deleting a comment and report failures ([8b50cce](https://github.com/Ripwords/ReproJs/commit/8b50cce))
+- **report:** Let Esc close an open popover or fullscreen replay first ([143e468](https://github.com/Ripwords/ReproJs/commit/143e468))
+- **auth:** Sign disabled users out and tell them why ([7c98cf9](https://github.com/Ripwords/ReproJs/commit/7c98cf9))
+- **dashboard:** Share one projects-list cache across sidebar, switcher and palette ([63e0a40](https://github.com/Ripwords/ReproJs/commit/63e0a40))
+- **users:** Count only active admins in the last-admin guard, under a lock ([d9744e8](https://github.com/Ripwords/ReproJs/commit/d9744e8))
+- **invitations:** Keep the invite link through sign-in with `next` ([76fdcc7](https://github.com/Ripwords/ReproJs/commit/76fdcc7))
+- **users:** Reactivating a never-signed-in invitee restores "invited" ([e08c748](https://github.com/Ripwords/ReproJs/commit/e08c748))
+- **auth:** Show why a social sign-in button did nothing ([cb6fe8a](https://github.com/Ripwords/ReproJs/commit/cb6fe8a))
+- **auth:** A rate-limited magic link lands on sign-in, not raw JSON ([4c26e33](https://github.com/Ripwords/ReproJs/commit/4c26e33))
+- **dashboard:** Send non-admins to the embed snippet, not the admin install page ([089f58a](https://github.com/Ripwords/ReproJs/commit/089f58a))
+- **settings:** Describe the access rules sign-in actually enforces ([12647df](https://github.com/Ripwords/ReproJs/commit/12647df))
+- **auth:** Mail scanners can no longer use up a magic link ([7f9431e](https://github.com/Ripwords/ReproJs/commit/7f9431e))
+- **email:** Print the console provider's link unescaped ([f432df7](https://github.com/Ripwords/ReproJs/commit/f432df7))
+- **ui:** One date format — relative text with the full date on hover ([eaf0a5d](https://github.com/Ripwords/ReproJs/commit/eaf0a5d))
+- **ui:** Confirm install and project role changes ([9b0b330](https://github.com/Ripwords/ReproJs/commit/9b0b330))
+- **ui:** One source for status and priority labels, and say "labels" ([f9e12ad](https://github.com/Ripwords/ReproJs/commit/f9e12ad))
+- **ui:** One page header across the app pages ([cd38741](https://github.com/Ripwords/ReproJs/commit/cd38741))
+- **ui:** Show read-only members and triage controls disabled, with a note ([f3489c2](https://github.com/Ripwords/ReproJs/commit/f3489c2))
+- **ui:** Show the server's reason in the remaining error toasts ([a4a15fe](https://github.com/Ripwords/ReproJs/commit/a4a15fe))
+- **share:** Render the expiry without UTooltip on the public share page ([7bdd676](https://github.com/Ripwords/ReproJs/commit/7bdd676))
+- **core:** Capture the scrolled viewport in DOM screenshots ([5723b71](https://github.com/Ripwords/ReproJs/commit/5723b71))
+
+### 💅 Refactors
+
+- **dashboard:** Share the project role-rank check with the UI ([792bcb7](https://github.com/Ripwords/ReproJs/commit/792bcb7))
+- **replay:** Load the replay with useLazyAsyncData instead of onMounted ([357c043](https://github.com/Ripwords/ReproJs/commit/357c043))
+- **dashboard:** Take API response types from @reprojs/shared ([06b0750](https://github.com/Ripwords/ReproJs/commit/06b0750))
+
+### 📖 Documentation
+
+- **replay:** Say the replay refetches when its tab reopens ([f2b435d](https://github.com/Ripwords/ReproJs/commit/f2b435d))
+
+### ✅ Tests
+
+- **auth:** Cover the gate copy and the next round-trip through the guard ([263fbe5](https://github.com/Ripwords/ReproJs/commit/263fbe5))
+- **auth:** Configure the stub GitHub provider in the test preload ([ccf5992](https://github.com/Ripwords/ReproJs/commit/ccf5992))
+- **users:** Accept either valid loser status in the concurrent-demotion race ([1291c40](https://github.com/Ripwords/ReproJs/commit/1291c40))
+
+### ❤️ Contributors
+
+- JJ <teohjjteoh@gmail.com>
+- Ainmutaqorrobin <ainmutaqorrobin@gmail.com>
+
 ## v0.6.6
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.6.5...v0.6.6)
