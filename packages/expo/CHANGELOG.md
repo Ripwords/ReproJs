@@ -1,5 +1,22 @@
 # Changelog
 
+## expo-v0.3.4
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.3...expo-v0.3.4)
+
+### 💅 Refactors
+
+- **dashboard:** Take API response types from @reprojs/shared ([06b0750](https://github.com/Ripwords/ReproJs/commit/06b0750))
+
+### 📖 Documentation
+
+- **expo:** Fold the 0.3.3 detail into its released changelog section ([8ee75c5](https://github.com/Ripwords/ReproJs/commit/8ee75c5))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+- Ainmutaqorrobin <ainmutaqorrobin@gmail.com>
+
 ## expo-v0.3.3
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.2...expo-v0.3.3)

@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.7.2
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.1...v0.7.2)
+
+### 🚀 Enhancements
+
+- **ui:** Make the gallery opt-in and keep it out of the report wizard ([1254d9b](https://github.com/Ripwords/ReproJs/commit/1254d9b))
+
+### 🩹 Fixes
+
+- **ui:** Clear annotations before each capture ([fd5e6f7](https://github.com/Ripwords/ReproJs/commit/fd5e6f7))
+
+### ✅ Tests
+
+- **ui:** Walk the tree instead of querySelectorAll in mount tests ([b684807](https://github.com/Ripwords/ReproJs/commit/b684807))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## v0.7.1
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.0...v0.7.1)
