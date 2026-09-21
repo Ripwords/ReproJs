@@ -49,6 +49,12 @@ const ACTIVE_ICON = "#ffffff"
 const INACTIVE_ICON = "#111827"
 const DISABLED_OPACITY = 0.35
 const HIT_SIZE = 44
+/**
+ * Nine 44pt buttons plus gaps need ~416pt, which overflows a 375pt phone.
+ * Yoga defaults flexShrink to 0, so without this the row would not shrink —
+ * it would run off the edge and take the trash button with it.
+ */
+const MIN_HIT_SIZE = 34
 
 export function AnnotationToolbar({
   mode,
@@ -79,6 +85,8 @@ export function AnnotationToolbar({
               accessibilityRole="button"
               style={{
                 width: HIT_SIZE,
+                minWidth: MIN_HIT_SIZE,
+                flexShrink: 1,
                 height: HIT_SIZE,
                 borderRadius: 8,
                 backgroundColor: active ? ACTIVE_BG : INACTIVE_BG,
@@ -102,6 +110,8 @@ export function AnnotationToolbar({
           accessibilityRole="button"
           style={{
             width: HIT_SIZE,
+            minWidth: MIN_HIT_SIZE,
+            flexShrink: 1,
             height: HIT_SIZE,
             alignItems: "center",
             justifyContent: "center",
@@ -119,6 +129,8 @@ export function AnnotationToolbar({
           accessibilityRole="button"
           style={{
             width: HIT_SIZE,
+            minWidth: MIN_HIT_SIZE,
+            flexShrink: 1,
             height: HIT_SIZE,
             alignItems: "center",
             justifyContent: "center",
@@ -135,6 +147,8 @@ export function AnnotationToolbar({
           accessibilityRole="button"
           style={{
             width: HIT_SIZE,
+            minWidth: MIN_HIT_SIZE,
+            flexShrink: 1,
             height: HIT_SIZE,
             alignItems: "center",
             justifyContent: "center",
