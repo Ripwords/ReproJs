@@ -149,10 +149,25 @@ Marking the key `sensitive` hides it from EAS build logs, but `EXPO_PUBLIC_*` is
 
 2. Tap the flame-orange bug button.
 3. Fill out title + description → **Continue**.
-4. Annotate the captured screenshot with the pen/arrow/rect/highlight/text tools → **Continue**.
+4. Annotate the captured screenshot with the pen/arrow/rect/highlight/text tools, or pick the cursor tool to reposition something you already placed → **Continue**.
 5. Review what's included → **Send report**.
 
 The report lands in your dashboard's inbox with a Mobile / iOS / Android platform pill and a mobile-specific device card.
+
+## Moving an annotation
+
+The last button in the annotation toolbar is the cursor tool. With it active:
+
+- Tap a shape to select it — a dashed outline appears around it.
+- Drag the shape to move it. Text labels, arrows, rectangles, highlights and pen strokes all move.
+- Tap empty canvas to deselect.
+
+A move is a single undo step, so **Undo** puts the shape back where it was instead of deleting it.
+Shapes cannot be dragged off the canvas, and the selection outline is never part of the submitted
+PNG. Shapes are grabbed by their ink: an arrow or pen stroke responds near the line itself, while
+rectangles, highlights and text can be grabbed anywhere inside them.
+
+Resizing and rotating are not supported — redraw the shape instead.
 
 ## Draggable launcher
 
@@ -189,6 +204,7 @@ The queue is not encrypted — documented privacy tradeoff for v1. Don't use as 
 - **`Submission too fast` (400)** — the server's dwell gate (default 1000 ms) didn't pass. The SDK clamps to ≥1000 ms so this is only seen if you're running an older SDK build.
 - **Wizard opens but screenshot area is blank** — `react-native-view-shot` returned without an error but produced a black frame. Usually resolved by dismissing the keyboard before opening the wizard.
 - **Annotations don't appear in the submitted PNG** — older SDK bug; update to ≥0.1.0.
+- **Nothing draws on the screenshot in the Annotate step (Android only)** — fixed in 0.3.5, upgrade. On Android a react-native `Modal` is a separate native window that sits outside your app's `GestureHandlerRootView`, so gesture-handler received no touches inside the wizard and the canvas ignored every stroke. The toolbar still responded, which makes this look like a broken canvas rather than a dead gesture. iOS was unaffected.
 - **`xcodebuild: error: Unable to find a destination matching the provided destination specifier` / `iOS <version> is not installed`** — Xcode is installed but its iOS platform component isn't, so *no* iOS destination is eligible (not even a booted simulator). Install it via Xcode → Settings → Components, or run `xcodebuild -downloadPlatform iOS`. Confirm with `xcodebuild -workspace ios/<app>.xcworkspace -scheme <app> -showdestinations` — if every entry is listed as "Ineligible", the platform is the missing piece, not your config.
 - **`run:android` fails with no emulator** — `emulator -list-avds` printing nothing means no AVD exists. Create one in Android Studio → Device Manager (this downloads a system image), or plug in a physical device with USB debugging on.
 - **Report never arrives and the app logs a network error** — you're almost certainly pointing at the wrong host. Re-check [Reaching the dashboard from a device](#reaching-the-dashboard-from-a-device): an Android emulator cannot resolve `localhost` to your laptop, it needs `10.0.2.2`.

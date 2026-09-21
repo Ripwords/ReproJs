@@ -137,3 +137,17 @@ export function TrashIcon({ size = 20, color = "#111827" }: IconProps) {
     </Svg>
   )
 }
+
+export function CursorIcon({ size = 20, color = "#111827" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 22 22">
+      <Path
+        d="M 5 2 L 5 17 L 9 13 L 12 20 L 15 19 L 12 12 L 17 12 Z"
+        stroke={color}
+        strokeWidth={1.4}
+        fill={color}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  )
+}

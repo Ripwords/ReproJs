@@ -4,7 +4,7 @@ import { AnnotationCanvas } from "../annotation/canvas"
 import { AnnotationToolbar } from "../annotation/toolbar"
 import { TextInputModal } from "../annotation/text-input-modal"
 import type { AnnotationStore } from "../annotation/store"
-import type { Tool } from "@reprojs/sdk-utils"
+import type { CanvasMode } from "../annotation/mode"
 import { PALETTE, STROKE_WIDTHS, newShapeId } from "@reprojs/sdk-utils"
 
 interface Props {
@@ -14,11 +14,19 @@ interface Props {
 }
 
 export function StepAnnotate({ imageUri, store, onSizeChange }: Props) {
-  const [tool, setTool] = useState<Tool>("pen")
+  const [mode, setMode] = useState<CanvasMode>("pen")
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [color, setColor] = useState<string>(PALETTE[0])
   const [strokeWidth, setStrokeWidth] = useState<number>(STROKE_WIDTHS[1])
   const [textPoint, setTextPoint] = useState<{ x: number; y: number } | null>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
+
+  function handleModeChange(next: CanvasMode) {
+    setMode(next)
+    // A selection outline would be misleading once another tool is active:
+    // nothing would drag it.
+    if (next !== "select") setSelectedId(null)
+  }
 
   function handleTextTap(point: { x: number; y: number }) {
     setTextPoint(point)
@@ -48,8 +56,8 @@ export function StepAnnotate({ imageUri, store, onSizeChange }: Props) {
   return (
     <View style={{ flex: 1 }}>
       <AnnotationToolbar
-        tool={tool}
-        onToolChange={setTool}
+        mode={mode}
+        onModeChange={handleModeChange}
         color={color}
         onColorChange={setColor}
         strokeWidth={strokeWidth}
@@ -95,10 +103,12 @@ export function StepAnnotate({ imageUri, store, onSizeChange }: Props) {
           <AnnotationCanvas
             width={size.w}
             height={size.h}
-            tool={tool}
+            mode={mode}
             color={color}
             strokeWidth={strokeWidth}
             store={store}
+            selectedId={selectedId}
+            onSelectedIdChange={setSelectedId}
             onTextTap={handleTextTap}
           />
         )}

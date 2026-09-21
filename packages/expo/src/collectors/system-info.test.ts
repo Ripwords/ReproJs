@@ -1,14 +1,10 @@
 import { test, expect, mock } from "bun:test"
+import { installNativeMocks } from "../test-support/native-mocks"
 
-// Mock the native modules BEFORE importing the collector.
-mock.module("react-native", () => ({
-  Platform: { OS: "ios", Version: "17.4" },
-  Dimensions: {
-    get: (k: "window" | "screen") =>
-      k === "window" ? { width: 390, height: 844 } : { width: 1179, height: 2556 },
-  },
-  PixelRatio: { get: () => 3 },
-}))
+// Mock the native modules BEFORE importing the collector. react-native comes
+// from the shared stub so this file and the component tests agree on one
+// surface — see the note in native-mocks.ts.
+installNativeMocks()
 mock.module("expo-device", () => ({
   modelName: "iPhone 15",
 }))

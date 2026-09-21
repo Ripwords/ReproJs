@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native"
+import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { FlattenView, type FlattenHandle } from "../capture/flatten"
 import { StepForm } from "./step-form"
 import { StepAnnotate } from "./step-annotate"
@@ -176,132 +177,140 @@ export function WizardSheet({
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
-      <SafeAreaView style={{ flex: 1, backgroundColor: theme.color.bg }}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ flex: 1 }}
-        >
-          {/* Header */}
-          <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 18 }}>
+      {/* On Android a Modal is a separate native window (a Dialog) that sits
+          outside the host app's GestureHandlerRootView, so gesture-handler
+          receives no touches inside it and the annotation canvas cannot be
+          drawn on. Gesture-handler detects this case and activates a nested
+          root, so the wizard has to carry its own. iOS attaches recognizers to
+          the views directly and never needed this. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.color.bg }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ flex: 1 }}
+          >
+            {/* Header */}
+            <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 18 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View style={{ gap: 2 }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: "700",
+                      letterSpacing: 1.4,
+                      color: theme.color.primary,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Repro
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 20,
+                      fontWeight: "700",
+                      color: theme.color.text,
+                      letterSpacing: -0.3,
+                    }}
+                  >
+                    Report a bug
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={onClose}
+                  hitSlop={12}
+                  style={({ pressed }) => ({
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: theme.color.surface,
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                  accessibilityLabel="Close"
+                  accessibilityRole="button"
+                >
+                  <CloseIcon size={14} color={theme.color.textMuted} />
+                </Pressable>
+              </View>
+              <StepIndicator steps={STEPS} current={currentIndex} />
+            </View>
+            <View style={{ height: 1, backgroundColor: theme.color.border }} />
+
+            {/* Body */}
+            {step === "form" && (
+              <StepForm
+                title={title}
+                description={description}
+                attachments={attachments}
+                attachmentErrors={attachmentErrors}
+                onTitleChange={setTitle}
+                onDescriptionChange={setDescription}
+                onAttachmentsAdd={handleAttachmentsAdd}
+                onAttachmentRemove={handleAttachmentRemove}
+              />
+            )}
+            {step === "annotate" && (
+              <StepAnnotate
+                imageUri={screenshot?.uri ?? null}
+                store={store}
+                onSizeChange={setAnnotateSize}
+              />
+            )}
+            {step === "submit" && <StepSubmit error={error} summary={summary} />}
+
+            {/* Offscreen flatten — always mounted when we have a screenshot and
+              measurement so flatten() can run from any step. */}
+            {screenshot && annotateSize.w > 0 && annotateSize.h > 0 && (
+              <FlattenView
+                ref={flattenRef}
+                uri={screenshot.uri}
+                width={annotateSize.w}
+                height={annotateSize.h}
+                shapes={shapes}
+              />
+            )}
+
+            {/* Footer */}
             <View
               style={{
+                paddingHorizontal: 20,
+                paddingTop: 14,
+                paddingBottom: Platform.OS === "ios" ? 14 : 18,
+                borderTopWidth: 1,
+                borderTopColor: theme.color.border,
                 flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "space-between",
+                gap: 8,
+                backgroundColor: theme.color.bg,
               }}
             >
-              <View style={{ gap: 2 }}>
-                <Text
-                  style={{
-                    fontSize: 10,
-                    fontWeight: "700",
-                    letterSpacing: 1.4,
-                    color: theme.color.primary,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Repro
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 20,
-                    fontWeight: "700",
-                    color: theme.color.text,
-                    letterSpacing: -0.3,
-                  }}
-                >
-                  Report a bug
-                </Text>
+              {step !== "form" ? (
+                <SecondaryButton label="Back" onPress={handleBack} disabled={submitting} />
+              ) : null}
+              <View style={{ flex: 1 }}>
+                <PrimaryButton
+                  label={primaryLabel}
+                  onPress={handlePrimary}
+                  disabled={primaryDisabled}
+                  loading={submitting}
+                />
               </View>
-              <Pressable
-                onPress={onClose}
-                hitSlop={12}
-                style={({ pressed }) => ({
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: theme.color.surface,
-                  opacity: pressed ? 0.6 : 1,
-                })}
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-              >
-                <CloseIcon size={14} color={theme.color.textMuted} />
-              </Pressable>
             </View>
-            <StepIndicator steps={STEPS} current={currentIndex} />
-          </View>
-          <View style={{ height: 1, backgroundColor: theme.color.border }} />
-
-          {/* Body */}
-          {step === "form" && (
-            <StepForm
-              title={title}
-              description={description}
-              attachments={attachments}
-              attachmentErrors={attachmentErrors}
-              onTitleChange={setTitle}
-              onDescriptionChange={setDescription}
-              onAttachmentsAdd={handleAttachmentsAdd}
-              onAttachmentRemove={handleAttachmentRemove}
-            />
-          )}
-          {step === "annotate" && (
-            <StepAnnotate
-              imageUri={screenshot?.uri ?? null}
-              store={store}
-              onSizeChange={setAnnotateSize}
-            />
-          )}
-          {step === "submit" && <StepSubmit error={error} summary={summary} />}
-
-          {/* Offscreen flatten — always mounted when we have a screenshot and
-              measurement so flatten() can run from any step. */}
-          {screenshot && annotateSize.w > 0 && annotateSize.h > 0 && (
-            <FlattenView
-              ref={flattenRef}
-              uri={screenshot.uri}
-              width={annotateSize.w}
-              height={annotateSize.h}
-              shapes={shapes}
-            />
-          )}
-
-          {/* Footer */}
-          <View
-            style={{
-              paddingHorizontal: 20,
-              paddingTop: 14,
-              paddingBottom: Platform.OS === "ios" ? 14 : 18,
-              borderTopWidth: 1,
-              borderTopColor: theme.color.border,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              backgroundColor: theme.color.bg,
-            }}
-          >
-            {step !== "form" ? (
-              <SecondaryButton label="Back" onPress={handleBack} disabled={submitting} />
-            ) : null}
-            <View style={{ flex: 1 }}>
-              <PrimaryButton
-                label={primaryLabel}
-                onPress={handlePrimary}
-                disabled={primaryDisabled}
-                loading={submitting}
-              />
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-      <SourcePicker
-        visible={sourcePickerVisible}
-        onSelect={handleSourceSelected}
-        onCancel={() => setSourcePickerVisible(false)}
-      />
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+        <SourcePicker
+          visible={sourcePickerVisible}
+          onSelect={handleSourceSelected}
+          onCancel={() => setSourcePickerVisible(false)}
+        />
+      </GestureHandlerRootView>
     </Modal>
   )
 }
