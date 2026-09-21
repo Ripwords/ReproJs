@@ -7,6 +7,7 @@ import {
   type Attachment,
 } from "@reprojs/sdk-utils"
 import type { GalleryItem, GalleryStore } from "./gallery/store"
+import { GallerySheet } from "./wizard/gallery-sheet"
 import { StepDetails } from "./wizard/step-details"
 import { StepReview, type SummaryLine } from "./wizard/step-review"
 import { SubmitToast } from "./wizard/submit-toast"
@@ -28,7 +29,12 @@ interface ReporterProps {
     honeypot: string
   }) => Promise<ReporterSubmitResult>
   openedAt: number
+  // Browsed on demand only ("Choose from gallery…"), never listed up front.
   gallery: GalleryStore | null
+  // Media captured during this widget session. These are real GalleryItem
+  // shapes but they are NOT in the store unless the user explicitly saved
+  // them — the report attaches the blob it holds either way.
+  sessionMedia: GalleryItem[]
   preselectedId?: string
   onCaptureNow: () => void
   onRecordNow: () => void
@@ -43,6 +49,7 @@ export function Reporter({
   onSubmit,
   openedAt,
   gallery,
+  sessionMedia,
   preselectedId,
   onCaptureNow,
   onRecordNow,
@@ -56,31 +63,30 @@ export function Reporter({
   const hpRef = useRef<HTMLInputElement>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [attachmentErrors, setAttachmentErrors] = useState<string[]>([])
-  const [mediaItems, setMediaItems] = useState<GalleryItem[]>([])
+  // Saved items the user pulled in through the browse sheet. Kept separate
+  // from sessionMedia so re-opening the sheet can hide what's already on offer.
+  const [pickedFromGallery, setPickedFromGallery] = useState<GalleryItem[]>([])
+  const [browsing, setBrowsing] = useState(false)
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>(() =>
     preselectedId ? [preselectedId] : [],
   )
   const [mediaErrors, setMediaErrors] = useState<string[]>([])
 
-  // Gallery may be null (IndexedDB unavailable) — fail open by leaving
-  // mediaItems empty rather than throwing. The picker hides its grid but
-  // keeps the Capture now / Record now buttons visible either way.
+  // What the picker offers: this flow's captures first, then anything pulled
+  // in from the archive. Deduped because "Report with this" from the gallery
+  // seeds sessionMedia with an item the sheet could also list.
+  const mediaItems = useMemo<GalleryItem[]>(() => {
+    const byId = new Map<string, GalleryItem>()
+    for (const item of [...sessionMedia, ...pickedFromGallery]) byId.set(item.id, item)
+    return [...byId.values()]
+  }, [sessionMedia, pickedFromGallery])
+
+  // preselectedId is seeded from props before mediaItems settles; if it names
+  // nothing on offer, drop it so the Review summary can't claim more is
+  // attached than handleSend actually submits.
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const items = (await gallery?.list()) ?? []
-      if (!cancelled) {
-        setMediaItems(items)
-        // preselectedId is seeded before the gallery resolves; if the item
-        // was evicted between "Report bug with this" and mount, drop it here
-        // so the Review summary can't diverge from what handleSend submits.
-        setSelectedMediaIds((prev) => prev.filter((id) => items.some((i) => i.id === id)))
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [gallery])
+    setSelectedMediaIds((prev) => prev.filter((id) => mediaItems.some((i) => i.id === id)))
+  }, [mediaItems])
 
   useEffect(() => {
     document.body.style.overflow = "hidden"
@@ -109,6 +115,30 @@ export function Reporter({
     const result = validateMediaSelection(
       chosen.map((item) => ({ kind: item.kind, sizeBytes: item.sizeBytes })),
     )
+    if (!result.ok) {
+      setMediaErrors(result.errors)
+      return
+    }
+    setMediaErrors([])
+    setSelectedMediaIds(nextIds)
+  }
+
+  // Items arrive from the sheet already intended for this report, so they are
+  // selected on the way in — but only as far as the per-report limit allows.
+  // Validating the whole prospective selection (not each item in turn) keeps
+  // the same all-or-nothing rule handleMediaToggle uses.
+  function handleGalleryAdd(items: GalleryItem[]) {
+    setBrowsing(false)
+    if (items.length === 0) return
+    const nextIds = [...selectedMediaIds, ...items.map((item) => item.id)]
+    const chosen = [...mediaItems, ...items].filter((item) => nextIds.includes(item.id))
+    const result = validateMediaSelection(
+      chosen.map((item) => ({ kind: item.kind, sizeBytes: item.sizeBytes })),
+    )
+    // Still add them to the picker on failure — the user asked for them, and
+    // leaving them visible-but-unselected lets them swap one out by hand
+    // rather than re-opening the sheet.
+    setPickedFromGallery((prev) => [...prev, ...items])
     if (!result.ok) {
       setMediaErrors(result.errors)
       return
@@ -247,6 +277,7 @@ export function Reporter({
           onAttachmentsAdd: handleAttachmentsAdd,
           onAttachmentRemove: handleAttachmentRemove,
           onMediaToggle: handleMediaToggle,
+          onBrowseGallery: gallery ? () => setBrowsing(true) : undefined,
           onCaptureNow,
           onRecordNow,
         })
@@ -271,6 +302,14 @@ export function Reporter({
     { class: "ft-wizard" },
     h(WizardHeader, headerProps),
     body,
+    browsing && gallery
+      ? h(GallerySheet, {
+          store: gallery,
+          excludeIds: mediaItems.map((item) => item.id),
+          onAdd: handleGalleryAdd,
+          onCancel: () => setBrowsing(false),
+        })
+      : null,
     h(SubmitToast, { visible: submitting, attachmentCount: attachments.length }),
     h(
       "footer",
