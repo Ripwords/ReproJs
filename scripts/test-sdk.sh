@@ -36,5 +36,8 @@ for pkg in "${PACKAGES[@]}"; do
   while IFS= read -r f; do
     echo "--- packages/$pkg/$f"
     (cd "packages/$pkg" && bun test "$f")
-  done < <(cd "packages/$pkg" && find . -type f -name '*.test.ts' | sed 's|^\./||' | sort)
+  # Both extensions: the Expo package's component tests are .test.tsx, and a
+  # find that matched only *.test.ts would skip them silently — CI would go
+  # green without ever running them.
+  done < <(cd "packages/$pkg" && find . -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) | sed 's|^\./||' | sort)
 done
