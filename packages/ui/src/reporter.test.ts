@@ -98,6 +98,7 @@ function makeGallery(items: GalleryItem[]): GalleryStore {
 
 interface RenderOpts {
   gallery?: GalleryStore | null
+  sessionMedia?: GalleryItem[]
   preselectedId?: string
   onSubmit?: (payload: unknown) => Promise<ReporterSubmitResult>
   onCaptureNow?: () => void
@@ -114,6 +115,7 @@ function renderReporter(win: Window, opts: RenderOpts = {}) {
       onSubmit: (opts.onSubmit ?? (async () => ({ ok: true }))) as never,
       openedAt: performance.now(),
       gallery: opts.gallery ?? null,
+      sessionMedia: opts.sessionMedia ?? [],
       preselectedId: opts.preselectedId,
       onCaptureNow: opts.onCaptureNow ?? (() => {}),
       onRecordNow: opts.onRecordNow ?? (() => {}),
@@ -143,7 +145,7 @@ describe("Reporter", () => {
     expect(walkForTag(root, "input")).toBeTruthy()
   })
 
-  test("gallery null hides the media grid but keeps Capture now / Record now", async () => {
+  test("gallery null hides the grid and the browse button, keeps Capture / Record now", async () => {
     const win = setupDom()
     const root = renderReporter(win, { gallery: null })
     await flush()
@@ -151,20 +153,76 @@ describe("Reporter", () => {
     const buttons = collectByClass(root, "ft-btn-secondary")
     expect(buttons.some((b) => b.textContent === "Capture now")).toBe(true)
     expect(buttons.some((b) => b.textContent === "Record now")).toBe(true)
+    expect(root.textContent).not.toContain("Choose from gallery")
   })
 
-  test("loads gallery items on mount and renders them as chips", async () => {
+  test("renders this session's captures as chips", async () => {
     const win = setupDom()
-    const items = [makeItem({ id: "a" }), makeItem({ id: "b" })]
-    const root = renderReporter(win, { gallery: makeGallery(items) })
+    const root = renderReporter(win, {
+      sessionMedia: [makeItem({ id: "a" }), makeItem({ id: "b" })],
+    })
     await flush()
     expect(collectByClass(root, "ft-media-item").length).toBe(2)
+  })
+
+  // The complaint that drove this: every reported screenshot used to be written
+  // to the gallery, and the Details step then rendered the entire gallery as a
+  // chip grid. A saved archive must stay out of the wizard until asked for.
+  test("does NOT render saved gallery items until the user browses", async () => {
+    const win = setupDom()
+    const saved = [makeItem({ id: "old-1" }), makeItem({ id: "old-2" })]
+    const root = renderReporter(win, {
+      gallery: makeGallery(saved),
+      sessionMedia: [makeItem({ id: "fresh" })],
+    })
+    await flush()
+    // Only the one captured in this flow.
+    expect(collectByClass(root, "ft-media-item").length).toBe(1)
+    expect(root.textContent).toContain("Choose from gallery")
+  })
+
+  test("browsing the gallery adds a chosen item to the picker, already-selected", async () => {
+    const win = setupDom()
+    const saved = [makeItem({ id: "old-1" }), makeItem({ id: "old-2" })]
+    const root = renderReporter(win, { gallery: makeGallery(saved), sessionMedia: [] })
+    await flush()
+
+    findButtonByText(root, "Choose from gallery\u2026").click()
+    await flush()
+    // The sheet lists everything saved.
+    expect(collectByClass(root, "ft-sheet-item").length).toBe(2)
+    ;(collectByClass(root, "ft-sheet-item")[1] as unknown as HTMLElement).click()
+    await flush()
+    findButtonByText(root, "Add 1").click()
+    await flush()
+
+    // Sheet closed; the picked item is now a selected chip in the picker.
+    expect(collectByClass(root, "ft-sheet-item").length).toBe(0)
+    const chips = collectByClass(root, "ft-media-item")
+    expect(chips.length).toBe(1)
+    expect(collectByClass(root, "selected").length).toBe(1)
+
+    await fillTitleAndContinue(win, root)
+    expect(root.textContent).toContain("1 selected")
+  })
+
+  test("the browse sheet hides items already in the picker", async () => {
+    const win = setupDom()
+    const dupe = makeItem({ id: "dupe" })
+    const root = renderReporter(win, {
+      gallery: makeGallery([dupe, makeItem({ id: "other" })]),
+      sessionMedia: [dupe],
+    })
+    await flush()
+    findButtonByText(root, "Choose from gallery\u2026").click()
+    await flush()
+    expect(collectByClass(root, "ft-sheet-item").length).toBe(1)
   })
 
   test("preselectedId seeds the initial selection and reflects in the review summary", async () => {
     const win = setupDom()
     const items = [makeItem({ id: "pre-1" }), makeItem({ id: "other" })]
-    const root = renderReporter(win, { gallery: makeGallery(items), preselectedId: "pre-1" })
+    const root = renderReporter(win, { sessionMedia: items, preselectedId: "pre-1" })
     await flush()
     expect(collectByClass(root, "selected").length).toBe(1)
 
@@ -172,12 +230,12 @@ describe("Reporter", () => {
     expect(root.textContent).toContain("1 selected")
   })
 
-  test("prunes a stale preselectedId that isn't in the loaded gallery", async () => {
+  test("prunes a stale preselectedId that isn't in this session's media", async () => {
     const win = setupDom()
     const items = [makeItem({ id: "real-1" })]
     let payload: Record<string, unknown> | undefined
     const root = renderReporter(win, {
-      gallery: makeGallery(items),
+      sessionMedia: items,
       preselectedId: "ghost-id",
       onSubmit: async (p) => {
         payload = p as Record<string, unknown>
@@ -186,8 +244,8 @@ describe("Reporter", () => {
     })
     await flush()
 
-    // The ghost id was never a real gallery item, so nothing should read as
-    // selected once the load effect resolves.
+    // The ghost id matches nothing on offer, so nothing should read as
+    // selected.
     expect(collectByClass(root, "selected").length).toBe(0)
 
     await fillTitleAndContinue(win, root)
@@ -203,7 +261,7 @@ describe("Reporter", () => {
   test("blocks selection past the media limit and clears errors on a later valid toggle", async () => {
     const win = setupDom()
     const items = ["a", "b", "c", "d"].map((id) => makeItem({ id }))
-    const root = renderReporter(win, { gallery: makeGallery(items) })
+    const root = renderReporter(win, { sessionMedia: items })
     await flush()
 
     let chips = collectByClass(root, "ft-media-item")
@@ -237,7 +295,7 @@ describe("Reporter", () => {
     const items = [makeItem({ id: "a" }), makeItem({ id: "b" })]
     let payload: Record<string, unknown> | undefined
     const root = renderReporter(win, {
-      gallery: makeGallery(items),
+      sessionMedia: items,
       onSubmit: async (p) => {
         payload = p as Record<string, unknown>
         return { ok: true }

@@ -17,6 +17,7 @@ interface Props {
   mediaItems: GalleryItem[]
   selectedMediaIds: string[]
   mediaErrors: string[]
+  onBrowseGallery?: (() => void) | undefined
   limits?: AttachmentLimits
   onTitleChange: (v: string) => void
   onDescriptionChange: (v: string) => void
@@ -35,6 +36,7 @@ export function StepDetails({
   mediaItems,
   selectedMediaIds,
   mediaErrors,
+  onBrowseGallery,
   limits = DEFAULT_ATTACHMENT_LIMITS,
   onTitleChange,
   onDescriptionChange,
@@ -82,6 +84,7 @@ export function StepDetails({
           items: mediaItems,
           selectedIds: selectedMediaIds,
           errors: mediaErrors,
+          onBrowseGallery,
           onToggle: onMediaToggle,
           onCaptureNow,
           onRecordNow,

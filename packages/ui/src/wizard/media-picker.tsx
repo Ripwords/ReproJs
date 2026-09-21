@@ -5,9 +5,14 @@ import type { GalleryItem } from "../gallery/store"
 import { SecondaryButton } from "./controls"
 
 interface Props {
+  // Media captured during this report flow. Deliberately NOT the whole saved
+  // gallery — that lives behind "Choose from gallery…" (see gallery-sheet.tsx).
   items: GalleryItem[]
   selectedIds: string[]
   errors: string[]
+  // Absent when there is no gallery store (IndexedDB unavailable), which hides
+  // the browse button rather than opening an empty sheet.
+  onBrowseGallery?: (() => void) | undefined
   onToggle: (id: string) => void
   onCaptureNow: () => void
   onRecordNow: () => void
@@ -27,6 +32,7 @@ export function MediaPicker({
   items,
   selectedIds,
   errors,
+  onBrowseGallery,
   onToggle,
   onCaptureNow,
   onRecordNow,
@@ -77,12 +83,15 @@ export function MediaPicker({
             )
           }),
         )
-      : h("div", { class: "ft-media-empty" }, "No captures yet"),
+      : h("div", { class: "ft-media-empty" }, "Nothing captured yet"),
     h(
       "div",
       { class: "ft-media-actions" },
       h(SecondaryButton, { label: "Capture now", onClick: onCaptureNow }),
       h(SecondaryButton, { label: "Record now", onClick: onRecordNow }),
+      onBrowseGallery
+        ? h(SecondaryButton, { label: "Choose from gallery…", onClick: onBrowseGallery })
+        : null,
     ),
     errors.length > 0
       ? h("div", { class: "ft-media-error" }, ...errors.map((m) => h("div", { key: m }, m)))

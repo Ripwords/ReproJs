@@ -121,6 +121,9 @@ function App() {
   const [mode, setMode] = useState<WidgetMode>("closed")
   const [openedAt, setOpenedAt] = useState(0)
   const [preselect, setPreselect] = useState<string | null>(null)
+  // Media captured in this widget session, held in memory. Only the items
+  // the user explicitly saved also exist in the gallery store.
+  const [sessionMedia, setSessionMedia] = useState<GalleryItem[]>([])
   const [gallery, setGallery] = useState<GalleryStore | null>(null)
   const [record, setRecord] = useState<RecordState | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -165,7 +168,14 @@ function App() {
     const wasOpen = was !== "closed"
     const isOpen = mode !== "closed"
     if (!wasOpen && isOpen) opts?.onOpen?.()
-    else if (wasOpen && !isOpen) opts?.onClose?.()
+    else if (wasOpen && !isOpen) {
+      opts?.onClose?.()
+      // Unsaved captures die with the session — otherwise the next Report Bug
+      // opens pre-loaded with whatever the last one left behind, which is the
+      // same pile-up the gallery picker used to cause.
+      setSessionMedia([])
+      setPreselect(null)
+    }
   }, [mode])
 
   function showToast(message: string) {
@@ -201,13 +211,9 @@ function App() {
     }
   }, [])
 
-  async function saveToGallery(item: PendingMediaItem): Promise<string | null> {
-    if (!gallery) {
-      showToast("Gallery unavailable — capture not saved")
-      return null
-    }
+  async function buildMediaItem(item: PendingMediaItem): Promise<GalleryItem> {
     const thumb = await makeThumbnail(item.blob, item.kind)
-    const gi: GalleryItem = {
+    return {
       id: newId(),
       kind: item.kind,
       blob: item.blob,
@@ -218,22 +224,49 @@ function App() {
       ...(item.trim ? { trim: item.trim } : {}),
       createdAt: Date.now(),
     }
+  }
+
+  // Writes an item to the persistent gallery. Only ever called for an explicit
+  // "Save to gallery" (and the pagehide crash-flush) — reporting a bug with a
+  // capture used to save it too, which quietly filled the gallery with every
+  // screenshot anyone ever reported and buried the fresh one in the picker.
+  async function persistToGallery(gi: GalleryItem): Promise<boolean> {
+    if (!gallery) {
+      showToast("Gallery unavailable — capture not saved")
+      return false
+    }
     const { evicted } = await gallery.add(gi)
     // store.add evicts oldest-first, so evicted[0] is the oldest dropped item.
     const oldest = evicted[0]
     if (oldest) {
       showToast(`Gallery full — removed the oldest ${oldest.kind} to make room`)
     }
-    return gi.id
+    return true
+  }
+
+  // Common tail for a resolved capture/record: the item always joins this
+  // session's media (so the report wizard can attach it), and only a "saved"
+  // outcome also writes it to the store.
+  async function resolveMedia(item: PendingMediaItem, action: "saved" | "report") {
+    const gi = await buildMediaItem(item)
+    setSessionMedia((prev) => [...prev, gi])
+    const persisted = action === "saved" ? await persistToGallery(gi) : true
+    // Only now tear down the record sub-state: dropping it earlier unmounts
+    // the outcome bar and flashes an empty widget while the thumbnail is
+    // still being generated.
+    setRecord(null)
+    // gi.id is a sessionMedia id, so it stays selectable in the wizard even
+    // when the store write failed — only the success toast is conditional.
+    afterMediaSaved(gi.id, action, persisted)
   }
 
   // Shared exit after a capture/record item is resolved. When the flow was
   // launched from inside the report wizard ("Capture now" / "Record now") we
   // return to the wizard; otherwise the menu-origin flow closes the widget.
-  function afterMediaSaved(newIdValue: string | null, action: "saved" | "report") {
+  function afterMediaSaved(newIdValue: string, action: "saved" | "report", persisted: boolean) {
     if (action === "report") {
       returnToReportRef.current = false
-      if (newIdValue) setPreselect(newIdValue)
+      setPreselect(newIdValue)
       // Reset the dwell clock on every entry into report mode — otherwise the
       // wizard measures dwell from a stale (or zero) openedAt after a
       // capture/record round-trip, corrupting the anti-abuse dwell signal.
@@ -244,11 +277,13 @@ function App() {
     // action === "saved"
     if (returnToReportRef.current) {
       returnToReportRef.current = false
-      if (newIdValue) setPreselect(newIdValue)
+      setPreselect(newIdValue)
       setOpenedAt(performance.now())
       setMode("report")
     } else {
-      showToast("Saved to gallery")
+      // persistToGallery already explained the failure; don't overwrite that
+      // toast with a success message for a save that never happened.
+      if (persisted) showToast("Saved to gallery")
       setMode("closed")
     }
   }
@@ -315,12 +350,14 @@ function App() {
     const onPagehide = () => {
       const snap = sessionRef.current?.snapshot()
       if (snap && snap.blob.size > 0) {
-        void saveToGallery({
+        // Unlike an outcome-bar save this is not a user choice, but the tab is
+        // going away and the alternative is losing the clip outright.
+        void buildMediaItem({
           kind: "video",
           blob: snap.blob,
           mime: snap.mime,
           durationMs: snap.durationMs,
-        })
+        }).then((gi) => persistToGallery(gi))
       }
     }
     pagehideRef.current = onPagehide
@@ -413,10 +450,7 @@ function App() {
           afterMediaDiscarded()
           return
         }
-        void (async () => {
-          const id = await saveToGallery(outcome.item)
-          afterMediaSaved(id, outcome.action === "report" ? "report" : "saved")
-        })()
+        void resolveMedia(outcome.item, outcome.action === "report" ? "report" : "saved")
       },
     })
   } else if (mode === "record" && record?.phase === "recording") {
@@ -463,22 +497,14 @@ function App() {
       h(OutcomeBar, {
         kind: "video",
         onSave: () => {
-          void (async () => {
-            const id = await saveToGallery(buildItem())
-            setRecord(null)
-            afterMediaSaved(id, "saved")
-          })()
+          void resolveMedia(buildItem(), "saved")
         },
         onDiscard: () => {
           setRecord(null)
           afterMediaDiscarded()
         },
         onReport: () => {
-          void (async () => {
-            const id = await saveToGallery(buildItem())
-            setRecord(null)
-            afterMediaSaved(id, "report")
-          })()
+          void resolveMedia(buildItem(), "report")
         },
       }),
     )
@@ -506,6 +532,8 @@ function App() {
       },
       onReportWith: (item: GalleryItem) => {
         returnToReportRef.current = false
+        // Offer it in the picker without making the user browse back to it.
+        setSessionMedia((prev) => (prev.some((m) => m.id === item.id) ? prev : [...prev, item]))
         setPreselect(item.id)
         setOpenedAt(performance.now())
         setMode("report")
@@ -518,6 +546,7 @@ function App() {
       onSubmit: opts?.onSubmit ?? (async () => ({ ok: false, message: "not mounted" })),
       openedAt,
       gallery,
+      sessionMedia,
       preselectedId: preselect ?? undefined,
       onCaptureNow: () => {
         returnToReportRef.current = true
