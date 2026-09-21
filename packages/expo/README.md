@@ -91,6 +91,13 @@ This SDK depends on `react-native-view-shot`, which requires a development build
 
 Those are native builds: iOS needs Xcode **plus its iOS platform component** (Xcode → Settings → Components, or `xcodebuild -downloadPlatform iOS`) and a simulator runtime; Android needs an AVD created in Android Studio's Device Manager. Without them `run:ios` / `run:android` fails to find any destination.
 
+## Annotating
+
+The annotate step offers pen, arrow, rectangle, highlight and text tools, plus a cursor tool for
+moving what you already placed: tap a shape to select it, drag to move it, tap empty canvas to
+deselect. A move is one undo step, and the selection outline never reaches the submitted PNG.
+Resizing and rotating are not supported.
+
 ## What gets captured
 
 Every report bundles:

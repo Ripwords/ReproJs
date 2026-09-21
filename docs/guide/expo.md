@@ -149,10 +149,25 @@ Marking the key `sensitive` hides it from EAS build logs, but `EXPO_PUBLIC_*` is
 
 2. Tap the flame-orange bug button.
 3. Fill out title + description → **Continue**.
-4. Annotate the captured screenshot with the pen/arrow/rect/highlight/text tools → **Continue**.
+4. Annotate the captured screenshot with the pen/arrow/rect/highlight/text tools, or pick the cursor tool to reposition something you already placed → **Continue**.
 5. Review what's included → **Send report**.
 
 The report lands in your dashboard's inbox with a Mobile / iOS / Android platform pill and a mobile-specific device card.
+
+## Moving an annotation
+
+The last button in the annotation toolbar is the cursor tool. With it active:
+
+- Tap a shape to select it — a dashed outline appears around it.
+- Drag the shape to move it. Text labels, arrows, rectangles, highlights and pen strokes all move.
+- Tap empty canvas to deselect.
+
+A move is a single undo step, so **Undo** puts the shape back where it was instead of deleting it.
+Shapes cannot be dragged off the canvas, and the selection outline is never part of the submitted
+PNG. Shapes are grabbed by their ink: an arrow or pen stroke responds near the line itself, while
+rectangles, highlights and text can be grabbed anywhere inside them.
+
+Resizing and rotating are not supported — redraw the shape instead.
 
 ## Draggable launcher
 

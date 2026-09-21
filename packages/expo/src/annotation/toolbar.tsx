@@ -1,9 +1,10 @@
 import React from "react"
 import { Pressable, View } from "react-native"
-import type { Tool } from "@reprojs/sdk-utils"
 import { PALETTE, STROKE_WIDTHS } from "@reprojs/sdk-utils"
+import type { CanvasMode } from "./mode"
 import type { AnnotationStore } from "./store"
 import {
+  CursorIcon,
   PenIcon,
   ArrowIcon,
   RectIcon,
@@ -16,8 +17,8 @@ import {
 import { useAnnotationShapes } from "./use-shapes"
 
 interface Props {
-  tool: Tool
-  onToolChange: (t: Tool) => void
+  mode: CanvasMode
+  onModeChange: (m: CanvasMode) => void
   color: string
   onColorChange: (c: string) => void
   strokeWidth: number
@@ -25,12 +26,21 @@ interface Props {
   store: AnnotationStore
 }
 
-const TOOLS: { key: Tool; Icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
-  { key: "pen", Icon: PenIcon },
-  { key: "arrow", Icon: ArrowIcon },
-  { key: "rect", Icon: RectIcon },
-  { key: "highlight", Icon: HighlightIcon },
-  { key: "text", Icon: TextIcon },
+interface ToolButton {
+  key: CanvasMode
+  label: string
+  Icon: React.ComponentType<{ size?: number; color?: string }>
+}
+
+// `select` sits last so the drawing tools keep the positions reporters already
+// know.
+const TOOLS: ToolButton[] = [
+  { key: "pen", label: "Pen", Icon: PenIcon },
+  { key: "arrow", label: "Arrow", Icon: ArrowIcon },
+  { key: "rect", label: "Rectangle", Icon: RectIcon },
+  { key: "highlight", label: "Highlight", Icon: HighlightIcon },
+  { key: "text", label: "Text", Icon: TextIcon },
+  { key: "select", label: "Select and move", Icon: CursorIcon },
 ]
 
 const ACTIVE_BG = "#ff9b51"
@@ -41,8 +51,8 @@ const DISABLED_OPACITY = 0.35
 const HIT_SIZE = 44
 
 export function AnnotationToolbar({
-  tool,
-  onToolChange,
+  mode,
+  onModeChange,
   color,
   onColorChange,
   strokeWidth,
@@ -59,12 +69,14 @@ export function AnnotationToolbar({
     <View style={{ backgroundColor: "#ffffff", paddingHorizontal: 8, paddingVertical: 4, gap: 4 }}>
       {/* Row 1: tool buttons + undo/redo/trash */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-        {TOOLS.map(({ key, Icon }) => {
-          const active = key === tool
+        {TOOLS.map(({ key, label, Icon }) => {
+          const active = key === mode
           return (
             <Pressable
               key={key}
-              onPress={() => onToolChange(key)}
+              onPress={() => onModeChange(key)}
+              accessibilityLabel={label}
+              accessibilityRole="button"
               style={{
                 width: HIT_SIZE,
                 height: HIT_SIZE,
@@ -86,6 +98,8 @@ export function AnnotationToolbar({
         <Pressable
           onPress={() => store.undo()}
           disabled={!canUndo}
+          accessibilityLabel="Undo"
+          accessibilityRole="button"
           style={{
             width: HIT_SIZE,
             height: HIT_SIZE,
@@ -101,6 +115,8 @@ export function AnnotationToolbar({
         <Pressable
           onPress={() => store.redo()}
           disabled={!canRedo}
+          accessibilityLabel="Redo"
+          accessibilityRole="button"
           style={{
             width: HIT_SIZE,
             height: HIT_SIZE,
@@ -115,6 +131,8 @@ export function AnnotationToolbar({
         {/* Trash / clear */}
         <Pressable
           onPress={() => store.clear()}
+          accessibilityLabel="Clear all annotations"
+          accessibilityRole="button"
           style={{
             width: HIT_SIZE,
             height: HIT_SIZE,
