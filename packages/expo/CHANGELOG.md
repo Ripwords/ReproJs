@@ -1,5 +1,22 @@
 # Changelog
 
+## expo-v0.3.5
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.4...expo-v0.3.5)
+
+### 🚀 Enhancements
+
+- **expo:** Select and drag placed annotations ([f9f8572](https://github.com/Ripwords/ReproJs/commit/f9f8572))
+
+### 🩹 Fixes
+
+- **expo:** Restore annotation gestures inside the wizard modal ([b739edf](https://github.com/Ripwords/ReproJs/commit/b739edf))
+- **expo:** Let the annotation toolbar shrink to fit narrow phones ([caa706b](https://github.com/Ripwords/ReproJs/commit/caa706b))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## expo-v0.3.4
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.3...expo-v0.3.4)

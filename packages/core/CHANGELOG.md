@@ -1,5 +1,17 @@
 # Changelog
 
+## sdk-v0.5.3
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.5.2...sdk-v0.5.3)
+
+### 🚀 Enhancements
+
+- **expo:** Select and drag placed annotations ([f9f8572](https://github.com/Ripwords/ReproJs/commit/f9f8572))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## sdk-v0.5.2
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.5.1...sdk-v0.5.2)

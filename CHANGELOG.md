@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.3
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.2...v0.7.3)
+
+### 🚀 Enhancements
+
+- **expo:** Select and drag placed annotations ([f9f8572](https://github.com/Ripwords/ReproJs/commit/f9f8572))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## v0.7.2
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.1...v0.7.2)
