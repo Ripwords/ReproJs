@@ -1,7 +1,7 @@
 // packages/ui/src/capture-flow.test.ts
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
 import { h, render } from "preact"
-import { reset } from "./annotation/store"
+import { commit, newShapeId, reset, shapes } from "./annotation/store"
 import { CaptureFlow } from "./capture-flow"
 
 // Mirrors wizard/step-annotate.test.ts's environment: CaptureFlow's annotate
@@ -230,6 +230,46 @@ describe("CaptureFlow", () => {
     expect(item.mime).toBe("image/png")
 
     render(null, host)
+    await new Promise((r) => setTimeout(r, 0))
+  })
+})
+
+// Regression: the annotation store is a module-level singleton shared by every
+// mount of <StepAnnotate>. Before the gallery landed, annotate ran once per
+// page visit so nothing noticed; Capture is now a repeatable menu action, and
+// without a reset the previous screenshot's shapes render on top of the next
+// one. Note every other test file in this package calls reset() in beforeEach,
+// which is exactly why the leak went unseen — the reset has to happen in the
+// component, not the harness.
+describe("CaptureFlow annotation state", () => {
+  test("a second capture starts with a blank annotation canvas", async () => {
+    const host1 = mountHost()
+    render(h(CaptureFlow, { onCapture: async () => makePngBlob(), onDone: () => {} }), host1)
+    await waitFor(() => walkAllByClass(host1, "ft-wizard-annotate").length > 0)
+
+    commit({
+      id: newShapeId(),
+      kind: "arrow",
+      color: "#ff0000",
+      strokeWidth: 4,
+      x1: 10,
+      y1: 10,
+      x2: 100,
+      y2: 100,
+    })
+    expect(shapes.value.length).toBe(1)
+
+    render(null, host1)
+    await new Promise((r) => setTimeout(r, 0))
+    host1.remove()
+
+    const host2 = mountHost()
+    render(h(CaptureFlow, { onCapture: async () => makePngBlob(), onDone: () => {} }), host2)
+    await waitFor(() => walkAllByClass(host2, "ft-wizard-annotate").length > 0)
+
+    expect(shapes.value).toEqual([])
+
+    render(null, host2)
     await new Promise((r) => setTimeout(r, 0))
   })
 })

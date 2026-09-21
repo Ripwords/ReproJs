@@ -2,6 +2,7 @@
 import { h } from "preact"
 import { useEffect, useState } from "preact/hooks"
 import type { TrimRange } from "@reprojs/sdk-utils"
+import { reset as resetAnnotations } from "./annotation/store"
 import { BlobImage } from "./blob-image"
 import { closeSource, decodeImage, type ImageSource } from "./decode-image"
 import { OutcomeBar } from "./record/outcome-bar"
@@ -44,6 +45,11 @@ export function CaptureFlow({ onCapture, onDone }: CaptureFlowProps) {
   useEffect(() => {
     let cancelled = false
     let decoded: ImageSource | null = null
+    // The annotation store is a module-level singleton, so whatever the last
+    // capture drew is still in it. Clear before this capture's image reaches
+    // the canvas, or the previous screenshot's shapes paint over the new one
+    // (and its zoom/pan carries onto a differently sized image).
+    resetAnnotations()
     ;(async () => {
       const blob = await onCapture()
       if (!blob) {
