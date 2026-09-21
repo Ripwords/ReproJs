@@ -201,8 +201,27 @@ describe("mount mode machine", () => {
   })
 })
 
+// Walk the tree rather than querySelector/querySelectorAll, which throw in
+// this happy-dom + bun setup (see menu.test.ts's walkAllByTag and
+// step-review.test.ts's walkForClass, which sidestep the same bug). It is
+// bun-version sensitive: the selector path happens to work on 1.4.x and
+// throws "undefined is not a constructor" on CI's 1.3.x.
+function walkAll(node: ParentNode, match: (el: Element) => boolean): Element[] {
+  const out: Element[] = []
+  if ((node as Element).tagName && match(node as Element)) out.push(node as Element)
+  for (let i = 0; i < node.childNodes.length; i++) {
+    const child = node.childNodes[i]
+    if (child && (child as Element).tagName) out.push(...walkAll(child as Element, match))
+  }
+  return out
+}
+
+function walkAllByClass(root: ParentNode, cls: string): Element[] {
+  return walkAll(root, (el) => (el.className?.split?.(" ") ?? []).includes(cls))
+}
+
 function clickByText(root: ParentNode, text: string) {
-  const buttons = [...root.querySelectorAll("button")]
+  const buttons = walkAll(root, (el) => el.tagName?.toLowerCase() === "button")
   const btn = buttons.find((b) => b.textContent?.trim() === text)
   if (!btn) {
     throw new Error(`No button "${text}" — saw: ${buttons.map((b) => b.textContent).join(" | ")}`)
@@ -269,7 +288,7 @@ describe("gallery persistence is opt-in", () => {
 
     // We're in the wizard with the clip on offer as a chip...
     expect(root.textContent).toContain("Report a bug")
-    expect(root.querySelectorAll(".ft-media-item").length).toBe(1)
+    expect(walkAllByClass(root, "ft-media-item").length).toBe(1)
     // ...and the archive is untouched.
     expect(await listGallery(idb)).toEqual([])
   })
