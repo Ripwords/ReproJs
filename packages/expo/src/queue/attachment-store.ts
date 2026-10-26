@@ -102,28 +102,24 @@ export function createAttachmentStore(fs: AttachmentFs | null): AttachmentStore 
  * module is not installed. Handles both API generations: SDK <= 53 exports
  * `documentDirectory` + `*Async` functions; SDK >= 54 exports `Paths`,
  * `File` and `Directory` classes from the same entry point.
+ *
+ * The class API is probed first on purpose. SDK >= 54 still exports
+ * `copyAsync`, `makeDirectoryAsync` and friends from the main entry, but as
+ * stubs that `console.warn` and throw ("import from expo-file-system/legacy").
+ * Their presence says nothing about whether they work, so a legacy-first probe
+ * would pick a file system that fails on every call.
  */
-export async function loadAttachmentFs(): Promise<AttachmentFs | null> {
-  let mod: typeof import("expo-file-system")
+export type ExpoFileSystemModule = typeof import("expo-file-system")
+
+export async function loadAttachmentFs(
+  /** Injectable for tests, which hand in a module shaped like one SDK generation. */
+  load: () => Promise<ExpoFileSystemModule> = () => import("expo-file-system"),
+): Promise<AttachmentFs | null> {
+  let mod: ExpoFileSystemModule
   try {
-    mod = await import("expo-file-system")
+    mod = await load()
   } catch {
     return null
-  }
-
-  const documentDirectory = mod.documentDirectory
-  if (typeof mod.copyAsync === "function" && typeof documentDirectory === "string") {
-    const legacy = mod
-    return {
-      documentDirectory,
-      makeDirectory: (dir) => legacy.makeDirectoryAsync(dir, { intermediates: true }),
-      copy: (from, to) => legacy.copyAsync({ from, to }),
-      remove: (path) => legacy.deleteAsync(path, { idempotent: true }),
-      size: async (uri) => {
-        const info = await legacy.getInfoAsync(uri, { size: true })
-        return info.exists && typeof info.size === "number" ? info.size : null
-      },
-    }
   }
 
   if (mod.File && mod.Directory && mod.Paths?.document) {
@@ -144,6 +140,21 @@ export async function loadAttachmentFs(): Promise<AttachmentFs | null> {
       size: async (uri) => {
         const file = new File(uri)
         return file.exists ? file.size : null
+      },
+    }
+  }
+
+  const documentDirectory = mod.documentDirectory
+  if (typeof mod.copyAsync === "function" && typeof documentDirectory === "string") {
+    const legacy = mod
+    return {
+      documentDirectory,
+      makeDirectory: (dir) => legacy.makeDirectoryAsync(dir, { intermediates: true }),
+      copy: (from, to) => legacy.copyAsync({ from, to }),
+      remove: (path) => legacy.deleteAsync(path, { idempotent: true }),
+      size: async (uri) => {
+        const info = await legacy.getInfoAsync(uri, { size: true })
+        return info.exists && typeof info.size === "number" ? info.size : null
       },
     }
   }
