@@ -3,6 +3,7 @@ import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import type { ReportDetailDTO, ReportSummaryDTO } from "@reprojs/shared"
 import { db } from "../../server/db"
 import { reportAttachments, reports } from "../../server/db/schema"
+import { signAttachmentToken } from "../../server/lib/signed-attachment-url"
 import {
   apiFetch,
   createUser,
@@ -382,6 +383,44 @@ describe("attachment GET", () => {
     const buf = new Uint8Array(await res.arrayBuffer())
     // PNG signature
     expect(Array.from(buf.slice(0, 4))).toEqual([137, 80, 78, 71])
+    // Session responses must never be cached by a shared cache.
+    expect(res.headers.get("cache-control")).toBe("private, max-age=3600")
+  })
+
+  test("token-authenticated GET is served immutable so GitHub's image proxy can cache it", async () => {
+    const admin = await createUser("admin@example.com", "admin")
+    const projectId = await seedProject({
+      name: "Demo",
+      publicKey: PK,
+      allowedOrigins: [ORIGIN],
+      createdBy: admin,
+    })
+    const reportId = await submitReport("pic")
+    const secret = process.env.ATTACHMENT_URL_SECRET
+    if (!secret) throw new Error("ATTACHMENT_URL_SECRET must be set for this test")
+    const expiresAt = Math.floor(Date.now() / 1000) + 3600
+    const token = signAttachmentToken({
+      secret,
+      projectId,
+      reportId,
+      kind: "screenshot",
+      expiresAt,
+    })
+
+    // No cookie: the token alone must authorise the request.
+    const res = await fetch(
+      `${BASE_URL}/api/projects/${projectId}/reports/${reportId}/attachment?kind=screenshot&token=${token}&expires=${expiresAt}`,
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get("content-type")).toBe("image/png")
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable")
+
+    // A bad token must not get the cacheable response (or any bytes).
+    const bad = await fetch(
+      `${BASE_URL}/api/projects/${projectId}/reports/${reportId}/attachment?kind=screenshot&token=${"0".repeat(64)}&expires=${expiresAt}`,
+    )
+    expect(bad.status).toBe(401)
+    expect(bad.headers.get("cache-control")).not.toContain("immutable")
   })
 
   test("cross-project attachment access returns 404", async () => {
