@@ -21,9 +21,16 @@ import OverviewTab from "~/components/report-drawer/overview-tab.vue"
 import ReplayTab from "~/components/report-drawer/replay-tab.vue"
 import DrawerTabs from "~/components/report-drawer/tabs.vue"
 import TriageFooter from "~/components/report-drawer/triage-footer.vue"
-import { priorityColor, priorityLabel } from "~/composables/use-report-format"
+import {
+  REPORT_PRIORITIES,
+  REPORT_STATUSES,
+  priorityLabel,
+  statusLabel,
+} from "~/composables/use-report-format"
+import { useReportPatch } from "~/composables/use-report-patch"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { hasProjectRole } from "~/utils/project-role"
+import type { ReportPriority, ReportStatus } from "@reprojs/shared"
 
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
@@ -91,11 +98,16 @@ watch(reportId, () => {
 })
 
 const logs = computed(() => (logsState.value.kind === "ready" ? logsState.value.logs : null))
-const consoleHasData = computed(
-  () => logs.value !== null && (logs.value.console.length > 0 || logs.value.breadcrumbs.length > 0),
+// Console/Network are lazy-loaded, so until the bundle is opened we only know
+// that a logs attachment exists (dot); once loaded the tabs show real counts.
+const hasLogsAttachment = computed(() =>
+  (report.value?.attachments ?? []).some((a) => a.kind === "logs"),
 )
-const networkHasData = computed(() => logs.value !== null && logs.value.network.length > 0)
-const cookiesHasData = computed(() => (report.value?.context?.cookies?.length ?? 0) > 0)
+const consoleCount = computed(() =>
+  logs.value === null ? undefined : logs.value.console.length + logs.value.breadcrumbs.length,
+)
+const networkCount = computed(() => (logs.value === null ? undefined : logs.value.network.length))
+const cookiesCount = computed(() => report.value?.context?.cookies?.length ?? 0)
 const userFileCount = computed(
   () =>
     (report.value?.attachments ?? []).filter((a) => a.kind === "user-file" || a.kind === "media")
@@ -103,10 +115,20 @@ const userFileCount = computed(
 )
 
 const tabs = computed(() => {
-  const base: { id: TabId; label: string; hasData?: boolean }[] = [
+  const base: { id: TabId; label: string; hasData?: boolean; count?: number }[] = [
     { id: "overview", label: "Overview" },
-    { id: "console", label: "Console", hasData: consoleHasData.value },
-    { id: "network", label: "Network", hasData: networkHasData.value },
+    {
+      id: "console",
+      label: "Console",
+      hasData: hasLogsAttachment.value,
+      count: consoleCount.value,
+    },
+    {
+      id: "network",
+      label: "Network",
+      hasData: hasLogsAttachment.value,
+      count: networkCount.value,
+    },
   ]
   if (report.value?.source !== "expo") {
     base.push({ id: "replay", label: "Replay", hasData: report.value?.hasReplay ?? false })
@@ -114,15 +136,32 @@ const tabs = computed(() => {
   base.push({ id: "activity", label: "Activity" })
   base.push({ id: "comments", label: "Comments" })
   if (report.value?.source !== "expo") {
-    base.push({ id: "cookies", label: "Cookies", hasData: cookiesHasData.value })
+    base.push({ id: "cookies", label: "Cookies", count: cookiesCount.value })
   }
   if (userFileCount.value > 0) {
-    base.push({ id: "attachments", label: "Attachments", hasData: true })
+    base.push({ id: "attachments", label: "Attachments", count: userFileCount.value })
   }
   base.push({ id: "system", label: "System" })
   base.push({ id: "raw", label: "Raw" })
   return base
 })
+
+// ---- Copy JSON (System / Raw tabs) ----
+const toast = useToast()
+const systemJson = computed(() => JSON.stringify(report.value?.context?.systemInfo ?? {}, null, 2))
+const rawJson = computed(() => JSON.stringify(report.value ?? {}, null, 2))
+async function copyJson(text: string, what: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.add({
+      title: `${what} copied`,
+      color: "success",
+      icon: "i-heroicons-clipboard-document-check",
+    })
+  } catch {
+    toast.add({ title: "Copy failed", color: "error", icon: "i-heroicons-exclamation-triangle" })
+  }
+}
 
 // After a triage mutation, re-fetch the report row and refresh the activity
 // feed so the timeline reflects the new event immediately.
@@ -153,7 +192,31 @@ useReportStream(
   },
 )
 
-const triageOpen = ref(false)
+// Open by default: the panel holds the controls a reviewer came here to use.
+// Collapsing it is remembered across reports and sessions.
+const triageOpen = useCookie<boolean>("triage-panel-open", { default: () => true })
+
+// ---- Triage edits (header selects + triage panel share one path) ----
+const { patch: patchReport, posting } = useReportPatch({
+  projectId: () => projectId.value,
+  reportId: () => reportId.value,
+  report,
+  afterPatch: onPatched,
+})
+const statusItems = REPORT_STATUSES.map((s) => ({ label: statusLabel(s), value: s }))
+const priorityItems = REPORT_PRIORITIES.map((p) => ({ label: priorityLabel(p), value: p }))
+const headerStatus = computed<ReportStatus | undefined>({
+  get: () => report.value?.status,
+  set: (v) => {
+    if (v && v !== report.value?.status) void patchReport({ status: v })
+  },
+})
+const headerPriority = computed<ReportPriority | undefined>({
+  get: () => report.value?.priority,
+  set: (v) => {
+    if (v && v !== report.value?.priority) void patchReport({ priority: v })
+  },
+})
 
 // Keyboard shortcuts: 1-9 then 0 jump to the tabs in the order they are
 // rendered; Esc navigates back to the inbox.
@@ -230,13 +293,28 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
               </span>
             </div>
           </div>
-          <UBadge
-            :label="priorityLabel(report.priority)"
-            :color="priorityColor(report.priority)"
-            variant="soft"
-            size="md"
-            class="font-medium flex-shrink-0"
-          />
+          <!-- Status + priority are editable right here; the same controls
+               live in the triage panel for people who prefer it there. -->
+          <div class="flex items-center gap-2 shrink-0">
+            <USelectMenu
+              v-model="headerStatus"
+              :items="statusItems"
+              value-key="value"
+              size="sm"
+              class="w-36"
+              aria-label="Status"
+              :disabled="!canEdit || posting"
+            />
+            <USelectMenu
+              v-model="headerPriority"
+              :items="priorityItems"
+              value-key="value"
+              size="sm"
+              class="w-32"
+              aria-label="Priority"
+              :disabled="!canEdit || posting"
+            />
+          </div>
         </div>
       </header>
 
@@ -254,7 +332,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
           v-if="activeTab === 'overview'"
           :project-id="projectId"
           :report="report"
-          :can-comment="canEdit"
           @select-tab="(t) => (activeTab = t)"
         />
         <ConsoleTab v-else-if="activeTab === 'console'" :state="logsState" @retry="retryLogs" />
@@ -286,16 +363,38 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
         />
         <div v-else-if="activeTab === 'system'" class="p-5">
           <UCard :ui="{ body: 'p-4' }">
-            <pre class="text-sm font-mono whitespace-pre-wrap break-all">{{
-              JSON.stringify(report.context?.systemInfo ?? {}, null, 2)
-            }}</pre>
+            <template #header>
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-default">System info</h3>
+                <UButton
+                  label="Copy JSON"
+                  icon="i-heroicons-clipboard"
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  @click="copyJson(systemJson, 'System info')"
+                />
+              </div>
+            </template>
+            <pre class="text-sm font-mono whitespace-pre-wrap break-all">{{ systemJson }}</pre>
           </UCard>
         </div>
         <div v-else-if="activeTab === 'raw'" class="p-5">
           <UCard :ui="{ body: 'p-4' }">
-            <pre class="text-sm font-mono whitespace-pre-wrap break-all">{{
-              JSON.stringify(report, null, 2)
-            }}</pre>
+            <template #header>
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-default">Raw report</h3>
+                <UButton
+                  label="Copy JSON"
+                  icon="i-heroicons-clipboard"
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  @click="copyJson(rawJson, 'Raw report')"
+                />
+              </div>
+            </template>
+            <pre class="text-sm font-mono whitespace-pre-wrap break-all">{{ rawJson }}</pre>
           </UCard>
         </div>
       </div>
@@ -332,6 +431,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey))
           :report="report"
           :can-edit="canEdit"
           :can-create-labels="canCreateLabels"
+          :patch="patchReport"
+          :posting="posting"
           @patched="onPatched"
         />
       </div>

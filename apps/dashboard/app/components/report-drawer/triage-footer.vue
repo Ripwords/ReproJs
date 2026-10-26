@@ -36,6 +36,11 @@ interface Props {
   canEdit: boolean
   /** Creating a new label on the linked repo is developer+ on the server. */
   canCreateLabels: boolean
+  /** The page's single PATCH path (see use-report-patch): optimistic local
+   *  update, silent on success, toast on failure. Shared with the header
+   *  controls so both surfaces behave identically. */
+  patch: (body: Record<string, unknown>) => Promise<boolean>
+  posting: boolean
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{ patched: [] }>()
@@ -57,7 +62,6 @@ const isReportLinked = computed(
 )
 
 const tagDraft = ref("")
-const posting = ref(false)
 const unlinkOpen = ref(false)
 const ghSubmitting = ref(false)
 
@@ -144,28 +148,6 @@ function ghRepoFullName(url: string | null): string {
   return match?.[1] ?? ""
 }
 
-async function patch(body: Record<string, unknown>) {
-  posting.value = true
-  try {
-    await $fetch(`/api/projects/${props.projectId}/reports/${props.report.id}`, {
-      method: "PATCH",
-      body,
-      credentials: "include",
-    })
-    emit("patched")
-    toast.add({ title: "Saved", color: "success", icon: "i-heroicons-check-circle" })
-  } catch (err) {
-    toast.add({
-      title: "Could not save",
-      description: describeApiError(err),
-      color: "error",
-      icon: "i-heroicons-exclamation-triangle",
-    })
-  } finally {
-    posting.value = false
-  }
-}
-
 async function addTag() {
   const name = tagDraft.value.trim()
   if (!name || props.report.tags.includes(name)) {
@@ -173,22 +155,22 @@ async function addTag() {
     return
   }
   tagDraft.value = ""
-  await patch({ tags: [...props.report.tags, name] })
+  await props.patch({ tags: [...props.report.tags, name] })
 }
 async function removeTag(name: string) {
-  await patch({ tags: props.report.tags.filter((t) => t !== name) })
+  await props.patch({ tags: props.report.tags.filter((t) => t !== name) })
 }
 
 const statusModel = computed<ReportStatus>({
   get: () => props.report.status,
   set: (v) => {
-    if (v !== props.report.status) void patch({ status: v })
+    if (v !== props.report.status) void props.patch({ status: v })
   },
 })
 const priorityModel = computed<ReportPriority>({
   get: () => props.report.priority,
   set: (v) => {
-    if (v !== props.report.priority) void patch({ priority: v })
+    if (v !== props.report.priority) void props.patch({ priority: v })
   },
 })
 
