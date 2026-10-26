@@ -46,6 +46,51 @@ const integration = computed(() => {
 const recentReports = computed<ReportSummaryDTO[]>(() => recentReportsResp.value?.items ?? [])
 const recentActivity = computed(() => overview.value?.recentEvents ?? [])
 
+// ---- Setup checklist (zero reports) ----
+// `total` comes from the overview counts; fall back to the recent list so the
+// checklist still renders if the overview call failed.
+const hasNoReports = computed(() => {
+  const total = overview.value?.counts.total
+  return total !== undefined ? total === 0 : recentReports.value.length === 0
+})
+const hasOrigins = computed(() => (project.value?.allowedOrigins.length ?? 0) > 0)
+// Whether the key was copied is only knowable on the client, so remember it
+// per project in a cookie — same pattern as `last-project-id`.
+const keyCopied = useCookie<boolean>(`setup-key-copied-${projectId.value}`, {
+  default: () => false,
+})
+const isOwner = computed(() => project.value?.effectiveRole === "owner")
+interface SetupStep {
+  id: string
+  done: boolean
+  label: string
+  hint: string
+  to?: string
+}
+const setupSteps = computed<SetupStep[]>(() => [
+  {
+    id: "key",
+    done: keyCopied.value,
+    label: "Copy the embed snippet",
+    hint: "It includes this project's public key and your dashboard URL.",
+  },
+  {
+    id: "origin",
+    done: hasOrigins.value,
+    label: "Add an allowed origin",
+    hint: isOwner.value
+      ? "The SDK can only submit from origins on the list."
+      : "Only a project owner can add origins in Settings → General.",
+    to: `/projects/${projectId.value}/settings`,
+  },
+  {
+    id: "report",
+    done: !hasNoReports.value,
+    label: "Receive your first report",
+    hint: "Open your site with the widget installed and submit a test report.",
+  },
+])
+
 const EVENT_LABEL: Record<string, string> = {
   status_changed: "changed status",
   priority_changed: "changed priority",
@@ -79,6 +124,35 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
         />
       </template>
     </PageHeader>
+
+    <!-- Empty allowed-origins list: in production the intake API rejects
+         every submission, so this is the #1 "it's installed but nothing
+         arrives" cause. Shown regardless of report count. -->
+    <UAlert
+      v-if="project && !hasOrigins"
+      color="warning"
+      variant="soft"
+      icon="i-heroicons-exclamation-triangle"
+      title="No allowed origins — reports will be blocked in production"
+      :description="
+        isOwner
+          ? 'Add the origin of the site that embeds the widget (e.g. https://app.example.com). Until then every submission is rejected outside local development.'
+          : 'Ask a project owner to add the origin of the site that embeds the widget. Until then every submission is rejected outside local development.'
+      "
+      :actions="
+        isOwner
+          ? [
+              {
+                label: 'Add an origin',
+                to: `/projects/${projectId}/settings`,
+                color: 'warning',
+                variant: 'solid',
+                size: 'sm',
+              },
+            ]
+          : undefined
+      "
+    />
 
     <!-- Metric tiles: each tile has a small icon chip + eyebrow label above
          a big number. The tiles lift slightly on hover to signal they're
@@ -230,11 +304,8 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
       </div>
     </div>
 
-    <!-- Activation: the real embed snippet when no reports have arrived -->
-    <section
-      v-if="recentReports && recentReports.length === 0"
-      class="rounded-xl border border-default bg-default"
-    >
+    <!-- Setup checklist + the real embed snippet, until the first report lands -->
+    <section v-if="hasNoReports" class="rounded-xl border border-default bg-default">
       <div class="flex items-start justify-between gap-4 px-5 py-4 border-b border-default">
         <div class="flex items-start gap-3 min-w-0">
           <div
@@ -244,11 +315,12 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
           </div>
           <div class="min-w-0">
             <h2 class="text-base font-semibold text-default tracking-tight">
-              Install the SDK to start receiving reports
+              Get set up to receive reports
             </h2>
             <p class="mt-0.5 text-sm text-muted">
-              This snippet already contains this project's key. Prefer a package manager? The
-              install guide covers <code class="font-mono px-1 rounded bg-muted">init()</code> too.
+              Three steps. The snippet already contains this project's key; prefer a package
+              manager? The install guide covers
+              <code class="font-mono px-1 rounded bg-muted">init()</code> too.
             </p>
           </div>
         </div>
@@ -262,8 +334,47 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
           class="shrink-0"
         />
       </div>
-      <div class="px-5 py-4">
-        <InstallSnippet :project-key="project?.publicKey ?? null" />
+      <div class="grid grid-cols-1 lg:grid-cols-12">
+        <ol
+          class="lg:col-span-4 px-5 py-4 space-y-3 border-b lg:border-b-0 lg:border-r border-default"
+        >
+          <li v-for="step in setupSteps" :key="step.id" class="flex items-start gap-3">
+            <span
+              class="mt-0.5 inline-flex items-center justify-center size-5 rounded-full shrink-0 ring-1"
+              :class="
+                step.done
+                  ? 'bg-success/15 text-success ring-success/30'
+                  : 'bg-elevated text-muted ring-default'
+              "
+              aria-hidden="true"
+            >
+              <UIcon v-if="step.done" name="i-heroicons-check" class="size-3.5" />
+              <span v-else class="size-1.5 rounded-full bg-current" />
+            </span>
+            <div class="min-w-0">
+              <div
+                class="text-sm font-medium"
+                :class="step.done ? 'text-muted line-through decoration-muted/60' : 'text-default'"
+              >
+                {{ step.label }}
+                <span class="sr-only">{{ step.done ? "(done)" : "(to do)" }}</span>
+              </div>
+              <p class="text-sm text-muted">
+                {{ step.hint }}
+                <NuxtLink
+                  v-if="step.to && !step.done && isOwner"
+                  :to="step.to"
+                  class="text-primary hover:underline"
+                >
+                  Open settings →
+                </NuxtLink>
+              </p>
+            </div>
+          </li>
+        </ol>
+        <div class="lg:col-span-8 px-5 py-4">
+          <InstallSnippet :project-key="project?.publicKey ?? null" @copied="keyCopied = true" />
+        </div>
       </div>
     </section>
   </div>

@@ -12,6 +12,7 @@ interface Props {
   projectKey: string | null
 }
 const props = defineProps<Props>()
+const emit = defineEmits<{ copied: [] }>()
 
 // `useRequestURL()` resolves at request time (SSR → Host header via reverse
 // proxy; client → `window.location.origin`) so the snippet always matches
@@ -36,6 +37,11 @@ const code = computed(() => buildScriptSnippet({ origin, projectKey: props.proje
       title="This project has no public key yet"
       description="Rotate the key on the Security tab to generate one, then replace the placeholder below."
     />
-    <CodeSnippet :code="code" lang="html" copy-label="Copy embed snippet" />
+    <CodeSnippet
+      :code="code"
+      lang="html"
+      copy-label="Copy embed snippet"
+      @copied="emit('copied')"
+    />
   </div>
 </template>

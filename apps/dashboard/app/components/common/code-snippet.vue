@@ -14,6 +14,7 @@ interface Props {
   copyLabel?: string
 }
 const props = withDefaults(defineProps<Props>(), { copyLabel: "Copy" })
+const emit = defineEmits<{ copied: [] }>()
 
 const toast = useToast()
 const highlighted = ref<{ light: string; dark: string } | null>(null)
@@ -36,6 +37,7 @@ watch(
 async function copy() {
   try {
     await navigator.clipboard.writeText(props.code)
+    emit("copied")
     toast.add({
       title: "Copied to clipboard",
       color: "success",

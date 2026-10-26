@@ -44,19 +44,23 @@ async function createProject() {
   if (!newName.value.trim()) return
   creating.value = true
   try {
-    await $fetch<ProjectDTO>("/api/projects", {
+    const created = await $fetch<ProjectDTO>("/api/projects", {
       method: "POST",
       credentials: "include",
       body: { name: newName.value.trim() },
     })
     toast.add({
       title: "Project created",
+      description: "Next: install the SDK and add an allowed origin.",
       color: "success",
       icon: "i-heroicons-check-circle",
     })
     newOpen.value = false
     newName.value = ""
+    // Land inside the new project — its Overview carries the setup checklist
+    // and the embed snippet, which is what a fresh project needs next.
     await refresh()
+    await navigateTo(`/projects/${created.id}`)
   } catch (err) {
     toast.add({
       title: "Could not create project",
