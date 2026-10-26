@@ -41,8 +41,15 @@ export function installBridge(): void {
     }
     if (data.type !== "request") return
 
-    chrome.runtime
-      .sendMessage({
+    // After the extension is reloaded or updated this content script keeps
+    // running but its chrome.runtime is dead: sendMessage throws
+    // synchronously ("Extension context invalidated"). Without the catch the
+    // page side waits out its full 60 s timeout on every submission. Answer
+    // immediately with `fallback: true` so the proxy hands the request to
+    // the page's own fetch.
+    let sent: Promise<unknown>
+    try {
+      sent = chrome.runtime.sendMessage({
         type: "proxy-fetch",
         id,
         url: data.url,
@@ -51,6 +58,26 @@ export function installBridge(): void {
         body: data.body,
         pageOrigin: data.pageOrigin,
       })
+    } catch (err) {
+      window.postMessage(
+        {
+          source: SOURCE,
+          type: "response",
+          id,
+          ok: false,
+          status: 0,
+          statusText: "",
+          bodyKind: "none",
+          body: null,
+          fallback: true,
+          error: `bridge: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        window.location.origin,
+      )
+      return
+    }
+
+    sent
       .then((response: unknown) => {
         const payload =
           response && typeof response === "object"
@@ -63,6 +90,9 @@ export function installBridge(): void {
         return
       })
       .catch((err: unknown) => {
+        // Rejected rather than thrown: the service worker is gone or never
+        // answered ("Could not establish connection", "message port closed").
+        // Same remedy — let the page try the network itself.
         window.postMessage(
           {
             source: SOURCE,
@@ -73,7 +103,8 @@ export function installBridge(): void {
             statusText: "",
             bodyKind: "none",
             body: null,
-            error: err instanceof Error ? err.message : String(err),
+            fallback: true,
+            error: `bridge: ${err instanceof Error ? err.message : String(err)}`,
           },
           window.location.origin,
         )

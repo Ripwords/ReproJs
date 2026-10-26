@@ -205,6 +205,7 @@ export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: numbe
       body: string | null
       contentType?: string
       error?: string
+      fallback?: boolean
     }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pending.delete(id)
@@ -236,12 +237,22 @@ export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: numbe
             body: string | null
             contentType?: string
             error?: string
+            fallback?: boolean
           },
         )
       })
       window.postMessage(request, window.location.origin)
     })
 
+    if (response.fallback) {
+      // The bridge could not reach the service worker (extension reloaded
+      // or updated underneath this page). The proxy is dead for the rest of
+      // this document's life; the page's own fetch is the only route left.
+      console.warn(
+        `[repro-extension] ${response.error ?? "bridge unavailable"}; sending through the page's own fetch instead (CSP connect-src may block it)`,
+      )
+      return originalFetch(input, init)
+    }
     if (response.error) {
       throw new TypeError(`repro proxy: ${response.error}`)
     }
