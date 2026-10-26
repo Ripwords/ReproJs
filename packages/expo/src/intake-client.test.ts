@@ -239,3 +239,79 @@ test("a real 4xx stays a non-fatal client error", async () => {
   expect(err?.status).toBe(400)
   expect(err?.fatal).toBe(false)
 })
+
+// A POST that never settles (captive portal, half-open TCP after a network
+// switch) used to hang `submit()` forever. The flusher's `running` flag then
+// never cleared and every later report sat in the queue until the app was
+// killed. The fetch must be given an abort signal and that signal must fire.
+test("a stalled upload is aborted after timeoutMs and stays retryable", async () => {
+  const hangingFetch = ((_url: unknown, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      // Behaves like a real fetch: only an abort can end this request.
+      init?.signal?.addEventListener("abort", () =>
+        reject(Object.assign(new Error("Aborted"), { name: "AbortError" })),
+      )
+    })) as unknown as typeof fetch
+  const client = createIntakeClient({
+    intakeUrl: "https://ex.com/api/intake",
+    fetchImpl: hangingFetch,
+    timeoutMs: 20,
+  })
+  const started = Date.now()
+  const err = await client
+    .submit({ idempotencyKey: "i", input: {} as never, attachments: [] })
+    .then(() => null)
+    .catch((e: unknown) => e as { fatal?: boolean; retryable?: boolean; message: string })
+  expect(Date.now() - started).toBeLessThan(2_000)
+  expect(err?.message).toContain("timed out")
+  // A timeout says nothing about the report itself: keep it for the next run.
+  expect(err?.fatal).toBe(false)
+  expect(err?.retryable).toBe(true)
+})
+
+// An attachment that cannot be read any more (iOS purged tmp/, the app was
+// updated) used to be a fatal IntakeError, and the flusher deleted the whole
+// report for it. The text of the report is still worth having: send it
+// without that one part and say so on the console.
+test("an unreadable attachment is skipped with a warning, the report is still sent", async () => {
+  const parts: Array<[string, unknown]> = []
+  const expoFetch = collectParts(parts)
+  Object.defineProperty(expoFetch, Symbol.for("expo.builtin"), { value: true })
+  const client = createIntakeClient({
+    intakeUrl: "https://ex.com/api/intake",
+    fetchImpl: expoFetch,
+    blobFromUri: async (uri) => {
+      if (uri.endsWith("gone.png")) throw new Error("could not read attachment")
+      return new Blob([new Uint8Array([1])], { type: "image/png" })
+    },
+  })
+  const warnings: unknown[][] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args)
+  }
+  let out: { id: string }
+  try {
+    out = await client.submit({
+      idempotencyKey: "i",
+      input: {} as never,
+      attachments: [
+        { kind: "screenshot", uri: "file:///tmp/gone.png", bytes: 3, contentType: "image/png" },
+        {
+          kind: "user-file",
+          uri: "file:///docs/ok.png",
+          bytes: 1,
+          contentType: "image/png",
+          filename: "ok.png",
+        },
+      ],
+    })
+  } finally {
+    console.warn = originalWarn
+  }
+  expect(out.id).toBe("x")
+  expect(parts.find(([k]) => k === "screenshot")).toBeUndefined()
+  expect(parts.find(([k]) => k === "attachment[0]")).toBeDefined()
+  expect(warnings).toHaveLength(1)
+  expect(String(warnings[0]?.[0])).toContain("gone.png")
+})

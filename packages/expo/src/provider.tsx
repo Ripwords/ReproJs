@@ -7,6 +7,7 @@ import { createNetworkCollector } from "./collectors/network"
 import { createBreadcrumbsCollector, type Attachment } from "@reprojs/sdk-utils"
 import { createQueueStorage, type QueueItemAttachment } from "./queue/storage"
 import { createQueueFlusher } from "./queue/flush"
+import { createAttachmentStore, loadAttachmentFs } from "./queue/attachment-store"
 import { createConnectivityListener } from "./queue/netinfo"
 import { createIntakeClient } from "./intake-client"
 import { captureView } from "./capture/screenshot"
@@ -100,10 +101,32 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     }),
   )
   const breadcrumbsRef = useRef(createBreadcrumbsCollector({}))
-  const queueRef = useRef(
-    createQueueStorage({ maxReports: config.queue.maxReports, maxBytes: config.queue.maxBytes }),
+  // Resolved once per provider. `expo-file-system` is a dynamic import so a
+  // host that has not installed it still gets a working (if non-durable) queue.
+  const [attachmentStore] = useState(() =>
+    loadAttachmentFs().then((fs) => {
+      if (!fs) {
+        console.warn(
+          "[repro] expo-file-system is not installed: queued attachments stay in temporary " +
+            "storage and may be lost if the app restarts before the report is sent.",
+        )
+      }
+      return createAttachmentStore(fs)
+    }),
   )
-  const clientRef = useRef(createIntakeClient({ intakeUrl: config.intakeUrl }))
+  const queueRef = useRef(
+    createQueueStorage({
+      maxReports: config.queue.maxReports,
+      maxBytes: config.queue.maxBytes,
+      onRemove: async (item) => (await attachmentStore).discard(item.id),
+    }),
+  )
+  const clientRef = useRef(
+    createIntakeClient({
+      intakeUrl: config.intakeUrl,
+      timeoutMs: config.queue.submitTimeoutMs,
+    }),
+  )
   // Bumped after every flush so `useRepro().queue` re-renders with the real
   // pending count / last error instead of a frozen snapshot.
   const [queueTick, setQueueTick] = useState(0)
@@ -160,6 +183,32 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     }
   }, [runFlush])
 
+  /**
+   * Layout size of the root view. `onLayout` normally supplies it, but the
+   * wizard can be opened (e.g. `Repro.open()` on mount) before that first
+   * event, and a 0x0 size makes the annotate step a blank canvas. Measure
+   * live in that case; give up after a short wait rather than hang.
+   */
+  async function resolveRootSize(): Promise<{ w: number; h: number }> {
+    if (rootSize.w > 0 && rootSize.h > 0) return rootSize
+    const node = rootRef.current
+    if (!node) return rootSize
+    const measured = new Promise<{ w: number; h: number } | null>((resolve) => {
+      node.measure((_x, _y, width, height) => {
+        const size = { w: Math.round(width), h: Math.round(height) }
+        resolve(size.w > 0 && size.h > 0 ? size : null)
+      })
+    })
+    // `measure` never calls back for a view that is not laid out yet.
+    const gaveUp = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), 250)
+    })
+    const size = await Promise.race([measured, gaveUp])
+    if (!size) return rootSize
+    setRootSize(size)
+    return size
+  }
+
   async function openWizard(opts?: { initialTitle?: string; initialDescription?: string }) {
     setWizardInit(opts ?? {})
     wizardOpenedAtRef.current = Date.now()
@@ -170,8 +219,8 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       return
     }
     try {
-      const shot = await captureView(rootRef)
-      setScreenshot({ uri: shot.uri, width: rootSize.w, height: rootSize.h })
+      const [shot, size] = await Promise.all([captureView(rootRef), resolveRootSize()])
+      setScreenshot({ uri: shot.uri, width: size.w, height: size.h })
     } catch (err) {
       console.warn("[repro] screenshot capture failed — opening wizard anyway", err)
       setScreenshot(null)
@@ -236,34 +285,46 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       _dwellMs: dwellMs,
     }
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-    await queueRef.current.enqueue({
+    // Queue attachment list: screenshot first (if captured), then any
+    // user-supplied files from the picker.
+    const screenshotUri = res.annotatedUri ?? res.rawUri
+    const screenshotEntries: QueueItemAttachment[] = screenshotUri
+      ? [{ kind: "screenshot" as const, uri: screenshotUri, bytes: 0 }]
+      : []
+    const userFileEntries: QueueItemAttachment[] = res.attachments.map((a) => ({
+      kind: "user-file" as const,
+      // previewUrl carries the file:// uri from expo-document-picker.
+      uri: a.previewUrl ?? a.id,
+      bytes: a.size,
+      filename: a.filename,
+      contentType: a.mime,
+    }))
+    // Copy out of tmp/ and the cache dir before the report is persisted, so a
+    // queued report survives an app restart or update. Also fills in the real
+    // screenshot size, which the queue's maxBytes cap depends on.
+    const attachments = await (
+      await attachmentStore
+    ).persist(id, [...screenshotEntries, ...userFileEntries])
+    const { evictedIds } = await queueRef.current.enqueue({
       id,
       createdAt: now,
       payload: {
         input,
-        // Build the queue attachment list: screenshot first (if captured),
-        // then any user-supplied files from the picker.
-        attachments: (() => {
-          const screenshotUri = res.annotatedUri ?? res.rawUri
-          const screenshotEntries: QueueItemAttachment[] = screenshotUri
-            ? [{ kind: "screenshot" as const, uri: screenshotUri, bytes: 0 }]
-            : []
-          const userFileEntries: QueueItemAttachment[] = res.attachments.map((a) => ({
-            kind: "user-file" as const,
-            // previewUrl carries the file:// uri from expo-document-picker.
-            uri: a.previewUrl ?? a.id,
-            bytes: a.size,
-            filename: a.filename,
-            contentType: a.mime,
-          }))
-          return [...screenshotEntries, ...userFileEntries]
-        })(),
+        attachments,
         logs: logsJson,
       },
       attempts: 0,
       lastErrorAt: null,
       lastError: null,
     })
+    if (evictedIds.length > 0) {
+      // Eviction is data loss, same as a drop: the oldest unsent reports were
+      // discarded to make room. Say so, with ids, instead of vanishing them.
+      console.error(
+        `[repro] queue full (maxReports ${config.queue.maxReports}, maxBytes ${config.queue.maxBytes}): ` +
+          `discarded unsent report(s) ${evictedIds.join(", ")} to make room for ${id}`,
+      )
+    }
     setWizardOpen(false)
     setScreenshot(null)
     runFlush()
@@ -280,8 +341,8 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     openWizard,
     closeWizard: () => setWizardOpen(false),
     captureRoot: async () => {
-      const shot = await captureView(rootRef)
-      return { ...shot, width: rootSize.w, height: rootSize.h }
+      const [shot, size] = await Promise.all([captureView(rootRef), resolveRootSize()])
+      return { ...shot, width: size.w, height: size.h }
     },
     snapshotBreadcrumbs: () => breadcrumbsRef.current.snapshot(),
     // Reads the flusher's real snapshot. This used to be a hardcoded

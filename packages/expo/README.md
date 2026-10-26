@@ -17,9 +17,13 @@ Leave the project's origin allowlist **empty**. Mobile apps send no `Origin` hea
 npx expo install @reprojs/expo \
   react-native-view-shot react-native-svg react-native-gesture-handler \
   @react-native-async-storage/async-storage @react-native-community/netinfo \
-  expo-device expo-constants \
+  expo-device expo-constants expo-file-system \
   expo-document-picker expo-image-picker
 ```
+
+`expo-document-picker` and `expo-image-picker` are optional: they power the wizard's "Add attachment" sources (Files and Photos). Without them the picker is unavailable and the SDK logs a one-time `console.warn` the first time a reporter tries to use it.
+
+`expo-file-system` keeps queued attachments in the app's document directory (`repro-queue/`) until the report is sent, so a report written while offline survives an app restart or update. Without it the queue still works, but attachments stay in temporary storage and are dropped from the report if the OS has purged them by the time it is sent.
 
 Add the config plugin to `app.json`:
 
@@ -104,7 +108,7 @@ Every report bundles:
 
 - Annotated screenshot (PNG)
 - Console logs (last 200 entries)
-- Fetch network requests (last 100)
+- `fetch` requests (last 100) — XHR/axios traffic is not captured
 - User breadcrumbs (`repro.log(event, data)`)
 - Device context: OS, version, model, app version, locale, connectivity
 

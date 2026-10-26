@@ -38,6 +38,20 @@ test("captures stack on warn + error only", () => {
   c.stop()
 })
 
+// A logger that wraps console.* after Repro started would be removed by
+// stop() restoring the pre-Repro functions wholesale.
+test("stop leaves a wrapper that another library installed after start in place", () => {
+  const c = createConsoleCollector({ max: 10 })
+  c.start()
+  const reproWrapper = console.log
+  const otherLibrary = (...args: unknown[]) => reproWrapper(...args)
+  console.log = otherLibrary
+  c.stop()
+  expect(console.log).toBe(otherLibrary)
+  // Levels nobody else touched are still restored.
+  expect(console.warn).toBe(originalConsole.warn)
+})
+
 test("stop restores the original console functions", () => {
   const original = console.log
   const c = createConsoleCollector({ max: 10 })

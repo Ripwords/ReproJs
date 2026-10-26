@@ -64,11 +64,20 @@
     "expo-constants": ">=16.0.0",
     "expo-device": ">=6.0.0",
     "expo-document-picker": "*",
+    "expo-file-system": "*",
     "expo-image-picker": "*",
     "react": ">=18.3.0",
     "react-native": ">=0.74.0",
     "react-native-gesture-handler": ">=2.16.0",
     "react-native-svg": ">=15.0.0",
     "react-native-view-shot": ">=3.8.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-document-picker": {
+      "optional": true
+    },
+    "expo-image-picker": {
+      "optional": true
+    }
   }
 }

@@ -13,6 +13,7 @@ test("normalizeConfig fills sensible defaults", () => {
   expect(cfg.queue.maxReports).toBe(5)
   expect(cfg.queue.maxBytes).toBe(10 * 1024 * 1024)
   expect(cfg.queue.backoffMs).toEqual([1000, 5000, 30000, 120000])
+  expect(cfg.queue.submitTimeoutMs).toBe(60_000)
   expect(cfg.redact.headerDenylist).toContain("authorization")
 })
 

@@ -57,12 +57,18 @@ export function createNetworkCollector(opts: {
 }): NetworkCollector {
   const buf = new RingBuffer<NetworkEntry>(opts.max)
   let originalFetch: typeof fetch | null = null
+  let installed: typeof fetch | null = null
 
   function start() {
     const currentFetch = globalThis.fetch as typeof fetch & { [SENTINEL]?: boolean }
     if (currentFetch && !currentFetch[SENTINEL]) {
       originalFetch = currentFetch
+      // Closed over, not read from `originalFetch` at call time: the wrapper
+      // may outlive stop() inside another library's chain and must keep
+      // calling through.
+      const original = currentFetch
       const wrapped = ((input: RequestInfo | URL, init?: RequestInit) => {
+        if (installed !== wrapped) return original(input as RequestInfo, init)
         const id = rid()
         const ts = Date.now()
         const method = (init?.method ?? "GET").toUpperCase()
@@ -70,8 +76,6 @@ export function createNetworkCollector(opts: {
           typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
         const requestHeaders = headersToMap(init?.headers, opts.redact.headerDenylist)
         const t0 = Date.now()
-        const original = originalFetch
-        if (!original) return Promise.reject(new Error("fetch not captured"))
         return original(input as RequestInfo, init).then(
           (res) => {
             const clen = Number(res.headers.get("content-length") ?? "NaN")
@@ -115,15 +119,21 @@ export function createNetworkCollector(opts: {
         )
       }) as typeof fetch & { [SENTINEL]?: boolean }
       wrapped[SENTINEL] = true
+      installed = wrapped
       globalThis.fetch = wrapped
     }
   }
 
   function stop() {
-    if (originalFetch) {
+    // Only unwind when the global is still our wrapper. If another library
+    // (Sentry, a polyfill) wrapped fetch after us, restoring the pre-Repro
+    // fetch would rip its wrapper out; leaving ours in its chain is harmless
+    // since the wrapper still calls through.
+    if (originalFetch && globalThis.fetch === installed) {
       globalThis.fetch = originalFetch
-      originalFetch = null
     }
+    originalFetch = null
+    installed = null
   }
 
   return {

@@ -40,6 +40,9 @@ export function createQueueFlusher(opts: {
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
   const ladder = opts.backoffMs.length > 0 ? opts.backoffMs : [30_000]
   let running = false
+  // Set when flush() is called while a pass is in flight: the user submitted a
+  // report mid-upload. Without it that report waited for an unrelated trigger.
+  let rerunRequested = false
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | null = null
   let snapshot: QueueStatus = { pending: 0, lastError: null }
@@ -67,77 +70,101 @@ export function createQueueFlusher(opts: {
     ;(timer as unknown as { unref?: () => void }).unref?.()
   }
 
-  async function flush() {
-    if (running || stopped) return
-    running = true
-    clearTimer()
+  interface PassResult {
+    lastError: string | null
+    /** Attempt counts of items that failed retryably and are still queued. */
+    retryableAttempts: number[]
+  }
+
+  /** One sweep over everything currently queued. */
+  async function flushOnce(): Promise<PassResult> {
     let lastError: string | null = null
     const retryableAttempts: number[] = []
-    try {
-      const items = await opts.queue.all()
-      // eslint-disable-next-line no-await-in-loop
-      for (const item of items) {
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          await opts.client.submit({
-            idempotencyKey: item.id,
-            input: item.payload.input,
-            attachments: item.payload.attachments.map((a) => ({
-              ...a,
-              contentType:
-                a.contentType ??
-                (a.kind === "annotated-screenshot" || a.kind === "screenshot"
-                  ? "image/png"
-                  : "application/octet-stream"),
-            })),
-            logs: item.payload.logs,
-          })
+    const items = await opts.queue.all()
+    // eslint-disable-next-line no-await-in-loop
+    for (const item of items) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await opts.client.submit({
+          idempotencyKey: item.id,
+          input: item.payload.input,
+          attachments: item.payload.attachments.map((a) => ({
+            ...a,
+            contentType:
+              a.contentType ??
+              (a.kind === "annotated-screenshot" || a.kind === "screenshot"
+                ? "image/png"
+                : "application/octet-stream"),
+          })),
+          logs: item.payload.logs,
+        })
+        // eslint-disable-next-line no-await-in-loop
+        await opts.queue.remove(item.id)
+      } catch (err) {
+        const status = (err as { status?: number }).status ?? 0
+        // `fatal` marks a client-side defect no retry can fix (misconfigured
+        // intakeUrl). It is deliberately separate from "status 0", because a
+        // plain network failure while offline also has no status and MUST
+        // stay retryable — that is what the queue is for.
+        const fatal = (err as { fatal?: boolean }).fatal === true
+        const retryable = fatal
+          ? false
+          : ((err as { retryable?: boolean }).retryable ?? status >= 500)
+        const message = (err as Error).message
+        const nonRetryableClientError = fatal || (!retryable && status >= 400 && status !== 429)
+        const attempts = item.attempts + 1
+        const exhausted = attempts >= maxAttempts
+
+        if (nonRetryableClientError || exhausted) {
           // eslint-disable-next-line no-await-in-loop
           await opts.queue.remove(item.id)
-        } catch (err) {
-          const status = (err as { status?: number }).status ?? 0
-          // `fatal` marks a client-side defect no retry can fix (misconfigured
-          // intakeUrl, unreadable attachment). It is deliberately separate from
-          // "status 0", because a plain network failure while offline also has
-          // no status and MUST stay retryable — that is what the queue is for.
-          const fatal = (err as { fatal?: boolean }).fatal === true
-          const retryable = fatal
-            ? false
-            : ((err as { retryable?: boolean }).retryable ?? status >= 500)
-          const message = (err as Error).message
-          const nonRetryableClientError = fatal || (!retryable && status >= 400 && status !== 429)
-          const attempts = item.attempts + 1
-          const exhausted = attempts >= maxAttempts
-
-          if (nonRetryableClientError || exhausted) {
-            // eslint-disable-next-line no-await-in-loop
-            await opts.queue.remove(item.id)
-            lastError = nonRetryableClientError
-              ? `report dropped (HTTP ${status}): ${message}`
-              : `report dropped after ${attempts} attempts: ${message}`
-            opts.onDrop?.({ id: item.id, status, message })
-          } else {
-            lastError = message
-            retryableAttempts.push(attempts)
-            // eslint-disable-next-line no-await-in-loop
-            await opts.queue.update(item.id, {
-              attempts,
-              lastError,
-              lastErrorAt: new Date().toISOString(),
-            })
-          }
+          lastError = nonRetryableClientError
+            ? `report dropped (HTTP ${status}): ${message}`
+            : `report dropped after ${attempts} attempts: ${message}`
+          opts.onDrop?.({ id: item.id, status, message })
+        } else {
+          lastError = message
+          retryableAttempts.push(attempts)
+          // eslint-disable-next-line no-await-in-loop
+          await opts.queue.update(item.id, {
+            attempts,
+            lastError,
+            lastErrorAt: new Date().toISOString(),
+          })
         }
       }
+    }
+    return { lastError, retryableAttempts }
+  }
+
+  async function flush() {
+    if (stopped) return
+    if (running) {
+      rerunRequested = true
+      return
+    }
+    running = true
+    clearTimer()
+    let result: PassResult = { lastError: null, retryableAttempts: [] }
+    try {
+      do {
+        rerunRequested = false
+        // eslint-disable-next-line no-await-in-loop -- passes are sequential by definition
+        result = await flushOnce()
+        if (stopped) break
+      } while (rerunRequested)
     } finally {
+      // Always release the lock, even when a pass throws (storage failure):
+      // a stuck `running` would silently park every later report.
       running = false
       // Recount from storage rather than tracking deltas — the queue evicts
       // on enqueue, so a derived counter would drift.
       const remaining = await opts.queue.all().catch(() => null)
       snapshot = {
         pending: remaining?.length ?? snapshot.pending,
-        lastError,
+        lastError: result.lastError,
       }
-      scheduleRetry(retryableAttempts)
+      scheduleRetry(result.retryableAttempts)
     }
   }
 
