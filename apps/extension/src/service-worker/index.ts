@@ -3,6 +3,7 @@ import { bootRepro, injectConfig, probeBootState, type BootState } from "../boot
 import { installFetchProxy } from "../bootstrap/proxy-fetch"
 import { findConfigForUrl, toOrigin } from "../lib/origin"
 import { hasOriginPermission } from "../lib/permissions"
+import { MAX_PROXY_RAW_BODY_BYTES } from "../lib/proxy-limits"
 import { listConfigs } from "../lib/storage"
 import { registerProxyHandler } from "./proxy-handler"
 
@@ -107,7 +108,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
       target: { tabId, frameIds: [0] },
       world: "MAIN",
       func: installFetchProxy,
-      args: [intakeOrigin],
+      args: [intakeOrigin, MAX_PROXY_RAW_BODY_BYTES],
     })
     // 3. Install the ISOLATED-world bridge so window.postMessage from the
     //    fetch proxy can reach chrome.runtime.sendMessage.

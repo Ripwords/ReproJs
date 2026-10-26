@@ -22,6 +22,57 @@ function hangIntake() {
   return { state, handler }
 }
 
+test("a body above the proxy limit falls through to the page's own fetch", async () => {
+  // The service-worker path stamps x-repro-origin; a direct page fetch
+  // cannot. That header is the discriminator between the two routes.
+  const seen: Array<{ viaProxy: boolean; length: number }> = []
+  const h = await launch({
+    handler: (req, res) => {
+      if (!req.url?.startsWith("/api/intake/")) return false
+      let length = 0
+      req.on("data", (chunk: Buffer) => {
+        length += chunk.length
+      })
+      req.on("end", () => {
+        seen.push({ viaProxy: typeof req.headers["x-repro-origin"] === "string", length })
+        res.setHeader("Content-Type", "application/json")
+        res.end(JSON.stringify({ id: "r1" }))
+      })
+      return true
+    },
+  })
+  try {
+    await h.configure({ intakeEndpoint: h.testOrigin })
+    const page = await h.context.newPage()
+    await page.goto(h.testOrigin)
+    await expect(page.locator("#repro-host")).toBeAttached({ timeout: 10_000 })
+
+    const SMALL = 1024
+    const HUGE = 31 * 1024 * 1024 // > MAX_PROXY_RAW_BODY_BYTES (~30 MB)
+    const statuses = await page.evaluate(
+      async ({ origin, small, huge }) => {
+        const post = async (bytes: number) => {
+          const res = await fetch(`${origin}/api/intake/reports`, {
+            method: "POST",
+            body: new Blob([new Uint8Array(bytes)]),
+          })
+          return res.status
+        }
+        return [await post(small), await post(huge)]
+      },
+      { origin: h.testOrigin, small: SMALL, huge: HUGE },
+    )
+
+    expect(statuses).toEqual([200, 200])
+    expect(seen).toEqual([
+      { viaProxy: true, length: SMALL },
+      { viaProxy: false, length: HUGE },
+    ])
+  } finally {
+    await h.close()
+  }
+})
+
 test("the SDK's AbortSignal cancels the proxied service-worker fetch", async () => {
   const intake = hangIntake()
   const h = await launch({ handler: intake.handler })

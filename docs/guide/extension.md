@@ -127,6 +127,10 @@ The page origin isn't in the project's allowed-origins list. Add it in the dashb
 
 This used to fire when the injection raced itself on framework dev servers (Next.js Fast Refresh, etc.). It's fixed in current builds — update to the latest extension zip. If you still see it, the launcher should still work; report the environment in an issue.
 
+### Submission fails only for very large reports
+
+The proxy carries the report body through Chrome's extension messaging, which has a hard size cap. Bodies above roughly 30 MB (about 40 MB once encoded) are not proxied; the extension logs `above the … proxy limit; sending through the page's own fetch instead` and lets the browser send the request directly. On a CSP-strict host that direct request may be blocked by `connect-src`. Trim the recording or remove large attachments and resend.
+
 ### Reports take forever / hang
 
 The SDK tries the browser's `getDisplayMedia` API to capture a pixel-perfect screenshot. If you cancel the "Share this tab?" prompt, the wizard closes — that's by design. If the prompt hangs without appearing, check for OS-level screen-recording permission on macOS (System Settings → Privacy & Security → Screen Recording → Chrome).

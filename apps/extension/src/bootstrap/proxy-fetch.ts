@@ -13,7 +13,9 @@
 // bridge.ts), forwarded to the service worker over chrome.runtime.sendMessage,
 // fetched there, and the response is relayed back.
 
-export function installFetchProxy(endpointOrigin: string): void {
+// `maxRawBodyBytes` is computed by the service worker from lib/proxy-limits
+// and passed in as an argument, because this function cannot import it.
+export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: number): void {
   const g = globalThis as unknown as {
     __REPRO_PROXY_INSTALLED__?: boolean
     __REPRO_PROXY_ORIGIN__?: string
@@ -59,6 +61,27 @@ export function installFetchProxy(endpointOrigin: string): void {
     const bytes = new Uint8Array(binary.length)
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
     return bytes.buffer
+  }
+
+  // Raw byte count of a body before base64 inflation. Strings count by
+  // UTF-16 length, which is within a factor of the UTF-8 size and only has
+  // to be a conservative estimate against a limit with headroom.
+  // oxlint-disable-next-line eslint-plugin-unicorn/consistent-function-scoping
+  function rawBodyBytes(body: BodyInit | null | undefined): number {
+    if (body == null) return 0
+    if (typeof body === "string") return body.length
+    if (body instanceof ArrayBuffer) return body.byteLength
+    if (ArrayBuffer.isView(body)) return body.byteLength
+    if (body instanceof Blob) return body.size
+    if (body instanceof FormData) {
+      let total = 0
+      for (const [name, value] of body.entries()) {
+        total += name.length + (typeof value === "string" ? value.length : (value as Blob).size)
+      }
+      return total
+    }
+    if (body instanceof URLSearchParams) return body.toString().length
+    return 0
   }
 
   async function serializeBody(body: BodyInit | null | undefined): Promise<unknown> {
@@ -135,6 +158,18 @@ export function installFetchProxy(endpointOrigin: string): void {
       } catch {
         bodyInit = null
       }
+    }
+    // Chrome caps runtime.sendMessage payloads; a body that would blow past
+    // it after base64 inflation dies inside the bridge with an unhelpful
+    // error and a 60 s hang. Hand it to the page's real fetch instead — on a
+    // CSP-strict host that may be blocked too, but then the SDK sees a
+    // normal, immediate network error rather than a silent stall.
+    const rawBytes = rawBodyBytes(bodyInit)
+    if (rawBytes > maxRawBodyBytes) {
+      console.warn(
+        `[repro-extension] request body is ${rawBytes} bytes, above the ${maxRawBodyBytes}-byte proxy limit; sending through the page's own fetch instead (CSP connect-src may block it)`,
+      )
+      return originalFetch(input, init)
     }
     const body = await serializeBody(bodyInit ?? null)
 
