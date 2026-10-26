@@ -61,6 +61,15 @@ export function Reporter({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const hpRef = useRef<HTMLInputElement>(null)
+  // The post-success auto-close timer. Cleared on unmount so a widget torn
+  // down (init() re-mount, close()) during the 1.5 s doesn't call a stale
+  // onClose into a tree that no longer exists.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current)
+    }
+  }, [])
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [attachmentErrors, setAttachmentErrors] = useState<string[]>([])
   // Saved items the user pulled in through the browse sheet. Kept separate
@@ -244,7 +253,7 @@ export function Reporter({
     }
     if (res.ok) {
       setSuccess(true)
-      setTimeout(onClose, 1500)
+      closeTimer.current = setTimeout(onClose, 1500)
     } else {
       setSubmitError(res.message ?? "Something went wrong.")
     }
