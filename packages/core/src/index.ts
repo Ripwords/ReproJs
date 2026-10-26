@@ -94,7 +94,9 @@ export function init(options: InitOptions): FeedbackHandle {
       }
       const final = _collectors.applyBeforeSend(pending)
       if (final === null) return { ok: false, message: "aborted by beforeSend" }
-      const replay = await _collectors.flushReplay()
+      // Non-destructive snapshot: buffers are only cleared after the POST
+      // succeeds, so a 429/5xx/timeout retry resends the same logs + replay.
+      const replay = await _collectors.snapshotReplay()
       const result = await postReport(_config, {
         title: final.title,
         description: final.description,
@@ -113,8 +115,9 @@ export function init(options: InitOptions): FeedbackHandle {
         dwellMs,
         honeypot,
       })
-      if (result.ok && result.replayDisabled) {
-        _collectors.markReplayDisabled()
+      if (result.ok) {
+        _collectors.clearBuffers()
+        if (result.replayDisabled) _collectors.markReplayDisabled()
       }
       return result.ok ? { ok: true } : { ok: false, message: result.message }
     },

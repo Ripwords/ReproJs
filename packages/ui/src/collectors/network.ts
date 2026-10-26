@@ -34,7 +34,10 @@ export interface NetworkConfig {
 
 export interface NetworkCollector {
   start(config: NetworkConfig): void
+  /** Drains the buffer. Prefer `peek()` + `clear()` so a failed upload can retry with the same logs. */
   snapshot(): NetworkEntry[]
+  peek(): NetworkEntry[]
+  clear(): void
   stop(): void
 }
 
@@ -292,6 +295,12 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
     },
     snapshot() {
       return buffer?.drain() ?? []
+    },
+    peek() {
+      return buffer?.peek() ?? []
+    },
+    clear() {
+      buffer?.clear()
     },
     stop() {
       if (!running) return

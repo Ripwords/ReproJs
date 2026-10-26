@@ -55,7 +55,12 @@ export interface Recorder {
   pause(): void
   resume(): void
   peek(): RecorderEvent[]
+  /** Gzips the current buffer AND empties it. Prefer `snapshotGzipped()` + `clear()`. */
   flushGzipped(opts: { maxBytes: number }): Promise<GzipResult>
+  /** Gzips the current buffer without emptying it, so a failed upload can retry. */
+  snapshotGzipped(opts: { maxBytes: number }): Promise<GzipResult>
+  /** Empties the buffer — call once the upload that consumed the snapshot succeeded. */
+  clear(): void
 }
 
 export function createRecorder(opts: RecorderOptions): Recorder {
@@ -202,6 +207,12 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     async flushGzipped({ maxBytes }) {
       const events = buffer.flush()
       return gzipEvents(events, { maxBytes })
+    },
+    async snapshotGzipped({ maxBytes }) {
+      return gzipEvents(buffer.peek(), { maxBytes })
+    },
+    clear: () => {
+      buffer.flush()
     },
   }
 }

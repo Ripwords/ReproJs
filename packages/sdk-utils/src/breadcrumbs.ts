@@ -17,7 +17,10 @@ export interface BreadcrumbsConfig {
 
 export interface BreadcrumbsCollector {
   start(config: BreadcrumbsConfig): void
+  /** Drains the buffer. Prefer `peek()` + `clear()` so a failed upload can retry with the same logs. */
   snapshot(): Breadcrumb[]
+  peek(): Breadcrumb[]
+  clear(): void
   stop(): void
   breadcrumb: (
     event: string,
@@ -38,6 +41,12 @@ export function createBreadcrumbsCollector(_initial: BreadcrumbsConfig): Breadcr
     },
     snapshot() {
       return buffer?.drain() ?? []
+    },
+    peek() {
+      return buffer?.peek() ?? []
+    },
+    clear() {
+      buffer?.clear()
     },
     stop() {
       running = false

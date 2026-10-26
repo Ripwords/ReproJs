@@ -14,12 +14,14 @@ export interface ReplayCollector {
   stop(): void
   pause(): void
   resume(): void
-  flushGzipped(): Promise<{
+  /** Gzips the buffer without draining it — the buffer is cleared via `clear()` after a successful upload. */
+  snapshotGzipped(): Promise<{
     bytes: Uint8Array | null
     eventCount: number
     durationMs: number
     truncated: boolean
   }>
+  clear(): void
   markDisabled(): void
   isDisabled(): boolean
 }
@@ -58,17 +60,20 @@ export function createReplayCollector(config: ReplayConfig): ReplayCollector {
     resume() {
       recorder?.resume()
     },
-    async flushGzipped() {
+    async snapshotGzipped() {
       if (!recorder || disabled) {
         return { bytes: null, eventCount: 0, durationMs: 0, truncated: false }
       }
-      const result = await recorder.flushGzipped({ maxBytes })
+      const result = await recorder.snapshotGzipped({ maxBytes })
       return {
         bytes: result.bytes,
         eventCount: result.eventCount,
         durationMs: result.durationMs,
         truncated: result.truncated,
       }
+    },
+    clear() {
+      recorder?.clear()
     },
     markDisabled() {
       disabled = true
