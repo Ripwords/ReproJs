@@ -71,5 +71,13 @@
     "react-native-gesture-handler": ">=2.16.0",
     "react-native-svg": ">=15.0.0",
     "react-native-view-shot": ">=3.8.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-document-picker": {
+      "optional": true
+    },
+    "expo-image-picker": {
+      "optional": true
+    }
   }
 }

@@ -45,6 +45,8 @@ npx expo install @reprojs/expo \
 
 `expo install` picks versions matching your Expo SDK channel.
 
+`expo-document-picker` and `expo-image-picker` are **optional** peers: they power the wizard's "Add attachment" sources (Files and Photos). Leave them out and the SDK still works; the first time a reporter taps "Add attachment" it logs a one-time `console.warn` naming the missing module.
+
 `expo-file-system` is what makes the [offline queue](#offline-queue) durable: queued screenshots and picked files are copied into the app's document directory until the report is sent. Without it the queue still works, but attachments stay in temporary storage and are dropped from the report if the OS has purged them by the time it is sent.
 
 ### Minimum versions
@@ -62,8 +64,8 @@ npx expo install @reprojs/expo \
 | `expo-device` | 6 |
 | `expo-constants` | 16 |
 | `expo-file-system` | any (matches your Expo SDK; both the legacy and the SDK 54+ API work) |
-| `expo-document-picker` | any (matches your Expo SDK) |
-| `expo-image-picker` | any (matches your Expo SDK) |
+| `expo-document-picker` | any (matches your Expo SDK); optional |
+| `expo-image-picker` | any (matches your Expo SDK); optional |
 
 ## Add the config plugin
 

@@ -21,6 +21,8 @@ npx expo install @reprojs/expo \
   expo-document-picker expo-image-picker
 ```
 
+`expo-document-picker` and `expo-image-picker` are optional: they power the wizard's "Add attachment" sources (Files and Photos). Without them the picker is unavailable and the SDK logs a one-time `console.warn` the first time a reporter tries to use it.
+
 `expo-file-system` keeps queued attachments in the app's document directory (`repro-queue/`) until the report is sent, so a report written while offline survives an app restart or update. Without it the queue still works, but attachments stay in temporary storage and are dropped from the report if the OS has purged them by the time it is sent.
 
 Add the config plugin to `app.json`:
