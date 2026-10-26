@@ -30,6 +30,17 @@ export interface ReproConfigInput {
   }
   theme?: { accent?: string; mode?: "auto" | "light" | "dark" }
   metadata?: Record<string, string | number | boolean>
+  /** Optional extra form fields. All off by default. */
+  fields?: {
+    /**
+     * Show an optional "Related GitHub issue" input on the details step so a
+     * tester re-testing a known bug can point at it (`#42`, `42`,
+     * `owner/repo#42` or the issue URL). The text is sent as a plain hint
+     * (`relatedIssue`) that a manager confirms in the dashboard; the app never
+     * learns whether the issue exists and never writes to GitHub itself.
+     */
+    relatedIssue?: boolean
+  }
 }
 
 export interface ReproConfig {
@@ -55,6 +66,7 @@ export interface ReproConfig {
   }
   theme: { accent: string; mode: "auto" | "light" | "dark" }
   metadata: Record<string, string | number | boolean>
+  fields: { relatedIssue: boolean }
 }
 
 /**
@@ -105,5 +117,6 @@ export function normalizeConfig(input: ReproConfigInput): ReproConfig | null {
       mode: input.theme?.mode ?? "auto",
     },
     metadata: input.metadata ?? {},
+    fields: { relatedIssue: input.fields?.relatedIssue ?? false },
   }
 }

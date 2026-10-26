@@ -21,6 +21,7 @@ import { ReproProvider } from "@reprojs/expo"
 | `projectKey` | `string` | — | Your project's public key (`rp_pk_…`). Empty string = silent disable. |
 | `intakeUrl` | `string` | — | `https://your-dashboard.example.com/api/intake`. Empty = silent disable. |
 | `reporter` | `{ userId?: string, email?: string, name?: string }` | `null` | Pre-fill the reporter identity. `useRepro().identify(...)` overrides at runtime. |
+| `fields.relatedIssue` | `boolean` | `false` | Show an optional **Related GitHub issue** input on the details step. See [below](#fields-relatedissue). |
 | `collectors.console` | `boolean` | `true` | Patch `console.*` and buffer the last 200 entries. |
 | `collectors.network.enabled` | `boolean` | `true` | Patch `globalThis.fetch` and buffer the last 100 calls. |
 | `collectors.network.captureBodies` | `boolean` | `false` | Reserved for v1.1; currently ignored. |
@@ -60,6 +61,29 @@ Opt-in floating bug-report button. Tap opens the wizard; drag relocates to any o
 | `draggable` | `boolean` | `true` | When `false`, pinned to `position` and ignores the persisted choice. |
 
 The launcher returns `null` when the provider is in silent-disable mode, so it's always safe to render unconditionally.
+
+### `fields.relatedIssue`
+
+Off by default. When on, the details step gets an optional input, **Related GitHub issue**, under the description. It is meant for testers who re-test a known bug and already know which issue it belongs to.
+
+```tsx
+<ReproProvider
+  config={{
+    projectKey: "rp_pk_…",
+    intakeUrl: "https://feedback.example.com/api/intake",
+    fields: { relatedIssue: true },
+  }}
+>
+```
+
+Accepted formats: `42`, `#42`, `owner/repo#42`, `GH-42`, or the issue URL (`https://github.com/owner/repo/issues/42`). Pull-request links are rejected. Text that is not an issue reference blocks **Continue** with an inline hint until it is fixed or cleared. The review step lists the parsed number as "Related issue #42".
+
+The value is sent with the report as a plain-text **hint** (`relatedIssue`) and nothing more:
+
+- The app never fetches or lists issues and never writes to GitHub. It is not told whether the number exists, so a guessed number reveals nothing.
+- The dashboard shows the hint as "Reporter referenced #42" and a manager confirms the link there. Reports carrying a hint are skipped by auto-create, so a wrong number can never open a stray issue.
+
+The same option exists on the web SDK as [`fields.relatedIssue`](/guide/sdk#fields-relatedissue).
 
 ## `useRepro()`
 

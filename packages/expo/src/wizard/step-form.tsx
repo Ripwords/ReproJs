@@ -1,5 +1,5 @@
 import React from "react"
-import { ScrollView, TextInput, View } from "react-native"
+import { ScrollView, Text, TextInput, View } from "react-native"
 import { FieldLabel, inputStyle } from "./controls"
 import { AttachmentList } from "./attachment-list"
 import { theme } from "./theme"
@@ -9,9 +9,17 @@ import {
   type AttachmentLimits,
 } from "@reprojs/sdk-utils"
 
+export const RELATED_ISSUE_PLACEHOLDER = "#123 or issue URL"
+export const RELATED_ISSUE_HINT = "Enter an issue number like #123 or paste the issue link"
+
 interface Props {
   title: string
   description: string
+  /**
+   * Present only when the host enabled `fields.relatedIssue`. `error` is the
+   * inline hint shown while the text cannot be read as an issue reference.
+   */
+  relatedIssue?: { value: string; error: string | null; onChange: (v: string) => void }
   attachments: Attachment[]
   attachmentErrors: string[]
   limits?: AttachmentLimits
@@ -24,6 +32,7 @@ interface Props {
 export function StepForm({
   title,
   description,
+  relatedIssue,
   attachments,
   attachmentErrors,
   limits = DEFAULT_ATTACHMENT_LIMITS,
@@ -63,6 +72,31 @@ export function StepForm({
           style={[inputStyle, { minHeight: 140, textAlignVertical: "top" }]}
         />
       </View>
+      {relatedIssue && (
+        <View style={{ gap: 8 }}>
+          <FieldLabel label="Related GitHub issue" optional />
+          <TextInput
+            value={relatedIssue.value}
+            onChangeText={relatedIssue.onChange}
+            placeholder={RELATED_ISSUE_PLACEHOLDER}
+            placeholderTextColor={theme.color.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            maxLength={300}
+            accessibilityLabel="Related GitHub issue"
+            style={[inputStyle, relatedIssue.error ? { borderColor: theme.color.danger } : null]}
+          />
+          {relatedIssue.error ? (
+            <Text style={{ fontSize: 12, color: theme.color.danger }}>{relatedIssue.error}</Text>
+          ) : (
+            <Text style={{ fontSize: 12, color: theme.color.textMuted }}>
+              Re-testing a known bug? Paste its issue link or number and the team will attach this
+              report to it.
+            </Text>
+          )}
+        </View>
+      )}
       <View style={{ gap: 8 }}>
         <FieldLabel label="Attachments" optional />
         <AttachmentList

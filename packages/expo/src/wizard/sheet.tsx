@@ -10,7 +10,8 @@ import {
 } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { FlattenView, type FlattenHandle } from "../capture/flatten"
-import { StepForm } from "./step-form"
+import { RELATED_ISSUE_HINT, StepForm } from "./step-form"
+import { parseRelatedIssueNumber } from "@reprojs/shared"
 import { StepAnnotate } from "./step-annotate"
 import { StepSubmit, type SummaryLine } from "./step-submit"
 import { createAnnotationStore } from "../annotation/store"
@@ -26,9 +27,13 @@ export interface WizardArgs {
   initialTitle?: string
   initialDescription?: string
   screenshot: { uri: string; width: number; height: number } | null
+  /** Mirrors `ReproConfig.fields`; omitted fields are not rendered. */
+  fields?: { relatedIssue: boolean }
   onSubmit: (result: {
     title: string
     description: string
+    /** Trimmed text of the related-issue field; absent when empty or disabled. */
+    relatedIssue?: string
     annotatedUri: string | null
     rawUri: string | null
     attachments: Attachment[]
@@ -44,12 +49,23 @@ export function WizardSheet({
   initialTitle,
   initialDescription,
   screenshot,
+  fields,
   onSubmit,
   onClose,
 }: WizardArgs) {
   const [step, setStep] = useState<Step>("form")
   const [title, setTitle] = useState(initialTitle ?? "")
   const [description, setDescription] = useState(initialDescription ?? "")
+  // Raw text of the optional "Related GitHub issue" field. Sent verbatim
+  // (trimmed) — the server extracts the number — but text that cannot be read
+  // as an issue reference at all is a typo, so it blocks the form until fixed
+  // or cleared. Nothing here checks whether the issue exists: the app is
+  // anonymous and must not learn anything about the repo.
+  const [relatedIssueText, setRelatedIssueText] = useState("")
+  const showRelatedIssue = fields?.relatedIssue === true
+  const relatedIssue = showRelatedIssue ? relatedIssueText.trim() : ""
+  const relatedIssueNumber = relatedIssue ? parseRelatedIssueNumber(relatedIssue) : null
+  const relatedIssueInvalid = relatedIssue !== "" && relatedIssueNumber === null
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [annotateSize, setAnnotateSize] = useState({ w: 0, h: 0 })
@@ -123,6 +139,7 @@ export function WizardSheet({
       await onSubmit({
         title,
         description,
+        ...(relatedIssue ? { relatedIssue } : {}),
         annotatedUri: annotated,
         rawUri: screenshot?.uri ?? null,
         attachments,
@@ -142,7 +159,9 @@ export function WizardSheet({
     return "Continue"
   }, [step, submitting])
 
-  const primaryDisabled = (step === "form" && titleEmpty) || (step === "submit" && submitting)
+  const primaryDisabled =
+    (step === "form" && (titleEmpty || relatedIssueInvalid)) ||
+    (step === "submit" && (submitting || relatedIssueInvalid))
 
   function handlePrimary() {
     if (step === "form") setStep("annotate")
@@ -174,8 +193,11 @@ export function WizardSheet({
         hint: String(attachments.length),
       })
     }
+    if (relatedIssueNumber !== null) {
+      lines.push({ label: "Related issue", hint: `#${relatedIssueNumber}` })
+    }
     return lines
-  }, [title, screenshot, shapes.length, attachments.length])
+  }, [title, screenshot, shapes.length, attachments.length, relatedIssueNumber])
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
@@ -250,6 +272,15 @@ export function WizardSheet({
               <StepForm
                 title={title}
                 description={description}
+                relatedIssue={
+                  showRelatedIssue
+                    ? {
+                        value: relatedIssueText,
+                        error: relatedIssueInvalid ? RELATED_ISSUE_HINT : null,
+                        onChange: setRelatedIssueText,
+                      }
+                    : undefined
+                }
                 attachments={attachments}
                 attachmentErrors={attachmentErrors}
                 onTitleChange={setTitle}

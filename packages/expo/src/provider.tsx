@@ -231,6 +231,7 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
   async function handleSubmit(res: {
     title: string
     description: string
+    relatedIssue?: string
     annotatedUri: string | null
     rawUri: string | null
     attachments: Attachment[]
@@ -271,6 +272,7 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       projectKey: config.projectKey,
       title: res.title,
       description: res.description || undefined,
+      ...(res.relatedIssue ? { relatedIssue: res.relatedIssue } : {}),
       context: {
         source: "expo",
         pageUrl: "app://current",
@@ -377,6 +379,7 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
           initialTitle={wizardInit.initialTitle}
           initialDescription={wizardInit.initialDescription}
           screenshot={screenshot}
+          fields={config.fields}
           onSubmit={handleSubmit}
           onClose={() => setWizardOpen(false)}
         />

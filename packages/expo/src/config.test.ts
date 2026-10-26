@@ -42,3 +42,14 @@ test("normalizeConfig returns null when projectKey is empty (silent disable)", (
 test("normalizeConfig returns null when intakeUrl is empty (silent disable)", () => {
   expect(normalizeConfig({ projectKey: VALID_KEY, intakeUrl: "" })).toBeNull()
 })
+
+test("normalizeConfig keeps the related-issue field off unless asked for", () => {
+  const off = normalizeConfig({ projectKey: VALID_KEY, intakeUrl: VALID_URL })
+  expect(off?.fields.relatedIssue).toBe(false)
+  const on = normalizeConfig({
+    projectKey: VALID_KEY,
+    intakeUrl: VALID_URL,
+    fields: { relatedIssue: true },
+  })
+  expect(on?.fields.relatedIssue).toBe(true)
+})

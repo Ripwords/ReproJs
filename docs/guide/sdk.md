@@ -302,7 +302,7 @@ The value is sent with the report as a plain-text **hint** (`relatedIssue`) and 
 - The widget never fetches or lists issues and never writes to GitHub — it is anonymous and public, so it is not told whether the number exists.
 - The dashboard shows the hint as "Reporter referenced #42" and a manager confirms the link there. Reports carrying a hint are also skipped by auto-create, so a wrong number can never open a stray issue.
 
-The [Tester extension](/guide/extension) turns this field on per origin by default.
+The [Tester extension](/guide/extension) turns this field on per origin by default. The [Expo SDK](/guide/expo-api#fields-relatedissue) has the same option.
 
 ### `open()` / `close()`
 

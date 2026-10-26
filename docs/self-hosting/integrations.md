@@ -143,7 +143,7 @@ Not every report deserves a new issue. When QA re-tests a known bug, the report 
 
 **Unlinking** an attached report clears the link on the Repro side only; the comment Repro posted stays on GitHub.
 
-The MCP tool `repro_link_github_issue` performs the same attach (see [MCP](../guide/mcp)). Reports from the Expo SDK can be attached from the dashboard like any other, but the mobile widget has no related-issue field yet.
+The MCP tool `repro_link_github_issue` performs the same attach (see [MCP](../guide/mcp)). The Expo SDK has the same optional field (`fields.relatedIssue` on `ReproProvider`), so mobile testers can reference an issue too.
 
 ### Troubleshooting
 

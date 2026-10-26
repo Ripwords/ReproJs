@@ -73,6 +73,10 @@ function MyScreen() {
 }
 ```
 
+### Linking re-tests to a known issue
+
+Pass `fields: { relatedIssue: true }` in `config` to add an optional **Related GitHub issue** input to the form. Testers paste the issue link or number (`#42`); the dashboard shows it as "Reporter referenced #42" and a manager attaches the report to that issue as a comment. The app itself never talks to GitHub. Details in the [API reference](https://ripwords.github.io/ReproJs/guide/expo-api#fields-relatedissue).
+
 ## Pointing at a local dashboard
 
 `localhost` resolves to the *device*, not your laptop:
