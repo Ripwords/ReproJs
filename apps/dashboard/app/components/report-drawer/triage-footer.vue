@@ -14,8 +14,8 @@ import type {
   ReportDetailDTO,
   ReportPriority,
   ReportStatus,
-  ReportSummaryDTO,
 } from "@reprojs/shared"
+import RelativeTime from "~/components/common/relative-time.vue"
 import LabelsPicker from "./pickers/labels-picker.vue"
 import AssigneesPicker from "./pickers/assignees-picker.vue"
 import MilestonePicker from "./pickers/milestone-picker.vue"
@@ -32,7 +32,7 @@ import { useGithubIntegration } from "~/composables/use-github-integration"
 
 interface Props {
   projectId: string
-  report: ReportSummaryDTO
+  report: ReportDetailDTO
   canEdit: boolean
   /** Creating a new label on the linked repo is developer+ on the server. */
   canCreateLabels: boolean
@@ -123,6 +123,43 @@ async function createIssue() {
   }
 }
 
+// ---- Sync job state (reconcile job for this report) ----
+const syncJob = computed(() => props.report.githubSync ?? null)
+const syncFailed = computed(() => syncJob.value?.state === "failed")
+const syncInFlight = computed(
+  () => syncJob.value?.state === "pending" || syncJob.value?.state === "syncing",
+)
+const retrying = ref(false)
+
+// Retry = re-enqueue the reconcile job (same endpoint as "Create issue" and
+// the Integrations page's per-report Retry). The row flips to pending and
+// the SSE stream refreshes the report when the worker finishes.
+async function retrySync() {
+  retrying.value = true
+  try {
+    await $fetch(`/api/projects/${props.projectId}/reports/${props.report.id}/github-sync`, {
+      method: "POST",
+      credentials: "include",
+    })
+    emit("patched")
+    toast.add({
+      title: "Retry queued",
+      description: "The issue sync will run again in a moment.",
+      color: "success",
+      icon: "i-heroicons-check-circle",
+    })
+  } catch (err) {
+    toast.add({
+      title: "Could not retry",
+      description: describeApiError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
+  } finally {
+    retrying.value = false
+  }
+}
+
 async function unlink() {
   try {
     await $fetch(`/api/projects/${props.projectId}/reports/${props.report.id}/github-unlink`, {
@@ -196,9 +233,11 @@ const labelsSummary = computed(() => {
   return `${n} ${n === 1 ? "label" : "labels"}`
 })
 const githubSummary = computed(() => {
+  if (syncFailed.value) return "Sync failed"
   if (props.report.githubIssueNumber && props.report.githubIssueUrl) {
     return `#${props.report.githubIssueNumber}`
   }
+  if (syncInFlight.value) return "Syncing…"
   return githubReady.value ? "Not linked" : "Not configured"
 })
 
@@ -392,6 +431,44 @@ const priorityDotClass = computed<string>(() => {
         />
       </button>
       <div v-show="open.github" class="flex flex-col gap-2 pt-1">
+        <!-- Failed sync: the error and attempt count were previously only
+             visible on the Integrations page. Retry re-enqueues the job. -->
+        <div
+          v-if="syncFailed && syncJob"
+          class="flex flex-col gap-2 rounded-lg border border-error/30 bg-error/5 p-3"
+          role="status"
+        >
+          <div class="flex items-start gap-2">
+            <UIcon
+              name="i-heroicons-exclamation-triangle"
+              class="size-4 text-error shrink-0 mt-0.5"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold text-default">GitHub sync failed</p>
+              <p class="mt-0.5 text-sm text-muted break-words">
+                {{ syncJob.lastError ?? "Unknown error" }}
+              </p>
+              <p class="mt-1 text-sm text-muted tabular-nums">
+                {{ syncJob.attempts }} attempt{{ syncJob.attempts === 1 ? "" : "s" }} · last tried
+                <RelativeTime :value="syncJob.updatedAt" />
+              </p>
+            </div>
+          </div>
+          <UButton
+            v-if="canEdit"
+            label="Retry sync"
+            icon="i-heroicons-arrow-path"
+            size="sm"
+            color="neutral"
+            variant="outline"
+            block
+            :loading="retrying"
+            :disabled="!githubReady"
+            @click="retrySync"
+          />
+          <p v-else class="text-sm text-muted">A project manager or higher can retry the sync.</p>
+        </div>
+
         <template v-if="report.githubIssueNumber && report.githubIssueUrl">
           <a
             :href="safeHref(report.githubIssueUrl)"
@@ -423,6 +500,15 @@ const priorityDotClass = computed<string>(() => {
             <span>Unlink issue</span>
           </button>
         </template>
+
+        <div
+          v-else-if="githubReady && syncInFlight && !syncFailed"
+          class="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-default bg-elevated/40 text-sm text-muted"
+          role="status"
+        >
+          <UIcon name="i-heroicons-arrow-path" class="size-4 animate-spin shrink-0" />
+          <span>Creating the GitHub issue…</span>
+        </div>
 
         <UButton
           v-else-if="githubReady"
