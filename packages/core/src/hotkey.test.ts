@@ -89,6 +89,18 @@ describe("attachHotkey", () => {
     expect(hits).toBe(1)
   })
 
+  test("alt-combos match on event.code when macOS turns the key into a symbol", () => {
+    let hits = 0
+    const detach = attachHotkey("alt+b", () => hits++)
+    // macOS: alt+b yields "∫" in event.key; the physical key is still KeyB.
+    dispatch({ altKey: true, key: "∫", code: "KeyB" })
+    expect(hits).toBe(1)
+    // A different physical key with the same symbol-ish key must not fire.
+    dispatch({ altKey: true, key: "∫", code: "KeyX" })
+    expect(hits).toBe(1)
+    detach()
+  })
+
   test("ignores keydowns whose target is an editable element", () => {
     let hits = 0
     const detach = attachHotkey("ctrl+shift+b", () => hits++)
