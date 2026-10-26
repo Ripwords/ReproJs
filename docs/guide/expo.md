@@ -188,7 +188,7 @@ Pass `position` as the initial corner before the user has dragged it; after the 
 
 - **Screenshot** — single annotated PNG. Flattened client-side into a transparent-letterbox PNG so the host app's dark surface shows through on the dashboard.
 - **Console** — last 200 entries of `console.log / info / warn / error / debug`. Stack traces on warn + error.
-- **Network** — last 100 `fetch` calls. Method, URL, status, duration, bytes, headers. Headers `authorization`, `cookie`, `x-api-key` are redacted by default. XHR patching is v1.1.
+- **Network** — last 100 `fetch` calls. Method, URL, status, duration, bytes, headers. Headers `authorization`, `cookie`, `x-api-key` are redacted by default. Only `fetch` is patched: requests made through `XMLHttpRequest`, including axios (which uses XHR on React Native), are not recorded.
 - **Breadcrumbs** — custom events via `useRepro().log(event, data)`. Last 50.
 - **Device** — iOS/Android, OS version, device model, app version + build, locale, timezone, viewport + screen size, DPR, connectivity (`4g`, `wifi`, etc.).
 

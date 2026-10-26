@@ -108,7 +108,7 @@ Every report bundles:
 
 - Annotated screenshot (PNG)
 - Console logs (last 200 entries)
-- Fetch network requests (last 100)
+- `fetch` requests (last 100) — XHR/axios traffic is not captured
 - User breadcrumbs (`repro.log(event, data)`)
 - Device context: OS, version, model, app version, locale, connectivity
 
