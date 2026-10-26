@@ -1,6 +1,7 @@
 import type { ShareMintResponse } from "@reprojs/shared"
 import type { TrimRange } from "@reprojs/sdk-utils"
 import type { ResolvedConfig } from "./config"
+import { timeoutSignal } from "./timeout-signal"
 
 export interface ShareLinkInput {
   blob: Blob
@@ -72,7 +73,7 @@ export async function mintShareLink(
       method: "POST",
       body,
       credentials: "omit",
-      signal: AbortSignal.timeout(60_000),
+      signal: timeoutSignal(60_000),
     })
     if (!res.ok) {
       return { ok: false, message: messageForStatus(res.status) }

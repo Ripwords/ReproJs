@@ -1,6 +1,7 @@
 import type { IntakeResponse, LogsAttachment, MediaMetaEntry, ReportContext } from "@reprojs/shared"
 import type { Attachment, TrimRange } from "@reprojs/sdk-utils"
 import type { ResolvedConfig } from "./config"
+import { timeoutSignal } from "./timeout-signal"
 
 /** A single gallery media item selected for a report. Serialized as a
  * `media[i]` multipart part plus one aligned entry in the `mediaMeta` JSON. */
@@ -114,7 +115,7 @@ export async function postReport(
       method: "POST",
       body,
       credentials: "omit",
-      signal: AbortSignal.timeout(30_000),
+      signal: timeoutSignal(30_000),
     })
     if (res.ok) {
       const data = (await res.json()) as IntakeResponse

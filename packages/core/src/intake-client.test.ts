@@ -138,3 +138,21 @@ test("postReport serializes media as media[N] parts + an aligned mediaMeta and n
     fake.restore()
   }
 })
+
+test("postReport still posts when AbortSignal.timeout is unavailable (Safari < 16)", async () => {
+  const fake = installFakeFetch({ status: 201, body: { id: "r1" } })
+  const original = AbortSignal.timeout
+  ;(AbortSignal as { timeout?: unknown }).timeout = undefined
+  try {
+    const result = await postReport(fakeConfig, {
+      title: "t",
+      description: "",
+      context: fakeContext,
+    })
+    expect(result.ok).toBe(true)
+    expect(fake.calls[0]?.init?.signal).toBeInstanceOf(AbortSignal)
+  } finally {
+    AbortSignal.timeout = original
+    fake.restore()
+  }
+})
