@@ -2,7 +2,6 @@ import {
   createError,
   defineEventHandler,
   getHeader,
-  getRequestIP,
   readMultipartFormData,
   setResponseHeader,
 } from "h3"
@@ -19,6 +18,7 @@ import {
 } from "../../lib/intake-cors"
 import { enqueueSync } from "../../lib/enqueue-sync"
 import { env } from "../../lib/env"
+import { getClientIp } from "../../lib/client-ip"
 import { getAnonKeyLimiter, getIpLimiter, getKeyLimiter } from "../../lib/rate-limit"
 import { getStorage } from "../../lib/storage"
 import { scanBytes } from "../../lib/clamav"
@@ -103,7 +103,7 @@ export default defineEventHandler(async (event) => {
       : rawOrigin
   // TRUST_XFF is OFF by default — a public deployment must not be trivially
   // rate-limit-bypassed via a spoofed X-Forwarded-For header.
-  const ip = getRequestIP(event, { xForwardedFor: env.TRUST_XFF }) ?? "unknown"
+  const ip = getClientIp(event)
 
   // Pre-buffer size gate: readMultipartFormData below buffers the ENTIRE body
   // into RAM before any other check runs, so an oversized (or maliciously huge)
