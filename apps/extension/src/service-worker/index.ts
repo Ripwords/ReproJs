@@ -94,6 +94,25 @@ async function tryInject(tabId: number, url: string): Promise<void> {
   }
 }
 
+// Primary trigger: the main frame's DOM is parsed. This fires even when the
+// page never reaches `complete` — a hanging image, a long-poll iframe, or a
+// slow third-party script keeps `document.readyState` at "interactive"
+// indefinitely, and testers were seeing the launcher appear late or never on
+// such pages. `webNavigation` events are per-frame; only the top frame
+// (frameId 0) is injectable, matching the executeScript targets below.
+chrome.webNavigation.onCommitted.addListener(({ tabId, frameId }) => {
+  // A new document is committed in the main frame — the previous page world
+  // (and the SDK in it) is gone. Fires for fresh loads, URL changes AND
+  // reloads, so it is the most reliable place to drop the dedupe slot.
+  if (frameId !== 0) return
+  injectedForTab.delete(tabId)
+})
+
+chrome.webNavigation.onDOMContentLoaded.addListener(({ tabId, frameId, url }) => {
+  if (frameId !== 0) return
+  void tryInject(tabId, url)
+})
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // A real navigation (fresh load, URL change, OR page refresh) starts with
   // `status: "loading"`. The page-world SDK is gone as of this event, so
@@ -107,6 +126,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     injectedForTab.delete(tabId)
     return
   }
+  // Fallback trigger. webNavigation.onDOMContentLoaded above normally wins;
+  // `complete` catches the cases where it did not (service worker revived
+  // mid-load and missed the event, or the DOMContentLoaded inject failed
+  // and cleared its slot). The dedupe Map makes the second call a no-op
+  // when the first one succeeded.
   if (changeInfo.status !== "complete") return
   if (!tab.url) return
   void tryInject(tabId, tab.url)

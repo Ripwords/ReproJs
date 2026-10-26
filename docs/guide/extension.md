@@ -85,7 +85,8 @@ Other permissions:
 | `storage` | Stores the tester's local list of `{ label, origin, project key, intake endpoint }` entries. Never transmitted. |
 | `scripting` | Injects the bundled SDK into pages whose origin the tester has configured + granted permission for. |
 | `activeTab` | Ensures the SDK can run on the current tab when the user interacts with the extension. |
-| `tabs` | Lets the service worker observe `tabs.onUpdated` so it knows when to inject on a page load. Only the URL is read; tab titles, favicons, and content are not accessed. |
+| `tabs` | Lets the service worker observe `tabs.onUpdated` as a fallback injection trigger once a page reports `complete`. Only the URL is read; tab titles, favicons, and content are not accessed. |
+| `webNavigation` | Lets the service worker inject as soon as the page's DOM is parsed (`onDOMContentLoaded`) instead of waiting for every image and long-poll request to finish. Without it, pages that never reach `complete` would never get the launcher. Only the tab id, frame id, and URL of the navigation are read. |
 
 ## Data flow
 
