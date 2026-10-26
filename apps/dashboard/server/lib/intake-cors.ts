@@ -1,5 +1,6 @@
 import type { H3Event } from "h3"
 import { getHeader, setHeaders } from "h3"
+import { normalizeOrigin } from "@reprojs/shared"
 import { env } from "./env"
 
 /**
@@ -60,7 +61,15 @@ export function isOriginAllowed(
   opts?: { allowEmpty?: boolean },
 ): boolean {
   if (!origin) return opts?.allowEmpty === true
-  if (allowed.length > 0) return allowed.includes(origin)
+  if (allowed.length > 0) {
+    // Exact match on canonical origins. Browsers already send a canonical
+    // `Origin`; normalising both sides covers allow-list rows written before
+    // project settings normalised on save (trailing slash, path, mixed case)
+    // and the extension's X-Repro-Origin fallback.
+    const wanted = normalizeOrigin(origin)
+    if (!wanted) return false
+    return allowed.some((entry) => normalizeOrigin(entry) === wanted)
+  }
   if (env.NODE_ENV !== "development") return false
   try {
     const u = new URL(origin)
