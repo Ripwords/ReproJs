@@ -45,10 +45,17 @@ export interface PendingShareInput {
   trim?: TrimRange
 }
 
+export interface ReporterFields {
+  // Render the optional "Related GitHub issue" input. Off by default so
+  // existing embeds are unchanged; the extension turns it on for testers.
+  relatedIssue: boolean
+}
+
 export interface MountOptions {
   config: {
     position: "bottom-right" | "bottom-left" | "top-right" | "top-left"
     launcher: boolean
+    fields?: ReporterFields
   }
   capture: () => Promise<Blob | null>
   // Wraps core's startScreenRecording. Resolves null when recording is denied
@@ -71,6 +78,9 @@ export interface MountOptions {
     attachments: Attachment[]
     dwellMs: number
     honeypot: string
+    // Trimmed reporter-typed issue reference; absent when the field is off
+    // or left empty.
+    relatedIssue?: string
   }) => Promise<ReporterSubmitResult>
   // Fired when the widget leaves the "closed" mode (launcher click, hotkey, or
   // any programmatic open). Core uses it to pause the rolling replay buffer so
@@ -575,6 +585,7 @@ function App() {
       gallery,
       sessionMedia,
       preselectedId: preselect ?? undefined,
+      fields: opts?.config.fields,
       onCaptureNow: () => {
         returnToReportRef.current = true
         setMode("capture")

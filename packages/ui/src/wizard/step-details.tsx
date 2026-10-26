@@ -9,9 +9,20 @@ import {
   type AttachmentLimits,
 } from "@reprojs/sdk-utils"
 
+export interface RelatedIssueField {
+  value: string
+  // Inline hint shown under the input while the text is not an issue
+  // reference; null when the field is empty or parses.
+  error: string | null
+  onChange: (v: string) => void
+}
+
 interface Props {
   title: string
   description: string
+  // Present only when the host enabled fields.relatedIssue — the input is
+  // otherwise not rendered at all.
+  relatedIssue?: RelatedIssueField | undefined
   attachments: Attachment[]
   attachmentErrors: string[]
   mediaItems: GalleryItem[]
@@ -31,6 +42,7 @@ interface Props {
 export function StepDetails({
   title,
   description,
+  relatedIssue,
   attachments,
   attachmentErrors,
   mediaItems,
@@ -76,6 +88,24 @@ export function StepDetails({
           onInput: (e: Event) => onDescriptionChange((e.target as HTMLTextAreaElement).value),
         }),
       ),
+      relatedIssue
+        ? h(
+            "div",
+            { class: "ft-field" },
+            h(FieldLabel, { label: "Related GitHub issue", optional: true }),
+            h("input", {
+              type: "text",
+              value: relatedIssue.value,
+              maxLength: 300,
+              placeholder: "#123 or issue URL",
+              autoComplete: "off",
+              spellcheck: false,
+              "aria-invalid": relatedIssue.error ? "true" : undefined,
+              onInput: (e: Event) => relatedIssue.onChange((e.target as HTMLInputElement).value),
+            }),
+            relatedIssue.error ? h("div", { class: "ft-field-error" }, relatedIssue.error) : null,
+          )
+        : null,
       h(
         "div",
         { class: "ft-field" },

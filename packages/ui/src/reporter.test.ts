@@ -97,6 +97,7 @@ function makeGallery(items: GalleryItem[]): GalleryStore {
 }
 
 interface RenderOpts {
+  fields?: { relatedIssue: boolean }
   gallery?: GalleryStore | null
   sessionMedia?: GalleryItem[]
   preselectedId?: string
@@ -117,12 +118,27 @@ function renderReporter(win: Window, opts: RenderOpts = {}) {
       gallery: opts.gallery ?? null,
       sessionMedia: opts.sessionMedia ?? [],
       preselectedId: opts.preselectedId,
+      fields: opts.fields,
       onCaptureNow: opts.onCaptureNow ?? (() => {}),
       onRecordNow: opts.onRecordNow ?? (() => {}),
     }),
     root as unknown as Element,
   )
   return root as unknown as Element
+}
+
+const RELATED_PLACEHOLDER = "#123 or issue URL"
+
+function findInputByPlaceholder(root: Element, placeholder: string): HTMLInputElement | null {
+  const input = collectByTag(root, "input").find(
+    (el) => el.getAttribute("placeholder") === placeholder,
+  )
+  return (input as unknown as HTMLInputElement | undefined) ?? null
+}
+
+function typeInto(win: Window, input: HTMLInputElement, value: string) {
+  input.value = value
+  input.dispatchEvent(new win.Event("input", { bubbles: true }))
 }
 
 async function fillTitleAndContinue(win: Window, root: Element) {
@@ -367,5 +383,99 @@ describe("Reporter", () => {
     findButtonByText(root, "Record now").click()
     expect(capturedNow).toBe(true)
     expect(recordedNow).toBe(true)
+  })
+
+  // The related-issue hint is a public, anonymous field: it must stay out of
+  // the DOM entirely unless the host opted in, so existing embeds see no
+  // change.
+  test("does not render the related-issue field unless fields.relatedIssue is on", async () => {
+    const win = setupDom()
+    let payload: Record<string, unknown> | undefined
+    const root = renderReporter(win, {
+      gallery: null,
+      onSubmit: async (p) => {
+        payload = p as Record<string, unknown>
+        return { ok: true }
+      },
+    })
+    await flush()
+    expect(findInputByPlaceholder(root, RELATED_PLACEHOLDER)).toBeNull()
+    expect(root.textContent).not.toContain("Related GitHub issue")
+
+    await fillTitleAndContinue(win, root)
+    expect(root.textContent).not.toContain("Related issue")
+    findButtonByText(root, "Send report").click()
+    await flush()
+    expect(payload).toBeTruthy()
+    expect("relatedIssue" in (payload ?? {})).toBe(false)
+  })
+
+  test("sends the trimmed reference as relatedIssue and lists it in the review summary", async () => {
+    const win = setupDom()
+    let payload: Record<string, unknown> | undefined
+    const root = renderReporter(win, {
+      gallery: null,
+      fields: { relatedIssue: true },
+      onSubmit: async (p) => {
+        payload = p as Record<string, unknown>
+        return { ok: true }
+      },
+    })
+    await flush()
+    const related = findInputByPlaceholder(root, RELATED_PLACEHOLDER)
+    if (!related) throw new Error("related-issue input missing")
+    expect(related.maxLength).toBe(300)
+    typeInto(win, related, "  #42 ")
+    await flush()
+
+    await fillTitleAndContinue(win, root)
+    expect(root.textContent).toContain("Related issue")
+    expect(root.textContent).toContain("#42")
+
+    findButtonByText(root, "Send report").click()
+    await flush()
+    expect(payload?.relatedIssue).toBe("#42")
+  })
+
+  test("a reference that is not an issue blocks Continue until it parses or is cleared", async () => {
+    const win = setupDom()
+    let payload: Record<string, unknown> | undefined
+    const root = renderReporter(win, {
+      gallery: null,
+      fields: { relatedIssue: true },
+      onSubmit: async (p) => {
+        payload = p as Record<string, unknown>
+        return { ok: true }
+      },
+    })
+    await flush()
+    const title = walkForTag(root, "input") as unknown as HTMLInputElement
+    typeInto(win, title, "Bug title")
+    const related = findInputByPlaceholder(root, RELATED_PLACEHOLDER)
+    if (!related) throw new Error("related-issue input missing")
+
+    // A PR link is not an issue reference — blocked, with a hint.
+    typeInto(win, related, "https://github.com/acme/app/pull/7")
+    await flush()
+    expect(findButtonByText(root, "Continue").disabled).toBe(true)
+    expect(root.textContent).toContain("Enter an issue number like #123")
+
+    // Fixing it to an issue URL unblocks and the hint goes away.
+    typeInto(win, related, "https://github.com/acme/app/issues/7")
+    await flush()
+    expect(findButtonByText(root, "Continue").disabled).toBe(false)
+    expect(root.textContent).not.toContain("Enter an issue number like #123")
+
+    // Clearing it is also fine: an empty hint is simply not sent.
+    typeInto(win, related, "   ")
+    await flush()
+    expect(findButtonByText(root, "Continue").disabled).toBe(false)
+    findButtonByText(root, "Continue").click()
+    await flush()
+    expect(root.textContent).not.toContain("Related issue")
+    findButtonByText(root, "Send report").click()
+    await flush()
+    expect(payload).toBeTruthy()
+    expect(payload?.relatedIssue).toBeUndefined()
   })
 })
