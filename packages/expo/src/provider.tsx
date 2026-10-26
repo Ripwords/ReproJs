@@ -183,6 +183,32 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     }
   }, [runFlush])
 
+  /**
+   * Layout size of the root view. `onLayout` normally supplies it, but the
+   * wizard can be opened (e.g. `Repro.open()` on mount) before that first
+   * event, and a 0x0 size makes the annotate step a blank canvas. Measure
+   * live in that case; give up after a short wait rather than hang.
+   */
+  async function resolveRootSize(): Promise<{ w: number; h: number }> {
+    if (rootSize.w > 0 && rootSize.h > 0) return rootSize
+    const node = rootRef.current
+    if (!node) return rootSize
+    const measured = new Promise<{ w: number; h: number } | null>((resolve) => {
+      node.measure((_x, _y, width, height) => {
+        const size = { w: Math.round(width), h: Math.round(height) }
+        resolve(size.w > 0 && size.h > 0 ? size : null)
+      })
+    })
+    // `measure` never calls back for a view that is not laid out yet.
+    const gaveUp = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), 250)
+    })
+    const size = await Promise.race([measured, gaveUp])
+    if (!size) return rootSize
+    setRootSize(size)
+    return size
+  }
+
   async function openWizard(opts?: { initialTitle?: string; initialDescription?: string }) {
     setWizardInit(opts ?? {})
     wizardOpenedAtRef.current = Date.now()
@@ -193,8 +219,8 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       return
     }
     try {
-      const shot = await captureView(rootRef)
-      setScreenshot({ uri: shot.uri, width: rootSize.w, height: rootSize.h })
+      const [shot, size] = await Promise.all([captureView(rootRef), resolveRootSize()])
+      setScreenshot({ uri: shot.uri, width: size.w, height: size.h })
     } catch (err) {
       console.warn("[repro] screenshot capture failed — opening wizard anyway", err)
       setScreenshot(null)
@@ -315,8 +341,8 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     openWizard,
     closeWizard: () => setWizardOpen(false),
     captureRoot: async () => {
-      const shot = await captureView(rootRef)
-      return { ...shot, width: rootSize.w, height: rootSize.h }
+      const [shot, size] = await Promise.all([captureView(rootRef), resolveRootSize()])
+      return { ...shot, width: size.w, height: size.h }
     },
     snapshotBreadcrumbs: () => breadcrumbsRef.current.snapshot(),
     // Reads the flusher's real snapshot. This used to be a hardcoded
