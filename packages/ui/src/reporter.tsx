@@ -89,9 +89,12 @@ export function Reporter({
   }, [mediaItems])
 
   useEffect(() => {
+    // Restore whatever the host had set (e.g. its own modal's "hidden"), not
+    // "" — clearing it unconditionally re-enabled scrolling behind host UI.
+    const previous = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
-      document.body.style.overflow = ""
+      document.body.style.overflow = previous
     }
   }, [])
 
