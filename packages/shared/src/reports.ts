@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { GithubLinkKind } from "./github"
 
 export const ReporterIdentity = z.object({
   userId: z.string().optional(),
@@ -208,6 +209,10 @@ export const ReportIntakeInput = z.object({
   description: z.string().max(10_000).optional(),
   context: ReportContext,
   metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  // Reporter-supplied reference to an existing GitHub issue ("#42", "42", or
+  // an issue URL). Stored as a hint only: nothing is written to GitHub until
+  // a manager confirms it in the dashboard. See parseRelatedIssueNumber.
+  relatedIssue: z.string().trim().max(300).optional(),
   // Anti-abuse: honeypot (hidden field that real users never fill) and
   // dwell time in ms between widget open and submit.
   _hp: z.string().max(200).optional(),
@@ -284,6 +289,15 @@ export const ReportSummaryDTO = z.object({
   tags: z.array(z.string()),
   githubIssueNumber: z.number().int().nullable(),
   githubIssueUrl: z.string().nullable(),
+  /**
+   * How the report came to be linked. `created`: Repro opened the issue and
+   * pushes title/status/labels/assignees/milestone to it. `attached`: the
+   * report was linked to a pre-existing issue; it follows the issue and only
+   * ever adds comments. Null when unlinked.
+   */
+  githubLinkKind: GithubLinkKind.nullable(),
+  /** Issue number the reporter typed into the widget; cleared once linked. */
+  reporterIssueHint: z.number().int().nullable(),
   assignees: z.array(ReportAssigneeDTO).default([]),
   milestoneNumber: z.number().int().nullable(),
   milestoneTitle: z.string().nullable(),
