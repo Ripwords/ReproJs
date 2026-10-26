@@ -38,6 +38,8 @@ export default defineEventHandler(async (event): Promise<ReportDetailDTO> => {
       devicePlatform: reports.devicePlatform,
       githubIssueNumber: reports.githubIssueNumber,
       githubIssueUrl: reports.githubIssueUrl,
+      githubLinkKind: reports.githubLinkKind,
+      reporterIssueHint: reports.reporterIssueHint,
       milestoneNumber: reports.milestoneNumber,
       milestoneTitle: reports.milestoneTitle,
     })
@@ -132,6 +134,8 @@ export default defineEventHandler(async (event): Promise<ReportDetailDTO> => {
     devicePlatform: row.devicePlatform ?? null,
     githubIssueNumber: row.githubIssueNumber ?? null,
     githubIssueUrl: row.githubIssueUrl ?? null,
+    githubLinkKind: row.githubLinkKind ?? null,
+    reporterIssueHint: row.reporterIssueHint ?? null,
     milestoneNumber: row.milestoneNumber ?? null,
     milestoneTitle: row.milestoneTitle ?? null,
     assignees: assigneeRows

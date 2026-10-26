@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm"
 import {
+  bigint,
   check,
   index,
   integer,
@@ -48,6 +49,18 @@ export const reports = pgTable(
     githubIssueNumber: integer("github_issue_number"),
     githubIssueNodeId: text("github_issue_node_id"),
     githubIssueUrl: text("github_issue_url"),
+    // How the report got its issue. "created" = Repro opened the issue and
+    // pushes title/labels/state/assignees/milestone to it. "attached" = the
+    // report was linked to a pre-existing issue and only follows it: nothing
+    // is pushed except comments. NULL when unlinked.
+    githubLinkKind: text("github_link_kind", { enum: ["created", "attached"] }),
+    // Id of the one-time comment carrying the report body on an attached
+    // issue. Set after the comment is posted so a reconcile retry never posts
+    // a second copy.
+    githubAttachCommentId: bigint("github_attach_comment_id", { mode: "number" }),
+    // Issue number the reporter typed into the widget. Plain data: nothing
+    // touches GitHub until a manager attaches the report. Cleared on link.
+    reporterIssueHint: integer("reporter_issue_hint"),
     milestoneNumber: integer("milestone_number"),
     milestoneTitle: text("milestone_title"),
     githubSyncedAt: timestamp("github_synced_at", { withTimezone: true, mode: "date" }),

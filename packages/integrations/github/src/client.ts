@@ -19,6 +19,9 @@ import type {
 } from "./types"
 import { listRepoLabels, listAssignableUsers, listMilestones, createLabel } from "./repo-read"
 import type { CreateLabelInput } from "./repo-read"
+import { getIssueSummary, listIssues } from "./issue-read"
+import type { ListIssuesInput } from "./issue-read"
+export { getIssueSummary, listIssues } from "./issue-read"
 export {
   updateIssueTitle,
   updateIssueMilestone,
@@ -165,5 +168,8 @@ export function createInstallationClient(
       listMilestones(octokit, owner, repo, state),
     createLabel: (owner: string, repo: string, input: CreateLabelInput) =>
       createLabel(octokit, owner, repo, input),
+    getIssueSummary: (owner: string, repo: string, issueNumber: number) =>
+      getIssueSummary(octokit, owner, repo, issueNumber),
+    listIssues: (input: ListIssuesInput) => listIssues(octokit, input),
   }
 }

@@ -18,13 +18,23 @@ export interface LinkToIssueArgs extends LinkArgs {
   repoOwner: string
   repoName: string
   issueNumber: number
+  /** GraphQL node id of the verified issue, when the caller fetched it. */
+  issueNodeId?: string | null
+  /** Title of the verified issue; recorded in the event payload for the timeline. */
+  issueTitle?: string | null
 }
 
 /**
- * Link a Repro report to an existing GitHub issue. Sets reports.githubIssueNumber/Url
- * and inserts a report_events row of kind "github_linked". Caller should follow up
- * with linkReportToGithubIssueSideEffects() to enqueue the sync job that pulls
- * the issue's labels/assignees/state from GitHub on the next reconciler tick.
+ * Attach a Repro report to an issue that already exists on GitHub. Sets
+ * reports.githubIssueNumber/Url with githubLinkKind = "attached", clears the
+ * reporter's hint and inserts a report_events row of kind "github_linked".
+ * Caller should follow up with linkReportToGithubIssueSideEffects() to enqueue
+ * the sync job: for an attached report the reconciler posts the report body as
+ * ONE issue comment and otherwise only follows the issue (it never pushes
+ * title/labels/state/assignees/milestone).
+ *
+ * Callers must verify the issue exists in the project's repo first (see
+ * `attachReportToGithubIssue` in github-attach.ts); this function trusts its input.
  *
  * Throws via h3 createError on:
  *   - 404 if report doesn't exist or doesn't match projectId
@@ -72,7 +82,11 @@ export async function linkReportToGithubIssue(
       .update(reports)
       .set({
         githubIssueNumber: args.issueNumber,
+        githubIssueNodeId: args.issueNodeId ?? null,
         githubIssueUrl: issueUrl,
+        githubLinkKind: "attached",
+        githubAttachCommentId: null,
+        reporterIssueHint: null,
         updatedAt: new Date(),
       })
       .where(eq(reports.id, args.reportId))
@@ -88,6 +102,8 @@ export async function linkReportToGithubIssue(
         repoName: args.repoName,
         number: args.issueNumber,
         url: issueUrl,
+        kind: "attached",
+        ...(args.issueTitle ? { title: args.issueTitle } : {}),
       },
     })
   }
@@ -115,9 +131,9 @@ export async function linkReportToGithubIssueSideEffects(args: LinkSideEffectArg
  * Unlink a report from its GitHub issue. Idempotent — returns
  * { ok: true, unlinked: false } if nothing was linked.
  *
- * Side effects (all in-tx): clears githubIssueNumber/NodeId/Url columns on
- * reports, deletes pending report_sync_jobs rows, inserts a "github_unlinked"
- * report_event.
+ * Side effects (all in-tx): clears githubIssueNumber/NodeId/Url, the link kind
+ * and the attach-comment id on reports, deletes pending report_sync_jobs rows,
+ * inserts a "github_unlinked" report_event.
  *
  * No post-commit side effects — the unlink does NOT push back to GitHub.
  */
@@ -141,6 +157,8 @@ export async function unlinkReportFromGithubIssue(
       githubIssueNumber: null,
       githubIssueNodeId: null,
       githubIssueUrl: null,
+      githubLinkKind: null,
+      githubAttachCommentId: null,
       updatedAt: new Date(),
     })
     .where(eq(reports.id, args.reportId))
@@ -156,6 +174,7 @@ export async function unlinkReportFromGithubIssue(
     payload: {
       number: current.githubIssueNumber,
       url: current.githubIssueUrl,
+      kind: current.githubLinkKind,
     },
   })
 
