@@ -31,6 +31,8 @@ import { reconcileReport } from "../../server/lib/github-reconcile"
 
 await setup({ server: true, port: 3000, host: "localhost" })
 
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+
 const PK = "rp_pk_GHUB1234567890abcdef1234"
 const ORIGIN = "http://localhost:4000"
 
@@ -112,7 +114,7 @@ describe("github integration — install + config", () => {
       exp: Math.floor(Date.now() / 1000) + 600,
     })
     const res = await fetch(
-      `http://localhost:3000/api/integrations/github/install-callback?installation_id=99&state=${encodeURIComponent(state)}`,
+      `${BASE_URL}/api/integrations/github/install-callback?installation_id=99&state=${encodeURIComponent(state)}`,
       { redirect: "manual" },
     )
     expect(res.status).toBe(302)
@@ -126,7 +128,7 @@ describe("github integration — install + config", () => {
 
   test("install-callback rejects invalid state", async () => {
     const res = await fetch(
-      "http://localhost:3000/api/integrations/github/install-callback?installation_id=1&state=bogus.bogus",
+      `${BASE_URL}/api/integrations/github/install-callback?installation_id=1&state=bogus.bogus`,
       { redirect: "manual" },
     )
     expect(res.status).toBe(401)
@@ -378,7 +380,7 @@ describe("webhook", () => {
 
   test("invalid signature → 401", async () => {
     const body = JSON.stringify({ action: "closed" })
-    const res = await fetch("http://localhost:3000/api/integrations/github/webhook", {
+    const res = await fetch(`${BASE_URL}/api/integrations/github/webhook`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-hub-signature-256": "sha256=bad" },
       body,
@@ -422,7 +424,7 @@ describe("webhook", () => {
       issue: { number: 42, state: "closed", state_reason: "completed" },
       repository: { name: "frontend", owner: { login: "acme" } },
     })
-    const res = await fetch("http://localhost:3000/api/integrations/github/webhook", {
+    const res = await fetch(`${BASE_URL}/api/integrations/github/webhook`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -459,7 +461,7 @@ describe("webhook", () => {
       repoName: "frontend",
     })
     const body = JSON.stringify({ action: "deleted", installation: { id: 555 } })
-    const res = await fetch("http://localhost:3000/api/integrations/github/webhook", {
+    const res = await fetch(`${BASE_URL}/api/integrations/github/webhook`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -642,7 +644,7 @@ describe("manual sync + unlink + enqueue hooks", () => {
         { type: "application/json" },
       ),
     )
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: fd,

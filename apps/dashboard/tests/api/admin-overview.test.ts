@@ -16,6 +16,8 @@ import {
 } from "../helpers"
 
 await setup({ server: true, port: 3000, host: "localhost" })
+
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 setDefaultTimeout(60000)
 
 async function submitReport(publicKey: string, title: string, origin: string): Promise<string> {
@@ -42,7 +44,7 @@ async function submitReport(publicKey: string, title: string, origin: string): P
     ),
   )
   fd.set("screenshot", makePngBlob(), "s.png")
-  const res = await fetch("http://localhost:3000/api/intake/reports", {
+  const res = await fetch(`${BASE_URL}/api/intake/reports`, {
     method: "POST",
     headers: { Origin: origin },
     body: fd,

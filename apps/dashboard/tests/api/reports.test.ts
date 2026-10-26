@@ -15,6 +15,8 @@ import {
 
 await setup({ server: true, port: 3000, host: "localhost" })
 
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+
 setDefaultTimeout(60000)
 
 const PK = "rp_pk_ABCDEF1234567890abcdef12"
@@ -44,7 +46,7 @@ async function submitReport(title: string) {
     ),
   )
   fd.set("screenshot", makePngBlob(), "s.png")
-  const res = await fetch("http://localhost:3000/api/intake/reports", {
+  const res = await fetch(`${BASE_URL}/api/intake/reports`, {
     method: "POST",
     headers: { Origin: ORIGIN },
     body: fd,
@@ -372,7 +374,7 @@ describe("attachment GET", () => {
 
     const cookie = await signIn("admin@example.com")
     const res = await fetch(
-      `http://localhost:3000/api/projects/${projectId}/reports/${reportId}/attachment?kind=screenshot`,
+      `${BASE_URL}/api/projects/${projectId}/reports/${reportId}/attachment?kind=screenshot`,
       { headers: { cookie } },
     )
     expect(res.status).toBe(200)
@@ -400,7 +402,7 @@ describe("attachment GET", () => {
 
     const cookie = await signIn("admin@example.com")
     const res = await fetch(
-      `http://localhost:3000/api/projects/${projectB}/reports/${reportId}/attachment?kind=screenshot`,
+      `${BASE_URL}/api/projects/${projectB}/reports/${reportId}/attachment?kind=screenshot`,
       { headers: { cookie } },
     )
     expect(res.status).toBe(404)

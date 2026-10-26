@@ -11,6 +11,8 @@ import { reportAttachments, reports } from "../../server/db/schema"
 
 await setup({ server: true, port: 3000, host: "localhost" })
 
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+
 const PK = "rp_pk_ABCDEF1234567890abcdef12"
 const ORIGIN = "http://localhost:4000"
 
@@ -80,7 +82,7 @@ describe("logs intake", () => {
       createdBy: admin,
     })
     const logs = buildLogs()
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildFormData({
@@ -102,7 +104,7 @@ describe("logs intake", () => {
   test("backward compat: no logs part still creates a valid report with just screenshot", async () => {
     const admin = await createUser("admin@example.com", "admin")
     await seedProject({ name: "Demo", publicKey: PK, allowedOrigins: [ORIGIN], createdBy: admin })
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildFormData({
@@ -129,7 +131,7 @@ describe("logs intake", () => {
   test("unparseable logs payload still stores the report, minus the logs", async () => {
     const admin = await createUser("admin@example.com", "admin")
     await seedProject({ name: "Demo", publicKey: PK, allowedOrigins: [ORIGIN], createdBy: admin })
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildFormData({
@@ -160,7 +162,7 @@ describe("logs intake", () => {
       ...buildLogs(),
       console: [{ level: "log", ts: Date.now(), args: [null] }],
     }
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildFormData({
@@ -178,7 +180,7 @@ describe("logs intake", () => {
   test("valid logs report logsStored: true", async () => {
     const admin = await createUser("admin@example.com", "admin")
     await seedProject({ name: "Demo", publicKey: PK, allowedOrigins: [ORIGIN], createdBy: admin })
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildFormData({
@@ -209,7 +211,7 @@ describe("logs intake", () => {
       new Blob([JSON.stringify(logs)], { type: "application/javascript" }),
       "logs.json",
     )
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: fd,

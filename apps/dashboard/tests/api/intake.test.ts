@@ -12,7 +12,7 @@ import { projects, reports, reportAttachments } from "../../server/db/schema"
 await setup({ server: true, port: 3000, host: "localhost" })
 setDefaultTimeout(15000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
 const PK = "rp_pk_ABCDEF1234567890abcdef12"
 const BAD_PK = "rp_pk_ZZZZZZZZZZZZZZZZZZZZZZZZ"
 const ORIGIN = "http://localhost:4000"
@@ -72,7 +72,7 @@ describe("intake API", () => {
       createdBy: admin,
     })
 
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(buildReportJSON(PK), makePngBlob()),
@@ -104,7 +104,7 @@ describe("intake API", () => {
       createdBy: admin,
     })
 
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: "http://evil.example.com" },
       body: buildMultipart(buildReportJSON(PK), makePngBlob()),
@@ -117,7 +117,7 @@ describe("intake API", () => {
   })
 
   test("rejects bad project key with 401", async () => {
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(buildReportJSON(BAD_PK), makePngBlob()),
@@ -126,7 +126,7 @@ describe("intake API", () => {
   })
 
   test("OPTIONS preflight returns 204 with ACAO reflecting origin", async () => {
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "OPTIONS",
       headers: {
         Origin: ORIGIN,
@@ -147,7 +147,7 @@ describe("intake API", () => {
       allowedOrigins: [ORIGIN],
       createdBy: admin,
     })
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(buildReportJSON(PK, { _dwellMs: 300 }), makePngBlob()),
@@ -163,7 +163,7 @@ describe("intake API", () => {
       allowedOrigins: [ORIGIN],
       createdBy: admin,
     })
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(buildReportJSON(PK, { _hp: "i-am-a-bot" }), makePngBlob()),
@@ -191,14 +191,14 @@ describe("intake API", () => {
       .set({ dailyReportCap: 1 })
       .where(sql`id = ${projectId}`)
 
-    const r1 = await fetch("http://localhost:3000/api/intake/reports", {
+    const r1 = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(buildReportJSON(PK), makePngBlob()),
     })
     expect(r1.status).toBe(201)
 
-    const r2 = await fetch("http://localhost:3000/api/intake/reports", {
+    const r2 = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(buildReportJSON(PK), makePngBlob()),
@@ -228,7 +228,7 @@ describe("intake API", () => {
     const anonStatuses: number[] = []
     for (let i = 0; i < BURST; i++) {
       // eslint-disable-next-line no-await-in-loop -- sequential required for rate limiter
-      const r = await fetch("http://localhost:3000/api/intake/reports", {
+      const r = await fetch(`${BASE_URL}/api/intake/reports`, {
         method: "POST",
         headers: { Origin: ORIGIN },
         body: buildMultipart(
@@ -244,7 +244,7 @@ describe("intake API", () => {
     expect(anonStatuses[0]).toBe(201)
 
     // An authenticated submission goes through (different bucket, higher cap).
-    const authed = await fetch("http://localhost:3000/api/intake/reports", {
+    const authed = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(

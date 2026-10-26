@@ -28,6 +28,8 @@ process.env.GITHUB_APP_WEBHOOK_SECRET = "test-webhook-secret"
 
 await setup({ server: true, port: 3000, host: "localhost" })
 
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+
 const PK = "rp_pk_COMMENTWEBHOOK000000000"
 const ORIGIN = "http://localhost:4000"
 const SECRET = "test-webhook-secret"
@@ -40,7 +42,7 @@ function sign(secret: string, payload: string): string {
 
 async function sendWebhook(eventName: string, body: unknown) {
   const raw = JSON.stringify(body)
-  return fetch("http://localhost:3000/api/integrations/github/webhook", {
+  return fetch(`${BASE_URL}/api/integrations/github/webhook`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
