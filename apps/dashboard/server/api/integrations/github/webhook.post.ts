@@ -1,6 +1,6 @@
 // apps/dashboard/server/api/integrations/github/webhook.post.ts
 import { createError, defineEventHandler, getHeader, readRawBody, setResponseStatus } from "h3"
-import { and, desc, eq, isNull, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm"
 import { verifyWebhookSignature } from "@reprojs/integrations-github"
 import { db } from "../../../db"
 import {
@@ -10,6 +10,7 @@ import {
   reportEvents,
   reports,
 } from "../../../db/schema"
+import type { GithubIntegration, Report } from "../../../db/schema"
 import { getWebhookSecret } from "../../../lib/github"
 import { invalidateInstallationRepos } from "../../../lib/github-cache"
 import { publishReportStream } from "../../../lib/report-events-bus"
@@ -104,9 +105,19 @@ interface IssueCommentPayload {
   installation?: { id: number }
 }
 
-/** Find a report linked to an issue in a repo. */
-async function findLinkedReport(issueNumber: number, repoOwner: string, repoName: string) {
-  const [linked] = await db
+type LinkedReport = { r: Report; gi: GithubIntegration }
+
+/**
+ * Every report linked to an issue in a repo, oldest report first. One issue
+ * can carry several reports: the one Repro created for it (at most one) plus
+ * any number attached to it later. Inbound issue changes apply to all of them.
+ */
+async function findLinkedReports(
+  issueNumber: number,
+  repoOwner: string,
+  repoName: string,
+): Promise<LinkedReport[]> {
+  return db
     .select({ r: reports, gi: githubIntegrations })
     .from(reports)
     .innerJoin(githubIntegrations, eq(githubIntegrations.projectId, reports.projectId))
@@ -117,8 +128,34 @@ async function findLinkedReport(issueNumber: number, repoOwner: string, repoName
         eq(githubIntegrations.repoName, repoName),
       ),
     )
-    .limit(1)
-  return linked ?? null
+    .orderBy(asc(reports.createdAt), asc(reports.id))
+}
+
+/**
+ * Inbound issue comments mirror to exactly ONE report (report_comments keeps
+ * github_comment_id UNIQUE): the report Repro created the issue for when
+ * there is one, otherwise the oldest attached report. `linked` is already
+ * ordered oldest first, so "first created, else first" is deterministic.
+ */
+function pickCommentTarget(linked: LinkedReport[]): LinkedReport | null {
+  return linked.find((l) => l.r.githubLinkKind === "created") ?? linked[0] ?? null
+}
+
+/**
+ * Our own outbound write echoes back as a webhook. The write-lock was
+ * recorded against the report that pushed it, so check every linked report:
+ * one hit means the delivery is an echo.
+ */
+async function consumeEchoAcross(
+  linked: LinkedReport[],
+  kind: "comment_upsert" | "comment_delete",
+  signature: string,
+): Promise<boolean> {
+  for (const l of linked) {
+    // Sequential on purpose: stop at the first hit so only one lock is spent.
+    if (await consumeWriteLock(db, { reportId: l.r.id, kind, signature })) return true
+  }
+  return false
 }
 
 /** Apply inbound GitHub assignees to report_assignees (full replace). */
@@ -293,29 +330,27 @@ export default defineEventHandler(async (event) => {
               ? "not_planned"
               : "completed"
 
-        const linked = await findLinkedReport(
+        const linkedAll = await findLinkedReports(
           p.issue.number,
           p.repository.owner.login,
           p.repository.name,
         )
-        if (!linked) {
+        if (linkedAll.length === 0) {
           setResponseStatus(event, 202)
           return { ok: true }
         }
 
-        // Write-lock echo check
         const sig2 = signState(desiredGhState, stateReason)
-        const isEcho = await consumeWriteLock(db, {
-          reportId: linked.r.id,
-          kind: "state",
-          signature: sig2,
-        })
-        if (isEcho) {
-          setResponseStatus(event, 202)
-          return { ok: true, echo: true }
-        }
+        for (const linked of linkedAll) {
+          // Write-lock echo check, per report: the report that pushed this
+          // state skips its own echo; every other report on the issue follows.
+          const isEcho = await consumeWriteLock(db, {
+            reportId: linked.r.id,
+            kind: "state",
+            signature: sig2,
+          })
+          if (isEcho || linked.r.status === desired) continue
 
-        if (linked.r.status !== desired) {
           await db.transaction(async (tx) => {
             await tx
               .update(reports)
@@ -333,93 +368,34 @@ export default defineEventHandler(async (event) => {
         }
       } else if (p.action === "labeled" || p.action === "unlabeled") {
         const issueLabels = p.issue.labels?.map((l) => l.name) ?? []
-        const linked = await findLinkedReport(
+        const linkedAll = await findLinkedReports(
           p.issue.number,
           p.repository.owner.login,
           p.repository.name,
         )
-
-        if (!linked) {
+        if (linkedAll.length === 0) {
           setResponseStatus(event, 202)
           return { ok: true }
         }
 
         // Write-lock echo check — signature is over the full post-event label set
         const labelSig = signLabels(issueLabels)
-        const isEcho = await consumeWriteLock(db, {
-          reportId: linked.r.id,
-          kind: "labels",
-          signature: labelSig,
-        })
-        if (isEcho) {
-          setResponseStatus(event, 202)
-          return { ok: true, echo: true }
-        }
-
-        const { priority, tags } = parseGithubLabels(issueLabels, linked.gi.defaultLabels)
-
-        const priorityChanged = priority !== null && priority !== linked.r.priority
-        const currentTagSet = new Set(linked.r.tags)
-        const desiredTagSet = new Set(tags)
-        const addedTags = tags.filter((t) => !currentTagSet.has(t))
-        const removedTags = linked.r.tags.filter((t) => !desiredTagSet.has(t))
-        const tagsChanged = addedTags.length > 0 || removedTags.length > 0
-
-        if (priorityChanged || tagsChanged) {
-          const nextPriority = priority ?? linked.r.priority
-          await db.transaction(async (tx) => {
-            await tx
-              .update(reports)
-              .set({
-                ...(priorityChanged ? { priority: nextPriority } : {}),
-                ...(tagsChanged ? { tags } : {}),
-                updatedAt: new Date(),
-              })
-              .where(eq(reports.id, linked.r.id))
-
-            const eventsToInsert: (typeof reportEvents.$inferInsert)[] = []
-
-            if (priorityChanged) {
-              eventsToInsert.push({
-                reportId: linked.r.id,
-                projectId: linked.r.projectId,
-                actorId: null,
-                kind: "priority_changed",
-                payload: { from: linked.r.priority, to: priority, source: "github" },
-              })
-            }
-            for (const tag of addedTags) {
-              eventsToInsert.push({
-                reportId: linked.r.id,
-                projectId: linked.r.projectId,
-                actorId: null,
-                kind: "tag_added",
-                payload: { name: tag, source: "github" },
-              })
-            }
-            for (const tag of removedTags) {
-              eventsToInsert.push({
-                reportId: linked.r.id,
-                projectId: linked.r.projectId,
-                actorId: null,
-                kind: "tag_removed",
-                payload: { name: tag, source: "github" },
-              })
-            }
-
-            if (eventsToInsert.length > 0) {
-              await tx.insert(reportEvents).values(eventsToInsert)
-            }
+        for (const linked of linkedAll) {
+          const isEcho = await consumeWriteLock(db, {
+            reportId: linked.r.id,
+            kind: "labels",
+            signature: labelSig,
           })
-          publishReportStream(linked.r.id, { kind: "triage", payload: { source: "github" } })
+          if (isEcho) continue
+          await applyInboundLabels(linked, issueLabels)
         }
       } else if (p.action === "assigned" || p.action === "unassigned") {
-        const linked = await findLinkedReport(
+        const linkedAll = await findLinkedReports(
           p.issue.number,
           p.repository.owner.login,
           p.repository.name,
         )
-        if (!linked) {
+        if (linkedAll.length === 0) {
           setResponseStatus(event, 202)
           return { ok: true }
         }
@@ -427,95 +403,59 @@ export default defineEventHandler(async (event) => {
         // Write-lock echo check — signature over the full post-event assignee set
         const currentAssigneeLogins = (p.issue.assignees ?? []).map((a) => a.login)
         const assigneeSig = signAssignees(currentAssigneeLogins)
-        const isEcho = await consumeWriteLock(db, {
-          reportId: linked.r.id,
-          kind: "assignees",
-          signature: assigneeSig,
-        })
-        if (isEcho) {
-          setResponseStatus(event, 202)
-          return { ok: true, echo: true }
+        for (const linked of linkedAll) {
+          const isEcho = await consumeWriteLock(db, {
+            reportId: linked.r.id,
+            kind: "assignees",
+            signature: assigneeSig,
+          })
+          if (isEcho) continue
+          await applyInboundAssignees(linked.r.id, linked.r.projectId, p.issue.assignees ?? [])
+          publishReportStream(linked.r.id, { kind: "triage", payload: { source: "github" } })
         }
-
-        await applyInboundAssignees(linked.r.id, linked.r.projectId, p.issue.assignees ?? [])
-        publishReportStream(linked.r.id, { kind: "triage", payload: { source: "github" } })
       } else if (p.action === "milestoned" || p.action === "demilestoned") {
-        const linked = await findLinkedReport(
+        const linkedAll = await findLinkedReports(
           p.issue.number,
           p.repository.owner.login,
           p.repository.name,
         )
-        if (!linked) {
+        if (linkedAll.length === 0) {
           setResponseStatus(event, 202)
           return { ok: true }
         }
 
         const milestoneNumber = p.issue.milestone?.number ?? null
         const milestoneTitle = p.issue.milestone?.title ?? null
-
-        // Write-lock echo check
         const milestoneSig = signMilestone(milestoneNumber)
-        const isEcho = await consumeWriteLock(db, {
-          reportId: linked.r.id,
-          kind: "milestone",
-          signature: milestoneSig,
-        })
-        if (isEcho) {
-          setResponseStatus(event, 202)
-          return { ok: true, echo: true }
-        }
-
-        await db.transaction(async (tx) => {
-          await tx
-            .update(reports)
-            .set({
-              milestoneNumber,
-              milestoneTitle,
-              updatedAt: new Date(),
-            })
-            .where(eq(reports.id, linked.r.id))
-          await tx.insert(reportEvents).values({
+        for (const linked of linkedAll) {
+          const isEcho = await consumeWriteLock(db, {
             reportId: linked.r.id,
-            projectId: linked.r.projectId,
-            actorId: null,
-            kind: "milestone_changed",
-            payload: {
-              from: { number: linked.r.milestoneNumber, title: linked.r.milestoneTitle },
-              to:
-                milestoneNumber !== null
-                  ? { number: milestoneNumber, title: milestoneTitle }
-                  : null,
-              source: "github",
-            },
+            kind: "milestone",
+            signature: milestoneSig,
           })
-        })
-        publishReportStream(linked.r.id, { kind: "triage", payload: { source: "github" } })
+          if (isEcho) continue
+          await applyInboundMilestone(linked, milestoneNumber, milestoneTitle)
+        }
       } else if (p.action === "edited" && p.changes?.title) {
-        const linked = await findLinkedReport(
+        const linkedAll = await findLinkedReports(
           p.issue.number,
           p.repository.owner.login,
           p.repository.name,
         )
-        if (!linked) {
+        if (linkedAll.length === 0) {
           setResponseStatus(event, 202)
           return { ok: true }
         }
 
         const newTitle = p.issue.title
-
-        // Write-lock echo check
         const titleSig = signTitle(newTitle)
-        const isEcho = await consumeWriteLock(db, {
-          reportId: linked.r.id,
-          kind: "title",
-          signature: titleSig,
-        })
-        if (isEcho) {
-          setResponseStatus(event, 202)
-          return { ok: true, echo: true }
-        }
-
-        if (linked.r.title !== newTitle) {
+        for (const linked of linkedAll) {
+          const isEcho = await consumeWriteLock(db, {
+            reportId: linked.r.id,
+            kind: "title",
+            signature: titleSig,
+          })
+          if (isEcho || linked.r.title === newTitle) continue
           await db
             .update(reports)
             .set({ title: newTitle, updatedAt: new Date() })
@@ -530,8 +470,9 @@ export default defineEventHandler(async (event) => {
       const repoOwner = p.repository.owner.login
       const repoName = p.repository.name
 
-      const linked = await findLinkedReport(p.issue.number, repoOwner, repoName)
-      if (!linked) {
+      const linkedAll = await findLinkedReports(p.issue.number, repoOwner, repoName)
+      const target = pickCommentTarget(linkedAll)
+      if (!target) {
         setResponseStatus(event, 202)
         return { ok: true }
       }
@@ -541,12 +482,7 @@ export default defineEventHandler(async (event) => {
 
       if (action === "created" || action === "edited") {
         const commentUpsertSig = signCommentUpsert(comment.id, commentBody)
-        const isEcho = await consumeWriteLock(db, {
-          reportId: linked.r.id,
-          kind: "comment_upsert",
-          signature: commentUpsertSig,
-        })
-        if (isEcho) {
+        if (await consumeEchoAcross(linkedAll, "comment_upsert", commentUpsertSig)) {
           setResponseStatus(event, 202)
           return { ok: true, echo: true }
         }
@@ -562,13 +498,17 @@ export default defineEventHandler(async (event) => {
           // createComment returns, so a fast webhook beats it and used to
           // insert a duplicate github-sourced row (and the reconcile's later
           // UPDATE then hit the unique constraint and retried, posting more
-          // copies). Link the pending dashboard comment instead.
+          // copies). Link the pending dashboard comment instead. Any report on
+          // the issue may own the pending comment, not only the target.
           const [pendingOurs] = await db
             .select({ id: reportComments.id })
             .from(reportComments)
             .where(
               and(
-                eq(reportComments.reportId, linked.r.id),
+                inArray(
+                  reportComments.reportId,
+                  linkedAll.map((l) => l.r.id),
+                ),
                 eq(reportComments.source, "dashboard"),
                 isNull(reportComments.githubCommentId),
                 isNull(reportComments.deletedAt),
@@ -603,7 +543,7 @@ export default defineEventHandler(async (event) => {
           await db
             .insert(reportComments)
             .values({
-              reportId: linked.r.id,
+              reportId: target.r.id,
               userId: resolved?.kind === "dashboard-user" ? resolved.userId : null,
               githubLogin: githubUser?.login ?? null,
               body,
@@ -612,58 +552,55 @@ export default defineEventHandler(async (event) => {
             })
             .onConflictDoNothing()
           await db.insert(reportEvents).values({
-            reportId: linked.r.id,
-            projectId: linked.r.projectId,
+            reportId: target.r.id,
+            projectId: target.r.projectId,
             actorId: null,
             kind: "comment_added",
             payload: { githubCommentId: comment.id, source: "github" },
           })
-          publishReportStream(linked.r.id, {
+          publishReportStream(target.r.id, {
             kind: "comment_added",
             payload: { source: "github", githubCommentId: comment.id },
           })
         } else {
-          // edited
+          // edited — the row may live on any report of the issue.
+          const owner = await findCommentOwner(linkedAll, comment.id, target)
           await db
             .update(reportComments)
             .set({ body, updatedAt: new Date() })
             .where(eq(reportComments.githubCommentId, comment.id))
           await db.insert(reportEvents).values({
-            reportId: linked.r.id,
-            projectId: linked.r.projectId,
+            reportId: owner.r.id,
+            projectId: owner.r.projectId,
             actorId: null,
             kind: "comment_edited",
             payload: { githubCommentId: comment.id, source: "github" },
           })
-          publishReportStream(linked.r.id, {
+          publishReportStream(owner.r.id, {
             kind: "comment_edited",
             payload: { source: "github", githubCommentId: comment.id },
           })
         }
       } else if (action === "deleted") {
         const commentDeleteSig = signCommentDelete(comment.id)
-        const isEcho = await consumeWriteLock(db, {
-          reportId: linked.r.id,
-          kind: "comment_delete",
-          signature: commentDeleteSig,
-        })
-        if (isEcho) {
+        if (await consumeEchoAcross(linkedAll, "comment_delete", commentDeleteSig)) {
           setResponseStatus(event, 202)
           return { ok: true, echo: true }
         }
 
+        const owner = await findCommentOwner(linkedAll, comment.id, target)
         await db
           .update(reportComments)
           .set({ deletedAt: new Date(), updatedAt: new Date() })
           .where(eq(reportComments.githubCommentId, comment.id))
         await db.insert(reportEvents).values({
-          reportId: linked.r.id,
-          projectId: linked.r.projectId,
+          reportId: owner.r.id,
+          projectId: owner.r.projectId,
           actorId: null,
           kind: "comment_deleted",
           payload: { githubCommentId: comment.id, source: "github" },
         })
-        publishReportStream(linked.r.id, {
+        publishReportStream(owner.r.id, {
           kind: "comment_deleted",
           payload: { source: "github", githubCommentId: comment.id },
         })
@@ -679,3 +616,111 @@ export default defineEventHandler(async (event) => {
   setResponseStatus(event, 202)
   return { ok: true }
 })
+
+// --- Inbound appliers (one report each; callers loop over every linked report) ---
+
+async function applyInboundLabels(linked: LinkedReport, issueLabels: string[]): Promise<void> {
+  const { priority, tags } = parseGithubLabels(issueLabels, linked.gi.defaultLabels)
+
+  const priorityChanged = priority !== null && priority !== linked.r.priority
+  const currentTagSet = new Set(linked.r.tags)
+  const desiredTagSet = new Set(tags)
+  const addedTags = tags.filter((t) => !currentTagSet.has(t))
+  const removedTags = linked.r.tags.filter((t) => !desiredTagSet.has(t))
+  const tagsChanged = addedTags.length > 0 || removedTags.length > 0
+
+  if (priorityChanged || tagsChanged) {
+    const nextPriority = priority ?? linked.r.priority
+    await db.transaction(async (tx) => {
+      await tx
+        .update(reports)
+        .set({
+          ...(priorityChanged ? { priority: nextPriority } : {}),
+          ...(tagsChanged ? { tags } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(reports.id, linked.r.id))
+
+      const eventsToInsert: (typeof reportEvents.$inferInsert)[] = []
+
+      if (priorityChanged) {
+        eventsToInsert.push({
+          reportId: linked.r.id,
+          projectId: linked.r.projectId,
+          actorId: null,
+          kind: "priority_changed",
+          payload: { from: linked.r.priority, to: priority, source: "github" },
+        })
+      }
+      for (const tag of addedTags) {
+        eventsToInsert.push({
+          reportId: linked.r.id,
+          projectId: linked.r.projectId,
+          actorId: null,
+          kind: "tag_added",
+          payload: { name: tag, source: "github" },
+        })
+      }
+      for (const tag of removedTags) {
+        eventsToInsert.push({
+          reportId: linked.r.id,
+          projectId: linked.r.projectId,
+          actorId: null,
+          kind: "tag_removed",
+          payload: { name: tag, source: "github" },
+        })
+      }
+
+      if (eventsToInsert.length > 0) {
+        await tx.insert(reportEvents).values(eventsToInsert)
+      }
+    })
+    publishReportStream(linked.r.id, { kind: "triage", payload: { source: "github" } })
+  }
+}
+
+async function applyInboundMilestone(
+  linked: LinkedReport,
+  milestoneNumber: number | null,
+  milestoneTitle: string | null,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .update(reports)
+      .set({
+        milestoneNumber,
+        milestoneTitle,
+        updatedAt: new Date(),
+      })
+      .where(eq(reports.id, linked.r.id))
+    await tx.insert(reportEvents).values({
+      reportId: linked.r.id,
+      projectId: linked.r.projectId,
+      actorId: null,
+      kind: "milestone_changed",
+      payload: {
+        from: { number: linked.r.milestoneNumber, title: linked.r.milestoneTitle },
+        to: milestoneNumber !== null ? { number: milestoneNumber, title: milestoneTitle } : null,
+        source: "github",
+      },
+    })
+  })
+  publishReportStream(linked.r.id, { kind: "triage", payload: { source: "github" } })
+}
+
+/**
+ * The report whose report_comments row mirrors a GitHub comment. Falls back
+ * to the comment target when the row is unknown (comment pre-dates the link).
+ */
+async function findCommentOwner(
+  linked: LinkedReport[],
+  githubCommentId: number,
+  fallback: LinkedReport,
+): Promise<LinkedReport> {
+  const [row] = await db
+    .select({ reportId: reportComments.reportId })
+    .from(reportComments)
+    .where(eq(reportComments.githubCommentId, githubCommentId))
+    .limit(1)
+  return linked.find((l) => l.r.id === row?.reportId) ?? fallback
+}
