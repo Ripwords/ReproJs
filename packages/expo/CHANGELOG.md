@@ -1,5 +1,38 @@
 # Changelog
 
+## expo-v0.3.6
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.5...expo-v0.3.6)
+
+### 🚀 Enhancements
+
+- **dashboard:** Surface per-report GitHub sync failures with retry and an app-not-configured state ([e92312a](https://github.com/Ripwords/ReproJs/commit/e92312a))
+- **shared:** Contract for attaching reports to existing GitHub issues ([14ca03f](https://github.com/Ripwords/ReproJs/commit/14ca03f))
+
+### 🩹 Fixes
+
+- **ui:** Keep log buffers until the report upload succeeds ([2353081](https://github.com/Ripwords/ReproJs/commit/2353081))
+- **expo:** Keep queued attachments durable and send without unreadable ones ([d856727](https://github.com/Ripwords/ReproJs/commit/d856727))
+- **expo:** Abort stalled uploads after a configurable timeout ([83142eb](https://github.com/Ripwords/ReproJs/commit/83142eb))
+- **expo:** Serialise queue storage operations behind a promise mutex ([133ad45](https://github.com/Ripwords/ReproJs/commit/133ad45))
+- **expo:** Rerun the flush when a report is enqueued mid-flush ([1f10f4d](https://github.com/Ripwords/ReproJs/commit/1f10f4d))
+- **expo:** Stop collectors without clobbering later fetch/console wrappers ([9303c84](https://github.com/Ripwords/ReproJs/commit/9303c84))
+- **projects:** Store and compare allowed origins in canonical form ([6950f1c](https://github.com/Ripwords/ReproJs/commit/6950f1c))
+- **expo:** Report queue evictions and corrupt queue files instead of hiding them ([2ea695b](https://github.com/Ripwords/ReproJs/commit/2ea695b))
+- **expo:** Wait for the screenshot to decode before flattening annotations ([8433c0f](https://github.com/Ripwords/ReproJs/commit/8433c0f))
+- **expo:** Measure the root view when the wizard opens before first layout ([892ef7e](https://github.com/Ripwords/ReproJs/commit/892ef7e))
+- **expo:** Mark the pickers optional and warn when "Add attachment" has none ([be826a8](https://github.com/Ripwords/ReproJs/commit/be826a8))
+- **expo:** Probe the expo-file-system class API before the legacy functions ([118c39e](https://github.com/Ripwords/ReproJs/commit/118c39e))
+- **expo:** Keep the flatten view parked offscreen instead of an opacity-0 overlay ([031e4c8](https://github.com/Ripwords/ReproJs/commit/031e4c8))
+
+### 📖 Documentation
+
+- **expo:** Stop promising network capture beyond fetch ([7e0361b](https://github.com/Ripwords/ReproJs/commit/7e0361b))
+
+### ❤️ Contributors
+
+- JJ <contact@jjteoh.com>
+
 ## expo-v0.3.5
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.4...expo-v0.3.5)

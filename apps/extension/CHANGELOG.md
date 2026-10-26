@@ -1,5 +1,60 @@
 # Changelog
 
+## extension-v0.2.4
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/extension-v0.2.3...extension-v0.2.4)
+
+### 🚀 Enhancements
+
+- **dashboard:** Surface per-report GitHub sync failures with retry and an app-not-configured state ([e92312a](https://github.com/Ripwords/ReproJs/commit/e92312a))
+- **shared:** Contract for attaching reports to existing GitHub issues ([14ca03f](https://github.com/Ripwords/ReproJs/commit/14ca03f))
+- **ui:** Optional related GitHub issue field in the reporter ([f3a6fdd](https://github.com/Ripwords/ReproJs/commit/f3a6fdd))
+- **sdk:** Fields.relatedIssue init option ([cb00e71](https://github.com/Ripwords/ReproJs/commit/cb00e71))
+- **extension:** Per-origin toggle for the widget's related-issue field ([997dba1](https://github.com/Ripwords/ReproJs/commit/997dba1))
+
+### 🩹 Fixes
+
+- **ui:** Keep log buffers until the report upload succeeds ([2353081](https://github.com/Ripwords/ReproJs/commit/2353081))
+- **extension:** Inject on webNavigation.onDOMContentLoaded, keep tabs complete as fallback ([b57abdf](https://github.com/Ripwords/ReproJs/commit/b57abdf))
+- **ui:** Surface submit failures instead of spinning forever ([4d26f1c](https://github.com/Ripwords/ReproJs/commit/4d26f1c))
+- **extension:** Reserve the inject dedupe slot before the first await ([5175c92](https://github.com/Ripwords/ReproJs/commit/5175c92))
+- **recorder:** Skip replay gzip when CompressionStream is unavailable ([c3c1759](https://github.com/Ripwords/ReproJs/commit/c3c1759))
+- **core:** Fall back to AbortController when AbortSignal.timeout is missing ([0c7d19c](https://github.com/Ripwords/ReproJs/commit/0c7d19c))
+- **extension:** Make the injected boot idempotent across pushState navigations ([d28bf4d](https://github.com/Ripwords/ReproJs/commit/d28bf4d))
+- **core:** Scale the intake upload timeout with payload size ([535bbd2](https://github.com/Ripwords/ReproJs/commit/535bbd2))
+- **ui:** Keep the widget open when a screenshot cannot be taken ([6b18a28](https://github.com/Ripwords/ReproJs/commit/6b18a28))
+- **extension:** Forward the SDK AbortSignal through the fetch proxy ([d5b1353](https://github.com/Ripwords/ReproJs/commit/d5b1353))
+- **extension:** Check intake host permission before injecting and proxying ([d5e2959](https://github.com/Ripwords/ReproJs/commit/d5e2959))
+- **core:** Defer init() until <body> exists and start collectors only after mount ([8ad9cab](https://github.com/Ripwords/ReproJs/commit/8ad9cab))
+- **extension:** Fall back to the page fetch when a body exceeds the proxy limit ([9b1607c](https://github.com/Ripwords/ReproJs/commit/9b1607c))
+- **ui:** Survive a failed gallery write instead of stranding the outcome bar ([3925009](https://github.com/Ripwords/ReproJs/commit/3925009))
+- **ui:** Read captured response bodies in the background ([8b14745](https://github.com/Ripwords/ReproJs/commit/8b14745))
+- **ui:** Restore the host's previous body overflow when the reporter closes ([0eebe7a](https://github.com/Ripwords/ReproJs/commit/0eebe7a))
+- **sdk:** Surface annotation flatten failures and cap the DOM-capture canvas size ([b088548](https://github.com/Ripwords/ReproJs/commit/b088548))
+- **recorder:** Never evict the newest FullSnapshot + Meta pair from the buffer ([3b5a7da](https://github.com/Ripwords/ReproJs/commit/3b5a7da))
+- **ui:** Show the minted share link when the clipboard write fails ([28f03b9](https://github.com/Ripwords/ReproJs/commit/28f03b9))
+- **extension:** Fail fast when the bridge has lost its service worker ([580404e](https://github.com/Ripwords/ReproJs/commit/580404e))
+- **extension:** Keep shared origin permissions and refuse duplicate origin configs ([e59c89d](https://github.com/Ripwords/ReproJs/commit/e59c89d))
+- **extension:** Record and log the bundled @reprojs/core version ([9455c5a](https://github.com/Ripwords/ReproJs/commit/9455c5a))
+- **ui:** Clear the post-success auto-close timer on unmount ([02d39b4](https://github.com/Ripwords/ReproJs/commit/02d39b4))
+- **ui:** Explain a second attachShadow on #repro-host instead of throwing a bare NotSupportedError ([4469175](https://github.com/Ripwords/ReproJs/commit/4469175))
+- **core:** Match alt-combo hotkeys on event.code when the key becomes a symbol ([c4f5698](https://github.com/Ripwords/ReproJs/commit/c4f5698))
+- **ui:** Only restore fetch on stop() if our wrapper is still installed ([d692807](https://github.com/Ripwords/ReproJs/commit/d692807))
+- **projects:** Store and compare allowed origins in canonical form ([6950f1c](https://github.com/Ripwords/ReproJs/commit/6950f1c))
+
+### 💅 Refactors
+
+- **extension:** Share the CDP closed-shadow helpers across e2e specs ([07c2c57](https://github.com/Ripwords/ReproJs/commit/07c2c57))
+
+### ✅ Tests
+
+- **extension:** Cover reload and pushState in the inject E2E suite ([755dff8](https://github.com/Ripwords/ReproJs/commit/755dff8))
+- **extension:** E2e for the related-issue field through the proxied intake ([b89f84f](https://github.com/Ripwords/ReproJs/commit/b89f84f))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## extension-v0.2.3
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/extension-v0.2.2...extension-v0.2.3)

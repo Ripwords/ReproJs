@@ -1,5 +1,88 @@
 # Changelog
 
+## v0.7.4
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.3...v0.7.4)
+
+### 🚀 Enhancements
+
+- **dashboard:** Project-aware install snippet shared across overview, security tab and install page ([1c65cf3](https://github.com/Ripwords/ReproJs/commit/1c65cf3))
+- **dashboard:** Setup checklist and empty-origins warning on project overview ([8f54156](https://github.com/Ripwords/ReproJs/commit/8f54156))
+- **dashboard:** Inbox status column, open-by-default tab and quick views ([5d3dc59](https://github.com/Ripwords/ReproJs/commit/5d3dc59))
+- **dashboard:** Visible j/k row highlight, focusable rows and shortcuts modal in the inbox ([3b799a7](https://github.com/Ripwords/ReproJs/commit/3b799a7))
+- **dashboard:** Report page triage defaults, header status/priority controls and tab counts ([05d9172](https://github.com/Ripwords/ReproJs/commit/05d9172))
+- **dashboard:** Surface per-report GitHub sync failures with retry and an app-not-configured state ([e92312a](https://github.com/Ripwords/ReproJs/commit/e92312a))
+- **config:** Allow rotating attachment and comment-footer secrets safely ([bc9cfb2](https://github.com/Ripwords/ReproJs/commit/bc9cfb2))
+- **shared:** Contract for attaching reports to existing GitHub issues ([14ca03f](https://github.com/Ripwords/ReproJs/commit/14ca03f))
+- **dashboard:** Link-issue dialog for attaching a report to an existing GitHub issue ([592375d](https://github.com/Ripwords/ReproJs/commit/592375d))
+- **dashboard:** Attach actions, reporter-hint banner and Attached badge in triage footer ([12c1c66](https://github.com/Ripwords/ReproJs/commit/12c1c66))
+- **dashboard:** Referenced-issue chip in inbox GitHub column ([08141ec](https://github.com/Ripwords/ReproJs/commit/08141ec))
+- **db:** Github link kind, attach comment id and reporter issue hint on reports ([5b4278c](https://github.com/Ripwords/ReproJs/commit/5b4278c))
+- **ui:** Optional related GitHub issue field in the reporter ([f3a6fdd](https://github.com/Ripwords/ReproJs/commit/f3a6fdd))
+- **sdk:** Fields.relatedIssue init option ([cb00e71](https://github.com/Ripwords/ReproJs/commit/cb00e71))
+- **github:** GetIssueSummary and listIssues on the installation client ([00c2124](https://github.com/Ripwords/ReproJs/commit/00c2124))
+- **github:** Attached link kind that follows the issue ([4179e29](https://github.com/Ripwords/ReproJs/commit/4179e29))
+- **intake:** Store the reporter's related-issue hint and skip auto-create for it ([28156ef](https://github.com/Ripwords/ReproJs/commit/28156ef))
+- **api:** Attach reports to existing GitHub issues ([ad74ca7](https://github.com/Ripwords/ReproJs/commit/ad74ca7))
+
+### 🔥 Performance
+
+- **attachments:** Mark token-authenticated attachment responses immutable ([6868404](https://github.com/Ripwords/ReproJs/commit/6868404))
+
+### 🩹 Fixes
+
+- **deps:** Bump bun to 1.4.4 for GHSA-26q8-h657-pf84 ([1869899](https://github.com/Ripwords/ReproJs/commit/1869899))
+- **ui:** Keep log buffers until the report upload succeeds ([2353081](https://github.com/Ripwords/ReproJs/commit/2353081))
+- **ui:** Surface submit failures instead of spinning forever ([4d26f1c](https://github.com/Ripwords/ReproJs/commit/4d26f1c))
+- **recorder:** Skip replay gzip when CompressionStream is unavailable ([c3c1759](https://github.com/Ripwords/ReproJs/commit/c3c1759))
+- **core:** Fall back to AbortController when AbortSignal.timeout is missing ([0c7d19c](https://github.com/Ripwords/ReproJs/commit/0c7d19c))
+- **core:** Scale the intake upload timeout with payload size ([535bbd2](https://github.com/Ripwords/ReproJs/commit/535bbd2))
+- **ui:** Keep the widget open when a screenshot cannot be taken ([6b18a28](https://github.com/Ripwords/ReproJs/commit/6b18a28))
+- **core:** Defer init() until <body> exists and start collectors only after mount ([8ad9cab](https://github.com/Ripwords/ReproJs/commit/8ad9cab))
+- **ui:** Survive a failed gallery write instead of stranding the outcome bar ([3925009](https://github.com/Ripwords/ReproJs/commit/3925009))
+- **ui:** Read captured response bodies in the background ([8b14745](https://github.com/Ripwords/ReproJs/commit/8b14745))
+- **ui:** Restore the host's previous body overflow when the reporter closes ([0eebe7a](https://github.com/Ripwords/ReproJs/commit/0eebe7a))
+- **sdk:** Surface annotation flatten failures and cap the DOM-capture canvas size ([b088548](https://github.com/Ripwords/ReproJs/commit/b088548))
+- **recorder:** Never evict the newest FullSnapshot + Meta pair from the buffer ([3b5a7da](https://github.com/Ripwords/ReproJs/commit/3b5a7da))
+- **ui:** Show the minted share link when the clipboard write fails ([28f03b9](https://github.com/Ripwords/ReproJs/commit/28f03b9))
+- **intake:** Make report and attachment writes atomic and idempotency-safe ([fe2db20](https://github.com/Ripwords/ReproJs/commit/fe2db20))
+- **ui:** Clear the post-success auto-close timer on unmount ([02d39b4](https://github.com/Ripwords/ReproJs/commit/02d39b4))
+- **github:** Keep a webhook delivery id only once processing succeeded ([57d731b](https://github.com/Ripwords/ReproJs/commit/57d731b))
+- **ui:** Explain a second attachShadow on #repro-host instead of throwing a bare NotSupportedError ([4469175](https://github.com/Ripwords/ReproJs/commit/4469175))
+- **core:** Match alt-combo hotkeys on event.code when the key becomes a symbol ([c4f5698](https://github.com/Ripwords/ReproJs/commit/c4f5698))
+- **ui:** Only restore fetch on stop() if our wrapper is still installed ([d692807](https://github.com/Ripwords/ReproJs/commit/d692807))
+- **dashboard:** Consistent error and loading states, undo on bulk updates ([2a376d2](https://github.com/Ripwords/ReproJs/commit/2a376d2))
+- **projects:** Store and compare allowed origins in canonical form ([6950f1c](https://github.com/Ripwords/ReproJs/commit/6950f1c))
+- **intake:** Warn once when X-Forwarded-For arrives with TRUST_XFF=false ([f44200c](https://github.com/Ripwords/ReproJs/commit/f44200c))
+- **github:** Stop concurrent reconciles from creating duplicate issues ([cdf161d](https://github.com/Ripwords/ReproJs/commit/cdf161d))
+- **github:** Resolve the dashboard-comment echo race instead of duplicating ([67a269a](https://github.com/Ripwords/ReproJs/commit/67a269a))
+- **intake:** Treat a ClamAV scan with no verdict as a failure ([a88a056](https://github.com/Ripwords/ReproJs/commit/a88a056))
+- **github:** Drain the sync queue until empty on each cron tick ([6e721e9](https://github.com/Ripwords/ReproJs/commit/6e721e9))
+- **github:** Prune webhook delivery ids older than 7 days ([03d92e8](https://github.com/Ripwords/ReproJs/commit/03d92e8))
+- **storage:** Write local-disk blobs atomically via temp file and rename ([5720b04](https://github.com/Ripwords/ReproJs/commit/5720b04))
+- **github:** Skip enqueueing a sync when no repository is chosen ([e79aaad](https://github.com/Ripwords/ReproJs/commit/e79aaad))
+- **github:** Restore the integration to connected on installation.unsuspend ([ff7f5e7](https://github.com/Ripwords/ReproJs/commit/ff7f5e7))
+- **rate-limit:** Stop the Postgres limiter under-issuing on a first-take race ([53457e7](https://github.com/Ripwords/ReproJs/commit/53457e7))
+- **attachments:** Cache token-authenticated screenshots for a day, not a year ([66c39e6](https://github.com/Ripwords/ReproJs/commit/66c39e6))
+- **dashboard:** Type the app-status fetch and install page selection correctly ([49eafca](https://github.com/Ripwords/ReproJs/commit/49eafca))
+- **webhook:** Fan inbound issue changes out to every linked report ([d54a4f3](https://github.com/Ripwords/ReproJs/commit/d54a4f3))
+- **github:** Keep issue search pinned to the project's repo ([2ac3923](https://github.com/Ripwords/ReproJs/commit/2ac3923))
+- **test:** Restore the localhost fallback for TEST_BASE_URL in dashboard API tests ([6a28461](https://github.com/Ripwords/ReproJs/commit/6a28461))
+
+### 🏡 Chore
+
+- **dashboard:** Small copy and navigation fixes ([30da35d](https://github.com/Ripwords/ReproJs/commit/30da35d))
+- **db:** Order migration 0009's journal timestamp between 0008 and 0010 ([6cf2289](https://github.com/Ripwords/ReproJs/commit/6cf2289))
+
+### ✅ Tests
+
+- **dashboard:** Honour TEST_BASE_URL in every API test ([a431c43](https://github.com/Ripwords/ReproJs/commit/a431c43))
+- **api:** Attach reports to existing GitHub issues end to end ([fe8453d](https://github.com/Ripwords/ReproJs/commit/fe8453d))
+
+### ❤️ Contributors
+
+- JJ <contact@jjteoh.com>
+
 ## v0.7.3
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.2...v0.7.3)

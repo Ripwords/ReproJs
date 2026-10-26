@@ -1,5 +1,41 @@
 # Changelog
 
+## sdk-v0.5.4
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.5.3...sdk-v0.5.4)
+
+### 🚀 Enhancements
+
+- **dashboard:** Surface per-report GitHub sync failures with retry and an app-not-configured state ([e92312a](https://github.com/Ripwords/ReproJs/commit/e92312a))
+- **shared:** Contract for attaching reports to existing GitHub issues ([14ca03f](https://github.com/Ripwords/ReproJs/commit/14ca03f))
+- **ui:** Optional related GitHub issue field in the reporter ([f3a6fdd](https://github.com/Ripwords/ReproJs/commit/f3a6fdd))
+- **sdk:** Fields.relatedIssue init option ([cb00e71](https://github.com/Ripwords/ReproJs/commit/cb00e71))
+
+### 🩹 Fixes
+
+- **ui:** Keep log buffers until the report upload succeeds ([2353081](https://github.com/Ripwords/ReproJs/commit/2353081))
+- **ui:** Surface submit failures instead of spinning forever ([4d26f1c](https://github.com/Ripwords/ReproJs/commit/4d26f1c))
+- **recorder:** Skip replay gzip when CompressionStream is unavailable ([c3c1759](https://github.com/Ripwords/ReproJs/commit/c3c1759))
+- **core:** Fall back to AbortController when AbortSignal.timeout is missing ([0c7d19c](https://github.com/Ripwords/ReproJs/commit/0c7d19c))
+- **core:** Scale the intake upload timeout with payload size ([535bbd2](https://github.com/Ripwords/ReproJs/commit/535bbd2))
+- **ui:** Keep the widget open when a screenshot cannot be taken ([6b18a28](https://github.com/Ripwords/ReproJs/commit/6b18a28))
+- **core:** Defer init() until <body> exists and start collectors only after mount ([8ad9cab](https://github.com/Ripwords/ReproJs/commit/8ad9cab))
+- **ui:** Survive a failed gallery write instead of stranding the outcome bar ([3925009](https://github.com/Ripwords/ReproJs/commit/3925009))
+- **ui:** Read captured response bodies in the background ([8b14745](https://github.com/Ripwords/ReproJs/commit/8b14745))
+- **ui:** Restore the host's previous body overflow when the reporter closes ([0eebe7a](https://github.com/Ripwords/ReproJs/commit/0eebe7a))
+- **sdk:** Surface annotation flatten failures and cap the DOM-capture canvas size ([b088548](https://github.com/Ripwords/ReproJs/commit/b088548))
+- **recorder:** Never evict the newest FullSnapshot + Meta pair from the buffer ([3b5a7da](https://github.com/Ripwords/ReproJs/commit/3b5a7da))
+- **ui:** Show the minted share link when the clipboard write fails ([28f03b9](https://github.com/Ripwords/ReproJs/commit/28f03b9))
+- **ui:** Clear the post-success auto-close timer on unmount ([02d39b4](https://github.com/Ripwords/ReproJs/commit/02d39b4))
+- **ui:** Explain a second attachShadow on #repro-host instead of throwing a bare NotSupportedError ([4469175](https://github.com/Ripwords/ReproJs/commit/4469175))
+- **core:** Match alt-combo hotkeys on event.code when the key becomes a symbol ([c4f5698](https://github.com/Ripwords/ReproJs/commit/c4f5698))
+- **ui:** Only restore fetch on stop() if our wrapper is still installed ([d692807](https://github.com/Ripwords/ReproJs/commit/d692807))
+- **projects:** Store and compare allowed origins in canonical form ([6950f1c](https://github.com/Ripwords/ReproJs/commit/6950f1c))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## sdk-v0.5.3
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.5.2...sdk-v0.5.3)
