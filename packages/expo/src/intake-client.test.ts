@@ -240,6 +240,35 @@ test("a real 4xx stays a non-fatal client error", async () => {
   expect(err?.fatal).toBe(false)
 })
 
+// A POST that never settles (captive portal, half-open TCP after a network
+// switch) used to hang `submit()` forever. The flusher's `running` flag then
+// never cleared and every later report sat in the queue until the app was
+// killed. The fetch must be given an abort signal and that signal must fire.
+test("a stalled upload is aborted after timeoutMs and stays retryable", async () => {
+  const hangingFetch = ((_url: unknown, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      // Behaves like a real fetch: only an abort can end this request.
+      init?.signal?.addEventListener("abort", () =>
+        reject(Object.assign(new Error("Aborted"), { name: "AbortError" })),
+      )
+    })) as unknown as typeof fetch
+  const client = createIntakeClient({
+    intakeUrl: "https://ex.com/api/intake",
+    fetchImpl: hangingFetch,
+    timeoutMs: 20,
+  })
+  const started = Date.now()
+  const err = await client
+    .submit({ idempotencyKey: "i", input: {} as never, attachments: [] })
+    .then(() => null)
+    .catch((e: unknown) => e as { fatal?: boolean; retryable?: boolean; message: string })
+  expect(Date.now() - started).toBeLessThan(2_000)
+  expect(err?.message).toContain("timed out")
+  // A timeout says nothing about the report itself: keep it for the next run.
+  expect(err?.fatal).toBe(false)
+  expect(err?.retryable).toBe(true)
+})
+
 // An attachment that cannot be read any more (iOS purged tmp/, the app was
 // updated) used to be a fatal IntakeError, and the flusher deleted the whole
 // report for it. The text of the report is still worth having: send it

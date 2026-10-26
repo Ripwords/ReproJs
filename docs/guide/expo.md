@@ -198,6 +198,8 @@ Reports that fail to POST (no network, 5xx, etc.) are persisted to AsyncStorage 
 - The app comes to foreground (`AppState` change)
 - The host calls `useRepro().queue.flush()` manually
 
+Each upload attempt is aborted after `queue.submitTimeoutMs` (default 60 s) and retried later, so one request that never settles (captive portal, half-open connection after a network switch) cannot stall the queue.
+
 Attachments are copied into `<documentDirectory>/repro-queue/<report-id>/` when the report is queued (needs `expo-file-system`) and deleted once the report is sent, dropped, or evicted. The screenshot and picker output live in `tmp/` and the cache directory, which iOS and Android purge on their own schedule; the copy is what lets a queued report outlive an app restart or update. If an attachment is unreadable when the report is finally sent, the report goes out **without** it and a `console.warn` names the file. Only a misconfigured `intakeUrl` (redirect or non-JSON answer) is treated as fatal.
 
 The queue is not encrypted — documented privacy tradeoff for v1. Don't use as a session vault for secrets.

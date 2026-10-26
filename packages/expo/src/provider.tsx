@@ -121,7 +121,12 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       onRemove: async (item) => (await attachmentStore).discard(item.id),
     }),
   )
-  const clientRef = useRef(createIntakeClient({ intakeUrl: config.intakeUrl }))
+  const clientRef = useRef(
+    createIntakeClient({
+      intakeUrl: config.intakeUrl,
+      timeoutMs: config.queue.submitTimeoutMs,
+    }),
+  )
   // Bumped after every flush so `useRepro().queue` re-renders with the real
   // pending count / last error instead of a frozen snapshot.
   const [queueTick, setQueueTick] = useState(0)

@@ -29,6 +29,8 @@ import { ReproProvider } from "@reprojs/expo"
 | `queue.maxReports` | `number` | `5` | Max queued reports before oldest is evicted. |
 | `queue.maxBytes` | `number` | `10_485_760` (10 MB) | Byte cap across all queued attachments. |
 | `queue.backoffMs` | `number[]` | `[1000, 5000, 30000, 120000]` | Retry delays per attempt. |
+| `queue.maxAttempts` | `number` | `10` | Retries before a report is given up on. |
+| `queue.submitTimeoutMs` | `number` | `60_000` | Abort one upload attempt after this long; the report is retried on the next flush. |
 | `redact.headerDenylist` | `string[]` | `["authorization", "cookie", "x-api-key"]` | Case-insensitive header names that get `[redacted]` in the network entry. |
 | `redact.bodyRedactKeys` | `string[]` | `["password", "token", "secret"]` | Reserved for v1.1 body capture. |
 | `theme.accent` | `string` | `"#6366f1"` | Reserved; v1 UI uses the flame accent internally. |

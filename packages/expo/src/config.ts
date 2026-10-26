@@ -1,4 +1,5 @@
 import type { ReporterIdentity } from "@reprojs/shared"
+import { DEFAULT_SUBMIT_TIMEOUT_MS } from "./intake-client"
 
 const DEFAULT_HEADER_DENYLIST = ["authorization", "cookie", "x-api-key"]
 const DEFAULT_BODY_REDACT_KEYS = ["password", "token", "secret"]
@@ -20,6 +21,8 @@ export interface ReproConfigInput {
     backoffMs?: number[]
     /** Retries before a report is given up on and `onDrop` fires. */
     maxAttempts?: number
+    /** Abort one upload attempt after this many milliseconds. Default 60 000. */
+    submitTimeoutMs?: number
   }
   redact?: {
     headerDenylist?: string[]
@@ -44,6 +47,7 @@ export interface ReproConfig {
     maxBytes: number
     backoffMs: number[]
     maxAttempts: number
+    submitTimeoutMs: number
   }
   redact: {
     headerDenylist: string[]
@@ -90,6 +94,7 @@ export function normalizeConfig(input: ReproConfigInput): ReproConfig | null {
       maxBytes: input.queue?.maxBytes ?? 10 * 1024 * 1024,
       backoffMs: input.queue?.backoffMs ?? [1000, 5000, 30000, 120000],
       maxAttempts: input.queue?.maxAttempts ?? 10,
+      submitTimeoutMs: input.queue?.submitTimeoutMs ?? DEFAULT_SUBMIT_TIMEOUT_MS,
     },
     redact: {
       headerDenylist: input.redact?.headerDenylist ?? DEFAULT_HEADER_DENYLIST,
