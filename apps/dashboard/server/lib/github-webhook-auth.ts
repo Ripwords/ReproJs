@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm"
+import { eq, lt } from "drizzle-orm"
 import { db } from "../db"
 import { githubWebhookDeliveries } from "../db/schema/github-webhook-deliveries"
 import { githubIntegrations } from "../db/schema/github-integrations"
@@ -30,6 +30,24 @@ export async function recordDelivery(deliveryId: string): Promise<DeliveryStatus
  */
 export async function forgetDelivery(deliveryId: string): Promise<void> {
   await db.delete(githubWebhookDeliveries).where(eq(githubWebhookDeliveries.deliveryId, deliveryId))
+}
+
+export const WEBHOOK_DELIVERY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Delete delivery ids older than the retention window. GitHub only redelivers
+ * within days, so anything older can never be a replay; without this sweep the
+ * table grows by one row per webhook forever. Returns the number deleted.
+ */
+export async function pruneWebhookDeliveries(
+  retentionMs: number = WEBHOOK_DELIVERY_RETENTION_MS,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - retentionMs)
+  const deleted = await db
+    .delete(githubWebhookDeliveries)
+    .where(lt(githubWebhookDeliveries.receivedAt, cutoff))
+    .returning({ deliveryId: githubWebhookDeliveries.deliveryId })
+  return deleted.length
 }
 
 export async function isKnownInstallation(installationId: number): Promise<boolean> {
