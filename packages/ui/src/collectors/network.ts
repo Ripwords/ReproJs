@@ -115,6 +115,17 @@ function headersToObject(h: Headers | Record<string, string> | undefined): Recor
   return { ...h }
 }
 
+async function readResponseBody(res: Response, entry: NetworkEntry, maxBytes: number) {
+  try {
+    const text = await res.clone().text()
+    if (entry.size === null) entry.size = text.length
+    entry.responseBody = redactBody(text, { maxBytes }) ?? undefined
+  } catch {
+    // Body unreadable (opaque, already consumed, aborted) — keep the entry
+    // without it rather than failing the fetch.
+  }
+}
+
 export function createNetworkCollector(_initial: NetworkConfig): NetworkCollector {
   let buffer: RingBuffer<NetworkEntry> | null = null
   let originalFetch: typeof globalThis.fetch | null = null
@@ -189,18 +200,7 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
           const parsed = Number.parseInt(cl, 10)
           if (Number.isFinite(parsed) && parsed >= 0) size = parsed
         }
-        let responseBody: string | undefined
-        if (cfg.responseBody) {
-          try {
-            const clone = res.clone()
-            const text = await clone.text()
-            if (size === null) size = text.length
-            responseBody = redactBody(text, { maxBytes: maxBody }) ?? undefined
-          } catch {
-            responseBody = undefined
-          }
-        }
-        buffer?.push({
+        const entry: NetworkEntry = {
           id,
           ts,
           method,
@@ -212,8 +212,15 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
           requestHeaders,
           responseHeaders,
           requestBody,
-          responseBody,
-        })
+        }
+        buffer?.push(entry)
+        if (cfg.responseBody) {
+          // Read the clone in the background and patch the entry in place.
+          // Awaiting the body here would hold the host's `await fetch()`
+          // until the stream closes — a streaming/SSE response never does,
+          // so the host would hang.
+          void readResponseBody(res, entry, maxBody)
+        }
         return res
       } catch (err) {
         const durationMs = performance.now() - started
