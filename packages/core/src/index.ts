@@ -24,6 +24,8 @@ let _reporter: ReporterIdentity | null = null
 let _mounted = false
 let _collectors: ReturnType<typeof registerAllCollectors> | null = null
 let _detachHotkey: (() => void) | null = null
+// Set while init() is waiting for DOMContentLoaded; clears the listener.
+let _cancelPendingBoot: (() => void) | null = null
 
 export interface FeedbackHandle {
   pauseReplay: () => void
@@ -46,11 +48,52 @@ export function init(options: InitOptions): FeedbackHandle {
   _config = cfg
   if (_mounted) unmount()
   if (_collectors) _collectors.stopAll()
-  _collectors = registerAllCollectors({
-    ...options.collectors,
-    replay: cfg.replay ?? options.collectors?.replay,
-  })
-  const collectors = _collectors
+  _collectors = null
+  _cancelPendingBoot?.()
+  _cancelPendingBoot = null
+
+  const boot = () => {
+    _cancelPendingBoot = null
+    // Mount first, start collectors second: if the widget can't mount there
+    // is nothing to submit through, so patching fetch/XHR/console and
+    // starting the recorder would leave a half-initialised SDK behind.
+    try {
+      mountWidget(cfg)
+    } catch (err) {
+      console.warn("[repro] init: widget failed to mount; collectors not started", err)
+      return
+    }
+    _mounted = true
+    _collectors = registerAllCollectors({
+      ...options.collectors,
+      replay: cfg.replay ?? options.collectors?.replay,
+    })
+    // Attach the open-menu hotkey when configured. attachHotkey fails open on an
+    // unparseable spec (returns a no-op detach), so a bad value can't break init.
+    _detachHotkey?.()
+    _detachHotkey = cfg.hotkey ? attachHotkey(cfg.hotkey, () => uiOpenMenu()) : null
+  }
+
+  // `<script async onload="Repro.init()">` in <head> with a cached bundle
+  // fires before <body> has been parsed; the shadow host has nowhere to go.
+  // Defer to DOMContentLoaded instead of throwing out of init().
+  if (document.body) {
+    boot()
+  } else {
+    const onReady = () => {
+      document.removeEventListener("DOMContentLoaded", onReady)
+      boot()
+    }
+    _cancelPendingBoot = () => document.removeEventListener("DOMContentLoaded", onReady)
+    document.addEventListener("DOMContentLoaded", onReady)
+  }
+  return {
+    pauseReplay: () => _collectors?.pauseReplay(),
+    resumeReplay: () => _collectors?.resumeReplay(),
+  }
+}
+
+function mountWidget(cfg: ResolvedConfig): void {
   mount({
     config: { position: cfg.position, launcher: cfg.launcher },
     capture: () =>
@@ -94,7 +137,9 @@ export function init(options: InitOptions): FeedbackHandle {
       }
       const final = _collectors.applyBeforeSend(pending)
       if (final === null) return { ok: false, message: "aborted by beforeSend" }
-      const replay = await _collectors.flushReplay()
+      // Non-destructive snapshot: buffers are only cleared after the POST
+      // succeeds, so a 429/5xx/timeout retry resends the same logs + replay.
+      const replay = await _collectors.snapshotReplay()
       const result = await postReport(_config, {
         title: final.title,
         description: final.description,
@@ -113,21 +158,13 @@ export function init(options: InitOptions): FeedbackHandle {
         dwellMs,
         honeypot,
       })
-      if (result.ok && result.replayDisabled) {
-        _collectors.markReplayDisabled()
+      if (result.ok) {
+        _collectors.clearBuffers()
+        if (result.replayDisabled) _collectors.markReplayDisabled()
       }
       return result.ok ? { ok: true } : { ok: false, message: result.message }
     },
   })
-  _mounted = true
-  // Attach the open-menu hotkey when configured. attachHotkey fails open on an
-  // unparseable spec (returns a no-op detach), so a bad value can't break init.
-  _detachHotkey?.()
-  _detachHotkey = cfg.hotkey ? attachHotkey(cfg.hotkey, () => uiOpenMenu()) : null
-  return {
-    pauseReplay: () => collectors.pauseReplay(),
-    resumeReplay: () => collectors.resumeReplay(),
-  }
 }
 
 export function open(): void {
@@ -175,6 +212,8 @@ export function resumeReplay(): void {
 }
 
 export function _unmount(): void {
+  _cancelPendingBoot?.()
+  _cancelPendingBoot = null
   if (_mounted) unmount()
   if (_collectors) _collectors.stopAll()
   _detachHotkey?.()

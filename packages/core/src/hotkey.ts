@@ -51,6 +51,17 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return ce === "" || ce === "true"
 }
 
+// On macOS, alt+letter produces a dead key or a symbol (alt+b → "∫"), so
+// `event.key` never equals the configured letter and alt-combos never fire.
+// Fall back to the physical key via `event.code` ("KeyB" → "b", "Digit1" → "1").
+function keyMatches(event: KeyboardEvent, key: string): boolean {
+  if ((event.key ?? "").toLowerCase() === key) return true
+  const code = event.code ?? ""
+  if (code.startsWith("Key") && code.length === 4) return code.slice(3).toLowerCase() === key
+  if (code.startsWith("Digit") && code.length === 6) return code.slice(5) === key
+  return false
+}
+
 /**
  * Attach a global keydown listener that invokes `onTrigger` when the parsed
  * shortcut matches. Ignores events originating from editable elements (so the
@@ -66,7 +77,7 @@ export function attachHotkey(spec: string, onTrigger: () => void): () => void {
     if (event.shiftKey !== parsed.shift) return
     if (event.altKey !== parsed.alt) return
     if (event.metaKey !== parsed.meta) return
-    if ((event.key ?? "").toLowerCase() !== parsed.key) return
+    if (!keyMatches(event, parsed.key)) return
     event.preventDefault()
     onTrigger()
   }

@@ -7,8 +7,17 @@
 //    and a single ImageCapture/canvas grab; no resource inlining loop that
 //    can stall on slow CDN font fetches.
 //
-// Tradeoff: the browser shows a permission prompt. Users who decline (or
-// browsers that don't expose the API) fall through to the DOM path.
+// Tradeoff: the browser shows a permission prompt. Browsers that don't
+// expose the API at all (every iOS browser, most Android ones) fall through
+// to the DOM path; a user who declines gets a toast and stays in the widget.
+
+/** True when this browser exposes the Screen Capture API at all. */
+export function isDisplayMediaSupported(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    typeof navigator.mediaDevices?.getDisplayMedia === "function"
+  )
+}
 
 interface ChromiumDisplayMediaConstraints extends DisplayMediaStreamOptions {
   // Chromium-only hints; ignored elsewhere. preferCurrentTab makes the
@@ -22,9 +31,7 @@ interface ChromiumDisplayMediaConstraints extends DisplayMediaStreamOptions {
 }
 
 export async function captureViaDisplayMedia(): Promise<Blob | null> {
-  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia) {
-    return null
-  }
+  if (!isDisplayMediaSupported()) return null
   let stream: MediaStream | null = null
   try {
     const constraints: ChromiumDisplayMediaConstraints = {

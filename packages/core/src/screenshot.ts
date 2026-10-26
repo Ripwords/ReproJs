@@ -1,5 +1,5 @@
 import { domToBlob } from "modern-screenshot"
-import { captureViaDisplayMedia } from "./display-media"
+import { captureViaDisplayMedia, isDisplayMediaSupported } from "./display-media"
 import { createOverlayPinner } from "./pin-overlays"
 
 const HOST_ID = "repro-host"
@@ -15,14 +15,16 @@ export type CaptureMethod = "auto" | "display-media" | "dom"
 
 export interface CaptureOptions {
   // Which capture path to use. Defaults to "auto":
-  //   "auto" / "display-media" — use the browser's getDisplayMedia
+  //   "auto" — use the browser's getDisplayMedia when the API exists
   //     (pixel-perfect, ~50ms after the user accepts the "Share this tab?"
   //     prompt, no DOM cloning, no font inlining, no shadow-DOM traps).
-  //     Returns null if the user declines or the API is unavailable. Does
-  //     NOT fall back to DOM capture: the fallback could stall indefinitely
-  //     on heavy pages (CSS-in-JS, web components, slow CDN fonts) and a
-  //     hung "Capturing…" overlay is strictly worse than a missing
-  //     screenshot — the wizard keeps moving with the description step.
+  //     When the API is missing entirely (every iOS browser, most Android
+  //     ones) fall back to the DOM path — otherwise mobile users could never
+  //     capture at all. When the user declines the prompt, return null and
+  //     do NOT fall back: the DOM path can stall indefinitely on heavy
+  //     desktop pages (CSS-in-JS, web components, slow CDN fonts), and the
+  //     widget shows a toast so the user can retry or continue without one.
+  //   "display-media" — require getDisplayMedia; null if missing or denied.
   //   "dom" — skip the permission prompt entirely and use modern-screenshot.
   //     Opt-in only, for hosts that don't want the browser prompt.
   method?: CaptureMethod
@@ -63,12 +65,23 @@ async function withHiddenHost<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+// Safari refuses canvases above ~16.7 million pixels (toBlob returns null),
+// and other engines get very slow well before that. A 4K viewport at 2× DPR
+// is ~33 MP, so cap the backing-store pixel count and lower the scale to fit.
+const MAX_CANVAS_PIXELS = 16_000_000
+
+export function domCaptureScale(width: number, height: number, dpr: number): number {
+  const area = Math.max(1, width) * Math.max(1, height)
+  const maxScale = Math.sqrt(MAX_CANVAS_PIXELS / area)
+  return Math.max(0.1, Math.min(dpr || 1, maxScale))
+}
+
 async function captureViaDom(opts: CaptureOptions): Promise<Blob | null> {
   const root = document.documentElement
   const pinner = createOverlayPinner(root, buildFilter(opts))
   try {
     return await domToBlob(root, {
-      scale: window.devicePixelRatio || 1,
+      scale: domCaptureScale(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1),
       width: window.innerWidth,
       height: window.innerHeight,
       // Opt-in in modern-screenshot (every other feature defaults on). Without
@@ -93,12 +106,13 @@ export async function capture(opts: CaptureOptions = {}): Promise<Blob | null> {
   if (method === "dom") {
     return await captureViaDom(opts)
   }
-  // "auto" and "display-media" both behave identically now: try the browser's
-  // screen capture once and return null on any failure (user declined, API
-  // missing, track errored). Historically "auto" fell back to modern-
-  // screenshot on failure, but that path stalls indefinitely on real apps
-  // (Next.js dev overlays, CSS-in-JS, slow-inlining CDN fonts) and strands
-  // users on "Capturing…". A null screenshot lets the wizard advance to the
-  // description step without blocking.
+  // No Screen Capture API at all (mobile browsers): "auto" takes the DOM
+  // path, since there is no prompt the user could have accepted. Only the
+  // API-missing case falls back — a *declined* prompt still returns null so
+  // a heavy desktop page can't strand the user on "Capturing…" (the DOM
+  // path stalls on Next.js dev overlays, CSS-in-JS, slow-inlining fonts).
+  if (method === "auto" && !isDisplayMediaSupported()) {
+    return await captureViaDom(opts)
+  }
   return await withHiddenHost(() => captureViaDisplayMedia())
 }

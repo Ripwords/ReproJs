@@ -18,7 +18,21 @@ export function createShadowHost(): ShadowRoot {
   }
   const existing = attachedRoots.get(host)
   if (existing) return existing
-  const root = host.attachShadow({ mode: "closed" })
+  // Two SDK copies on one page (e.g. a host bundle plus the tester
+  // extension) both find #repro-host, and the second attachShadow() throws a
+  // bare NotSupportedError because the first copy already attached a closed
+  // root this module can't see. Replacing the host would tear down the other
+  // copy's live widget, so bail with a message that names the cause; core's
+  // init() catches it, warns, and leaves the collectors unstarted.
+  let root: ShadowRoot
+  try {
+    root = host.attachShadow({ mode: "closed" })
+  } catch (err) {
+    throw new Error(
+      "[repro] #repro-host already has a shadow root — is another Repro SDK instance on this page?",
+      { cause: err },
+    )
+  }
   attachedRoots.set(host, root)
   return root
 }

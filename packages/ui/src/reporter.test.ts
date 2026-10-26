@@ -319,6 +319,28 @@ describe("Reporter", () => {
     expect(payload?.honeypot).toBe("")
   })
 
+  test("a throwing onSubmit surfaces an error and re-enables Send instead of spinning forever", async () => {
+    const win = setupDom()
+    const root = renderReporter(win, {
+      gallery: null,
+      onSubmit: async () => {
+        throw new ReferenceError("CompressionStream is not defined")
+      },
+    })
+    await flush()
+    await fillTitleAndContinue(win, root)
+    findButtonByText(root, "Send report").click()
+    await flush()
+
+    expect(collectByClass(root, "ft-error-card")[0]?.textContent).toContain(
+      "CompressionStream is not defined",
+    )
+    // Still on the review step with a usable Send button — not stuck on "Sending…".
+    const send = findButtonByText(root, "Send report")
+    expect(send.disabled).toBe(false)
+    expect(findButtonByText(root, "Back").disabled).toBe(false)
+  })
+
   test("omits the Media summary line when nothing is selected", async () => {
     const win = setupDom()
     const root = renderReporter(win, { gallery: null })

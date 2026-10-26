@@ -1,4 +1,4 @@
-import type { RecorderEvent } from "./types"
+import { EventType, type RecorderEvent } from "./types"
 
 export interface BufferOptions {
   /** Maximum time window in ms to retain (events older than now - windowMs are dropped on push). */
@@ -32,6 +32,7 @@ export class EventBuffer {
   private totalBytes = 0
   private pausedAt: number | null = null
   private accumulatedPauseMs = 0
+  private warnedBaseline = false
   private readonly windowMs: number
   private readonly maxBytes: number
   private readonly now: () => number
@@ -75,10 +76,41 @@ export class EventBuffer {
   }
 
   private evictToFitSize(): void {
+    // Everything before the newest FullSnapshot (and the Meta that precedes
+    // it) is fair game; the pair itself is the replay's only baseline, so
+    // evicting it yields a replay that cannot render at all. Prefer an
+    // over-budget buffer — gzipEvents trims again at flush time — and warn
+    // once so an undersized `bufferBytes` is visible to the operator.
+    const protectedFrom = this.newestBaselineIndex()
     while (this.totalBytes > this.maxBytes && this.entries.length > 0) {
+      if (protectedFrom !== null && protectedFrom <= 0) {
+        this.warnBaselineOverBudget()
+        return
+      }
       const first = this.entries.shift()
       if (first) this.totalBytes -= first.bytes
+      // Shifting re-indexes the array; the baseline moved one slot closer to
+      // the front. Re-derive so the guard above tracks it.
+      return this.evictToFitSize()
     }
+  }
+
+  private newestBaselineIndex(): number | null {
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      if (this.entries[i]?.event.type === EventType.FullSnapshot) {
+        const prev = this.entries[i - 1]
+        return prev && prev.event.type === EventType.Meta ? i - 1 : i
+      }
+    }
+    return null
+  }
+
+  private warnBaselineOverBudget(): void {
+    if (this.warnedBaseline) return
+    this.warnedBaseline = true
+    console.warn(
+      `[repro] replay snapshot alone exceeds the ${this.maxBytes} B buffer budget; keeping it so the replay stays playable`,
+    )
   }
 
   flush(): RecorderEvent[] {

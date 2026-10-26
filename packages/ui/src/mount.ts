@@ -235,7 +235,16 @@ function App() {
       showToast("Gallery unavailable — capture not saved")
       return false
     }
-    const { evicted } = await gallery.add(gi)
+    let evicted: GalleryItem[]
+    try {
+      ;({ evicted } = await gallery.add(gi))
+    } catch (err) {
+      // IndexedDB quota / private-mode / blocked-storage errors reject here.
+      // Without the catch the outcome bar stayed stuck on the failed save.
+      console.warn("[repro] gallery write failed", err)
+      showToast("Couldn't save to gallery — storage unavailable")
+      return false
+    }
     // store.add evicts oldest-first, so evicted[0] is the oldest dropped item.
     const oldest = evicted[0]
     if (oldest) {
@@ -295,6 +304,20 @@ function App() {
       setMode("report")
     } else {
       setMode("closed")
+    }
+  }
+
+  // The capture produced nothing (prompt denied, decode failed). Unlike a
+  // user-initiated discard this must not close the widget — that read as a
+  // crash. Explain, then return to wherever the capture was launched from.
+  function afterCaptureFailed() {
+    showToast("Screenshot unavailable — try again or continue without one")
+    if (returnToReportRef.current) {
+      returnToReportRef.current = false
+      setOpenedAt(performance.now())
+      setMode("report")
+    } else {
+      setMode("menu")
     }
   }
 
@@ -448,6 +471,10 @@ function App() {
       onDone: (outcome) => {
         if (outcome.action === "discarded") {
           afterMediaDiscarded()
+          return
+        }
+        if (outcome.action === "failed") {
+          afterCaptureFailed()
           return
         }
         void resolveMedia(outcome.item, outcome.action === "report" ? "report" : "saved")

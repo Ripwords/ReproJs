@@ -1181,6 +1181,17 @@ export default String.raw`:host,
   color: var(--ft-color-danger);
   font-size: 12px;
 }
+.ft-gallery-share-url {
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--ft-color-border);
+  border-radius: var(--ft-radius-sm);
+  background: var(--ft-color-surface-soft);
+  color: var(--ft-color-text);
+  user-select: all;
+}
 .ft-gallery-preview {
   display: flex;
   align-items: center;

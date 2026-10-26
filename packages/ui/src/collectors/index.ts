@@ -48,7 +48,13 @@ export function registerAllCollectors(config: CollectorConfig): {
     cookies: ReturnType<ReturnType<typeof createCookiesCollector>["snapshot"]>
     logs: LogsAttachment
   }
-  flushReplay: () => ReturnType<ReplayCollector["flushGzipped"]>
+  snapshotReplay: () => ReturnType<ReplayCollector["snapshotGzipped"]>
+  /**
+   * Empties console / network / breadcrumb / replay buffers. Call only after
+   * the intake POST succeeded — `snapshotAll` and `snapshotReplay` are
+   * non-destructive so a failed upload can be retried with the same data.
+   */
+  clearBuffers: () => void
   pauseReplay: () => void
   resumeReplay: () => void
   markReplayDisabled: () => void
@@ -76,9 +82,9 @@ export function registerAllCollectors(config: CollectorConfig): {
 
   return {
     snapshotAll() {
-      const consoleSnap = consoleCollector.snapshot()
-      const networkSnap = networkCollector.snapshot()
-      const breadcrumbsSnap = breadcrumbsCollector.snapshot()
+      const consoleSnap = consoleCollector.peek()
+      const networkSnap = networkCollector.peek()
+      const breadcrumbsSnap = breadcrumbsCollector.peek()
       const cookiesSnap = cookiesCollector.snapshot()
       return {
         systemInfo: snapshotSystemInfo(),
@@ -98,7 +104,13 @@ export function registerAllCollectors(config: CollectorConfig): {
         },
       }
     },
-    flushReplay: () => replayCollector.flushGzipped(),
+    snapshotReplay: () => replayCollector.snapshotGzipped(),
+    clearBuffers() {
+      consoleCollector.clear()
+      networkCollector.clear()
+      breadcrumbsCollector.clear()
+      replayCollector.clear()
+    },
     pauseReplay: () => replayCollector.pause(),
     resumeReplay: () => replayCollector.resume(),
     markReplayDisabled: () => replayCollector.markDisabled(),
