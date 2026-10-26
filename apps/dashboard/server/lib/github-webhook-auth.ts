@@ -22,6 +22,16 @@ export async function recordDelivery(deliveryId: string): Promise<DeliveryStatus
   return inserted ? "new" : "replay"
 }
 
+/**
+ * Release a delivery id so GitHub's automatic redelivery of the same GUID is
+ * processed instead of being answered `202 replay`. Called when processing
+ * threw after `recordDelivery` had already claimed the id — otherwise a
+ * transient DB or network failure would drop that event forever.
+ */
+export async function forgetDelivery(deliveryId: string): Promise<void> {
+  await db.delete(githubWebhookDeliveries).where(eq(githubWebhookDeliveries.deliveryId, deliveryId))
+}
+
 export async function isKnownInstallation(installationId: number): Promise<boolean> {
   const [row] = await db
     .select({ projectId: githubIntegrations.projectId })
