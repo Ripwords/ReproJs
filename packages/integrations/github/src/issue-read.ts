@@ -72,12 +72,37 @@ export async function getIssueSummary(
   }
 }
 
-const SEARCH_QUALIFIER = /[:"]/g
+// Search grammar characters and whole-word boolean operators. Any of these in
+// user text could change precedence or add qualifiers, letting the query
+// escape the `repo:owner/name` scope and surface issues from every repo the
+// installation can see.
+const SEARCH_SYNTAX = /[:"()\\-]/g
+const SEARCH_OPERATOR = /\b(?:OR|AND|NOT)\b/gi
+
+/**
+ * Reduce manager-typed search text to plain words. This is an authorization
+ * boundary: the result is spliced into a query pinned to one repository.
+ */
+export function sanitizeSearchText(input: string): string {
+  return input
+    .replace(SEARCH_SYNTAX, " ")
+    .replace(SEARCH_OPERATOR, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 0)
+    .join(" ")
+}
+
+/** True when a search hit's `repository_url` names exactly `owner/repo`. */
+export function isInRepo(repositoryUrl: string | undefined, owner: string, repo: string): boolean {
+  if (!repositoryUrl) return false
+  return repositoryUrl.toLowerCase().endsWith(`/repos/${owner}/${repo}`.toLowerCase())
+}
 
 /**
  * List issues for the picker. Without `q` this pages through
  * `issues.listForRepo` (newest first); with `q` it runs a repo-scoped
- * `is:issue` search so matching works on title and body.
+ * `is:issue` search so matching works on title and body. Search results are
+ * re-checked against the repo (defence in depth on top of the sanitiser).
  */
 export async function listIssues(client: Octokit, input: ListIssuesInput): Promise<IssueSummary[]> {
   const state = input.state ?? "open"
@@ -108,12 +133,10 @@ export async function listIssues(client: Octokit, input: ListIssuesInput): Promi
       }))
   }
 
-  // Strip qualifier syntax so a typed `label:bug` or quote cannot escape the
-  // repo scope we pin here.
-  const text = q.replace(SEARCH_QUALIFIER, " ").trim()
+  const text = sanitizeSearchText(q)
   const stateQualifier = state === "all" ? "" : ` is:${state}`
   const res = await client.rest.search.issuesAndPullRequests({
-    q: `repo:${input.owner}/${input.repo} is:issue${stateQualifier} ${text}`,
+    q: `repo:${input.owner}/${input.repo} is:issue${stateQualifier} ${text}`.trim(),
     sort: "updated",
     order: "desc",
     page,
@@ -121,7 +144,7 @@ export async function listIssues(client: Octokit, input: ListIssuesInput): Promi
     advanced_search: "true",
   })
   return res.data.items
-    .filter((i) => !i.pull_request)
+    .filter((i) => !i.pull_request && isInRepo(i.repository_url, input.owner, input.repo))
     .map((i) => ({
       number: i.number,
       nodeId: i.node_id,
