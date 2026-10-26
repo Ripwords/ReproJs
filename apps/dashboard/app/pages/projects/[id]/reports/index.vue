@@ -10,11 +10,23 @@ import FacetSidebar from "~/components/inbox/facet-sidebar.vue"
 import SearchSort from "~/components/inbox/search-sort.vue"
 import BulkActionBar from "~/components/inbox/bulk-action-bar.vue"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
-import { INBOX_PAGE_SIZE, useInboxQuery } from "~/composables/use-inbox-query"
+import {
+  INBOX_PAGE_SIZE,
+  inboxLocationQuery,
+  initialStatusForVisit,
+  rememberedStatusTab,
+  useInboxQuery,
+} from "~/composables/use-inbox-query"
 import { useKeyboardShortcuts } from "~/composables/useKeyboardShortcuts"
-import { priorityColor, priorityLabel } from "~/composables/use-report-format"
+import {
+  priorityColor,
+  priorityLabel,
+  statusColor,
+  statusLabel,
+} from "~/composables/use-report-format"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
+import { activeQuickView, quickViewPatch, type QuickViewId } from "~/utils/inbox-quick-views"
 
 const UCheckbox = resolveComponent("UCheckbox")
 const UBadge = resolveComponent("UBadge")
@@ -27,6 +39,35 @@ const projectId = computed(() => route.params.id as string)
 useHead({ title: "Reports" })
 
 const { query, update, toApi } = useInboxQuery()
+
+// ---- Default tab ----
+// A fresh visit (no inbox params in the URL) opens on the tab the user last
+// chose for this project, defaulting to Open. Deep links keep their own
+// state. Runs before the list fetch so the first request is already the
+// right one, and uses `replace` so Back doesn't land on the unfiltered URL.
+const rememberedTab = useCookie<string | null>(`inbox-status-${projectId.value}`, {
+  default: () => null,
+})
+const initialStatus = initialStatusForVisit(route.query, rememberedTab.value)
+if (initialStatus) {
+  await navigateTo(
+    { query: inboxLocationQuery(query.value, { status: initialStatus }) },
+    { replace: true },
+  )
+}
+
+function changeStatus(status: ReportStatus[]) {
+  rememberedTab.value = rememberedStatusTab(status)
+  update({ status })
+}
+
+// ---- Quick views ----
+const currentView = computed<QuickViewId | null>(() => activeQuickView(query.value))
+function applyView(id: QuickViewId) {
+  const patch = quickViewPatch(id)
+  rememberedTab.value = rememberedStatusTab(patch.status)
+  update(patch)
+}
 
 const listUrl = computed(() => `/api/projects/${projectId.value}/reports?${toApi()}`)
 const { data, pending, refresh } = useApi<ReportListDTO>(listUrl, { watch: [listUrl] })
@@ -160,10 +201,22 @@ const hasActiveFilters = computed(
     query.value.source.length > 0,
 )
 
+// Source facets are counted project-wide (not by the active filters), so
+// their sum tells "this project has never received a report" apart from
+// "this tab is empty". The former gets the install CTA even though the
+// default Open tab is technically a filter.
+const projectHasReports = computed(() => {
+  const s = data.value?.facets.source
+  if (!s) return true
+  return s.web + s.expo + s.ios + s.android > 0
+})
+const showInstallState = computed(() => !projectHasReports.value)
+
 const { isAdmin } = useSession()
 const installLink = computed(() => installLinkFor(isAdmin.value, projectId.value))
 
 function clearFilters() {
+  rememberedTab.value = "all"
   update({ q: "", status: [], priority: [], assignee: [], tag: [], source: [] })
 }
 
@@ -249,6 +302,18 @@ const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
     header: "Title",
     cell: ({ row }) =>
       h("div", { class: "font-medium text-default truncate max-w-[32rem]" }, row.original.title),
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) =>
+      h(UBadge, {
+        label: statusLabel(row.original.status),
+        color: statusColor(row.original.status),
+        variant: "subtle",
+        size: "md",
+        class: "font-medium whitespace-nowrap",
+      }),
   },
   {
     id: "source",
@@ -358,10 +423,12 @@ function onRowSelect(_e: Event, row: TableRowLike) {
       :selected-assignee="query.assignee"
       :selected-tags="query.tag"
       :selected-source="query.source"
+      :active-view="currentView"
       @priority="update({ priority: $event })"
       @assignee="update({ assignee: $event })"
       @tag="update({ tag: $event })"
       @source="update({ source: $event })"
+      @view="applyView"
     />
 
     <div class="flex-1 min-w-0 flex flex-col">
@@ -395,22 +462,24 @@ function onRowSelect(_e: Event, row: TableRowLike) {
         :selected="query.status as ReportStatus[]"
         :counts="data?.facets.status ?? ({} as Record<ReportStatus, number>)"
         :total="data?.total ?? 0"
-        @change="update({ status: $event })"
+        @change="changeStatus"
       />
 
       <div class="flex-1 min-h-0 overflow-y-auto rounded-xl border border-default bg-default">
         <AppEmptyState
           v-if="!pending && reports.length === 0"
-          :icon="hasActiveFilters ? 'i-heroicons-funnel' : 'i-heroicons-inbox'"
-          :title="hasActiveFilters ? 'No reports match these filters' : 'No reports yet'"
+          :icon="showInstallState ? 'i-heroicons-inbox' : 'i-heroicons-funnel'"
+          :title="showInstallState ? 'No reports yet' : 'No reports match these filters'"
           :description="
-            hasActiveFilters
-              ? 'Try clearing the search or adjusting the filters.'
-              : 'Reports will appear here when the SDK is installed and users submit bugs.'
+            showInstallState
+              ? 'Reports will appear here when the SDK is installed and users submit bugs.'
+              : hasActiveFilters
+                ? 'Try clearing the search or adjusting the filters.'
+                : 'Nothing here right now.'
           "
-          :action-label="hasActiveFilters ? 'Clear filters' : installLink.label"
-          :action-to="hasActiveFilters ? undefined : installLink.to"
-          :variant="hasActiveFilters ? 'plain' : 'gradient'"
+          :action-label="showInstallState ? installLink.label : 'Clear filters'"
+          :action-to="showInstallState ? installLink.to : undefined"
+          :variant="showInstallState ? 'gradient' : 'plain'"
           @action="clearFilters"
         />
         <UTable
