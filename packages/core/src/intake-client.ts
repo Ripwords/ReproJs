@@ -25,6 +25,9 @@ export interface IntakeInput {
   replayBytes?: Uint8Array | null
   dwellMs?: number
   honeypot?: string
+  /** Reporter-typed reference to an existing GitHub issue ("#42", URL…). Sent
+   * verbatim; the server parses it and a manager confirms it later. */
+  relatedIssue?: string
 }
 
 // Maps a media mime type to the file extension used in the multipart part
@@ -90,6 +93,7 @@ export async function postReport(
           description: input.description,
           context: input.context,
           ...(input.metadata ? { metadata: input.metadata } : {}),
+          ...(input.relatedIssue ? { relatedIssue: input.relatedIssue } : {}),
           ...(input.dwellMs !== undefined ? { _dwellMs: input.dwellMs } : {}),
           ...(input.honeypot !== undefined ? { _hp: input.honeypot } : {}),
         }),

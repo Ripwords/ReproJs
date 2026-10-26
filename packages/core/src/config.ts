@@ -42,6 +42,15 @@ export interface InitOptions {
   // Default undefined = no shortcut. An unparseable spec is silently ignored
   // (fail open) — see hotkey.ts.
   hotkey?: string
+  fields?: FieldsConfig
+}
+
+export interface FieldsConfig {
+  // Show an optional "Related GitHub issue" input in the report form. The
+  // text is sent as a free-text hint (`relatedIssue`) that a manager confirms
+  // in the dashboard — the widget never lists issues or writes to GitHub.
+  // Default false.
+  relatedIssue?: boolean
 }
 
 export interface ResolvedConfig {
@@ -53,6 +62,7 @@ export interface ResolvedConfig {
   replay: ReplayInitConfig | undefined
   screenshot: ScreenshotConfig | undefined
   hotkey: string | undefined
+  fields: { relatedIssue: boolean }
 }
 
 const KEY_RE = /^rp_pk_[A-Za-z0-9]{24}$/
@@ -78,5 +88,6 @@ export function resolveConfig(opts: InitOptions): ResolvedConfig {
     replay: opts.replay,
     screenshot: opts.screenshot,
     hotkey: opts.hotkey,
+    fields: { relatedIssue: opts.fields?.relatedIssue ?? false },
   }
 }

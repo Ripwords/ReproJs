@@ -6,6 +6,7 @@ import {
   validateMediaSelection,
   type Attachment,
 } from "@reprojs/sdk-utils"
+import { parseRelatedIssueNumber } from "@reprojs/shared"
 import type { GalleryItem, GalleryStore } from "./gallery/store"
 import { GallerySheet } from "./wizard/gallery-sheet"
 import { StepDetails } from "./wizard/step-details"
@@ -27,6 +28,7 @@ interface ReporterProps {
     attachments: Attachment[]
     dwellMs: number
     honeypot: string
+    relatedIssue?: string
   }) => Promise<ReporterSubmitResult>
   openedAt: number
   // Browsed on demand only ("Choose from gallery…"), never listed up front.
@@ -36,9 +38,13 @@ interface ReporterProps {
   // them — the report attaches the blob it holds either way.
   sessionMedia: GalleryItem[]
   preselectedId?: string
+  // Optional extra form fields. Undefined = all off.
+  fields?: { relatedIssue: boolean } | undefined
   onCaptureNow: () => void
   onRecordNow: () => void
 }
+
+export const RELATED_ISSUE_HINT = "Enter an issue number like #123 or paste the issue link"
 
 const STEPS = ["Details", "Review"] as const
 type StepName = "details" | "review"
@@ -51,12 +57,23 @@ export function Reporter({
   gallery,
   sessionMedia,
   preselectedId,
+  fields,
   onCaptureNow,
   onRecordNow,
 }: ReporterProps) {
   const [step, setStep] = useState<StepName>("details")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
+  // Raw text of the optional "Related GitHub issue" field. Sent verbatim
+  // (trimmed) — the server extracts the number — but a value that cannot be
+  // read as an issue reference at all is a typo, so it blocks the form
+  // until fixed or cleared. Nothing here checks whether the issue exists:
+  // the widget is anonymous and must not learn anything about the repo.
+  const [relatedIssueText, setRelatedIssueText] = useState("")
+  const showRelatedIssue = fields?.relatedIssue === true
+  const relatedIssue = showRelatedIssue ? relatedIssueText.trim() : ""
+  const relatedIssueNumber = relatedIssue ? parseRelatedIssueNumber(relatedIssue) : null
+  const relatedIssueInvalid = relatedIssue !== "" && relatedIssueNumber === null
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -225,7 +242,7 @@ export function Reporter({
   }, [step, attachments])
 
   async function handleSend() {
-    if (!title.trim() || submitting || success) return
+    if (!title.trim() || relatedIssueInvalid || submitting || success) return
     setSubmitting(true)
     setSubmitError(null)
     const media = mediaItems.filter((item) => selectedMediaIds.includes(item.id))
@@ -242,6 +259,7 @@ export function Reporter({
         attachments,
         dwellMs: Math.max(0, Math.round(performance.now() - openedAt)),
         honeypot: hpRef.current?.value ?? "",
+        ...(relatedIssue ? { relatedIssue } : {}),
       })
     } catch (err) {
       res = {
@@ -276,8 +294,11 @@ export function Reporter({
     if (attachments.length > 0) {
       lines.push({ label: "Additional attachments", hint: String(attachments.length) })
     }
+    if (relatedIssueNumber !== null) {
+      lines.push({ label: "Related issue", hint: `#${relatedIssueNumber}` })
+    }
     return lines
-  }, [mediaItems, selectedMediaIds, attachments.length])
+  }, [mediaItems, selectedMediaIds, attachments.length, relatedIssueNumber])
 
   const headerProps = {
     eyebrow: "Repro",
@@ -299,6 +320,13 @@ export function Reporter({
           mediaErrors,
           onTitleChange: setTitle,
           onDescriptionChange: setDescription,
+          relatedIssue: showRelatedIssue
+            ? {
+                value: relatedIssueText,
+                error: relatedIssueInvalid ? RELATED_ISSUE_HINT : null,
+                onChange: setRelatedIssueText,
+              }
+            : undefined,
           onAttachmentsAdd: handleAttachmentsAdd,
           onAttachmentRemove: handleAttachmentRemove,
           onMediaToggle: handleMediaToggle,
@@ -313,12 +341,12 @@ export function Reporter({
       ? h(PrimaryButton, {
           label: "Continue",
           onClick: handleContinueFromDetails,
-          disabled: !title.trim(),
+          disabled: !title.trim() || relatedIssueInvalid,
         })
       : h(PrimaryButton, {
           label: success ? "Sent" : "Send report",
           onClick: handleSend,
-          disabled: !title.trim() || success,
+          disabled: !title.trim() || relatedIssueInvalid || success,
           loading: submitting,
         })
 

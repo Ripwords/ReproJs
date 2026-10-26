@@ -16,8 +16,18 @@ export type Harness = {
   /** Origin of the fixture server (serves test-site.html for every path). */
   testOrigin: string
   /** Writes a config for `testOrigin` into the extension's storage. */
-  configure: (overrides?: { intakeEndpoint?: string }) => Promise<void>
+  configure: (overrides?: ConfigureOverrides) => Promise<void>
   close: () => Promise<void>
+}
+
+export type ConfigureOverrides = {
+  intakeEndpoint?: string
+  /**
+   * Per-origin "Show 'Related GitHub issue' field" toggle. Left out of the
+   * stored config when undefined, which is the shape older builds wrote —
+   * so the default specs keep exercising storage's legacy normalisation.
+   */
+  relatedIssueField?: boolean
 }
 
 export type LaunchOptions = {
@@ -55,7 +65,7 @@ export async function launch(options: LaunchOptions = {}): Promise<Harness> {
   })
   await context.tracing.start({ screenshots: true, snapshots: true })
 
-  const configure = async (overrides: { intakeEndpoint?: string } = {}): Promise<void> => {
+  const configure = async (overrides: ConfigureOverrides = {}): Promise<void> => {
     let [sw] = context.serviceWorkers()
     if (!sw) sw = await context.waitForEvent("serviceworker")
     const extId = new URL(sw.url()).host
@@ -63,7 +73,7 @@ export async function launch(options: LaunchOptions = {}): Promise<Harness> {
     const popup = await context.newPage()
     await popup.goto(`chrome-extension://${extId}/index.html`)
     await popup.evaluate(
-      async ({ origin, intakeEndpoint }) => {
+      async ({ origin, intakeEndpoint, relatedIssueField }) => {
         await chrome.storage.local.set({
           configs: [
             {
@@ -73,6 +83,7 @@ export async function launch(options: LaunchOptions = {}): Promise<Harness> {
               projectKey: "rp_pk_" + "a".repeat(24),
               intakeEndpoint,
               createdAt: Date.now(),
+              ...(relatedIssueField === undefined ? {} : { relatedIssueField }),
             },
           ],
         })
@@ -80,6 +91,7 @@ export async function launch(options: LaunchOptions = {}): Promise<Harness> {
       {
         origin: testOrigin,
         intakeEndpoint: overrides.intakeEndpoint ?? "https://repro.example.com",
+        relatedIssueField: overrides.relatedIssueField,
       },
     )
     await popup.close()

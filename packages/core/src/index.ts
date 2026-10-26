@@ -95,7 +95,7 @@ export function init(options: InitOptions): FeedbackHandle {
 
 function mountWidget(cfg: ResolvedConfig): void {
   mount({
-    config: { position: cfg.position, launcher: cfg.launcher },
+    config: { position: cfg.position, launcher: cfg.launcher, fields: cfg.fields },
     capture: () =>
       captureScreenshot({
         method: cfg.screenshot?.method,
@@ -118,7 +118,15 @@ function mountWidget(cfg: ResolvedConfig): void {
       const r = await mintShareLink(cfg, item)
       return r.ok ? { url: r.url, token: r.token, expiresAt: r.expiresAt } : { error: r.message }
     },
-    onSubmit: async ({ title, description, media, attachments, dwellMs, honeypot }) => {
+    onSubmit: async ({
+      title,
+      description,
+      media,
+      attachments,
+      dwellMs,
+      honeypot,
+      relatedIssue,
+    }) => {
       if (!_config || !_collectors) return { ok: false, message: "Not initialized" }
       const snap = _collectors.snapshotAll()
       const context = gatherContext(_reporter, _config.metadata, {
@@ -157,6 +165,7 @@ function mountWidget(cfg: ResolvedConfig): void {
         replayBytes: replay.bytes,
         dwellMs,
         honeypot,
+        relatedIssue,
       })
       if (result.ok) {
         _collectors.clearBuffers()

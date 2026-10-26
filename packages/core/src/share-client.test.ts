@@ -51,6 +51,7 @@ const fakeConfig: ResolvedConfig = {
   replay: undefined,
   screenshot: undefined,
   hotkey: undefined,
+  fields: { relatedIssue: false },
 }
 
 const fakeInput = {

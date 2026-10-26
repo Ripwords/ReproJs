@@ -60,6 +60,9 @@ export function AddConfigForm({
   // each time the user switches to Add mode, so a newly-saved last value
   // will show up on the next visit.
   const [intakeEndpoint, setIntakeEndpoint] = useState(() => defaultIntakeEndpoint)
+  // On by default: testers re-testing a known bug are exactly who should be
+  // able to name the issue a report belongs to.
+  const [relatedIssueField, setRelatedIssueField] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -78,6 +81,7 @@ export function AddConfigForm({
       origin: origin.trim(),
       projectKey: projectKey.trim(),
       intakeEndpoint: intakeEndpoint.trim(),
+      relatedIssueField,
     }
     const err = validate(input)
     if (err) {
@@ -152,6 +156,20 @@ export function AddConfigForm({
         />
         <div class="field-hint">the dashboard URL — SDK posts to this host</div>
       </div>
+
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={relatedIssueField}
+          onChange={(e) => setRelatedIssueField((e.target as HTMLInputElement).checked)}
+        />
+        <span>
+          Show 'Related GitHub issue' field
+          <span class="check-hint">
+            lets a tester type the issue number a report belongs to — a hint the dashboard confirms
+          </span>
+        </span>
+      </label>
 
       {error ? <div class="error-bar">{error}</div> : null}
 
