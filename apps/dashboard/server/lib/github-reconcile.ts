@@ -1,5 +1,5 @@
 // apps/dashboard/server/lib/github-reconcile.ts
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { type LogsAttachment, type ReportContext } from "@reprojs/shared"
 import {
   addAssignees,
@@ -615,45 +615,78 @@ export async function reconcileReport(reportId: string): Promise<void> {
   }
   const body = buildIssueBody(bodyInput)
 
-  if (report.githubIssueNumber == null) {
-    // Idempotency guard: a previous attempt may have created the issue on
-    // GitHub but crashed before persisting the linkage back to our DB. Search
-    // for an issue containing our marker before creating a fresh one.
-    const existing = await client.findIssueByMarker({
-      owner: gi.repoOwner,
-      repo: gi.repoName,
-      marker: reportMarker(report.id),
-    })
-    const ref =
-      existing ??
-      (await client.createIssue({
+  let issueNumber = report.githubIssueNumber
+  if (issueNumber == null) {
+    // Create-or-link runs under a per-report advisory lock so two workers
+    // (in-process trigger + cron, or two replicas) can never both observe
+    // "no issue yet" and each create one. findIssueByMarker alone is not
+    // enough: GitHub Search lags indexing and swallows errors into null.
+    //
+    // The transaction spans the GitHub calls, so it is bounded by
+    // DB_IDLE_TX_TIMEOUT_MS (10s default) — far above a normal create. If
+    // it ever trips, the next attempt re-finds the issue by marker.
+    const linked = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${report.id}))`)
+
+      // Re-read under the lock: another worker may have linked it while we
+      // were waiting.
+      const [fresh] = await tx
+        .select({ githubIssueNumber: reports.githubIssueNumber })
+        .from(reports)
+        .where(eq(reports.id, report.id))
+        .limit(1)
+      if (fresh?.githubIssueNumber != null) {
+        return { number: fresh.githubIssueNumber, linkedByUs: false as const }
+      }
+
+      // Idempotency guard: a previous attempt may have created the issue on
+      // GitHub but crashed before persisting the linkage back to our DB.
+      // Search for an issue containing our marker before creating a fresh one.
+      const existing = await client.findIssueByMarker({
         owner: gi.repoOwner,
         repo: gi.repoName,
-        title: report.title,
-        body,
-        labels: desiredLabels,
-        assignees: gi.defaultAssignees,
-      }))
-    await db
-      .update(reports)
-      .set({
-        githubIssueNumber: ref.number,
-        githubIssueNodeId: ref.nodeId,
-        githubIssueUrl: ref.url,
-        githubSyncedAt: new Date(),
+        marker: reportMarker(report.id),
       })
-      .where(eq(reports.id, report.id))
+      const ref =
+        existing ??
+        (await client.createIssue({
+          owner: gi.repoOwner,
+          repo: gi.repoName,
+          title: report.title,
+          body,
+          labels: desiredLabels,
+          assignees: gi.defaultAssignees,
+        }))
+      // Persist the linkage immediately — before any label / assignee /
+      // comment work — so a crash past this point can never lose the number.
+      await tx
+        .update(reports)
+        .set({
+          githubIssueNumber: ref.number,
+          githubIssueNodeId: ref.nodeId,
+          githubIssueUrl: ref.url,
+          githubSyncedAt: new Date(),
+        })
+        .where(eq(reports.id, report.id))
+      return { number: ref.number, linkedByUs: true as const, existed: existing !== null }
+    })
 
-    // Backfill existing GitHub comments on first link (only if issue existed before)
-    if (report.githubCommentsSyncedAt === null && existing !== null) {
-      try {
-        const octokit = await getRawOctokit(gi.installationId)
-        await backfillGithubComments(report.id, ref.number, octokit, gi)
-      } catch {
-        // Backfill is best-effort — don't fail the whole reconcile
+    if (linked.linkedByUs) {
+      // Backfill existing GitHub comments on first link (only if issue existed before)
+      if (report.githubCommentsSyncedAt === null && linked.existed) {
+        try {
+          const octokit = await getRawOctokit(gi.installationId)
+          await backfillGithubComments(report.id, linked.number, octokit, gi)
+        } catch {
+          // Backfill is best-effort — don't fail the whole reconcile
+        }
       }
+      return
     }
-    return
+    // Someone else created the issue while we waited for the lock. Fall
+    // through to the extended reconcile so the fields that triggered THIS
+    // run (a later edit) are still pushed.
+    issueNumber = linked.number
   }
 
   // --- Extended reconcile for already-linked issues ---
@@ -677,7 +710,7 @@ export async function reconcileReport(reportId: string): Promise<void> {
     live = await extClient.getRichIssue({
       owner: gi.repoOwner,
       repo: gi.repoName,
-      number: report.githubIssueNumber,
+      number: issueNumber,
     })
     if (typeof extClient.getRawOctokit === "function") {
       octokit = await extClient.getRawOctokit()
@@ -694,7 +727,7 @@ export async function reconcileReport(reportId: string): Promise<void> {
     const basic = await client.getIssue({
       owner: gi.repoOwner,
       repo: gi.repoName,
-      number: report.githubIssueNumber,
+      number: issueNumber,
     })
     live = {
       title: report.title, // Assume title matches to avoid spurious write
@@ -710,31 +743,18 @@ export async function reconcileReport(reportId: string): Promise<void> {
   } else {
     // Production path: build raw Octokit, get full live issue state.
     octokit = await getRawOctokit(gi.installationId)
-    live = await loadCurrentGithubIssue(
-      octokit,
-      gi.repoOwner,
-      gi.repoName,
-      report.githubIssueNumber,
-    )
+    live = await loadCurrentGithubIssue(octokit, gi.repoOwner, gi.repoName, issueNumber)
   }
 
   const desiredAssigneeLogins = await loadDesiredAssigneeLogins(report.id)
 
   // Run each reconciler sequentially
-  await reconcileState(
-    octokit,
-    gi.repoOwner,
-    gi.repoName,
-    report.githubIssueNumber,
-    report.id,
-    live,
-    report,
-  )
+  await reconcileState(octokit, gi.repoOwner, gi.repoName, issueNumber, report.id, live, report)
   await reconcileLabels(
     octokit,
     gi.repoOwner,
     gi.repoName,
-    report.githubIssueNumber,
+    issueNumber,
     report.id,
     live,
     desiredLabels,
@@ -743,7 +763,7 @@ export async function reconcileReport(reportId: string): Promise<void> {
     octokit,
     gi.repoOwner,
     gi.repoName,
-    report.githubIssueNumber,
+    issueNumber,
     report.id,
     live,
     report.title,
@@ -752,7 +772,7 @@ export async function reconcileReport(reportId: string): Promise<void> {
     octokit,
     gi.repoOwner,
     gi.repoName,
-    report.githubIssueNumber,
+    issueNumber,
     report.id,
     live,
     desiredAssigneeLogins,
@@ -761,7 +781,7 @@ export async function reconcileReport(reportId: string): Promise<void> {
     octokit,
     gi.repoOwner,
     gi.repoName,
-    report.githubIssueNumber,
+    issueNumber,
     report.id,
     live,
     report.milestoneNumber ?? null,

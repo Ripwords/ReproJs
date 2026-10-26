@@ -1,5 +1,5 @@
 // apps/dashboard/server/lib/enqueue-sync.ts
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { db } from "../db"
 import { githubIntegrations, reportSyncJobs } from "../db/schema"
 import type { SyncJobPayload } from "../db/schema"
@@ -12,6 +12,24 @@ import { triggerReportSync } from "./github-sync-runner"
 const SIGNATURE_RECONCILE = "reconcile"
 const signatureCommentUpsert = (commentId: string): string => `comment_upsert:${commentId}`
 const signatureCommentDelete = (commentId: string): string => `comment_delete:${commentId}`
+
+/**
+ * ON CONFLICT SET clause shared by every enqueue. A row that is currently
+ * `syncing` is left alone and flagged `rerun_requested` — flipping it back
+ * to `pending` let a second worker claim it (two concurrent reconciles, two
+ * GitHub issues) and let the first worker's completion DELETE wipe the new
+ * request. `pending` / `failed` rows are made runnable immediately as before.
+ */
+function requeueOnConflict(extra: Partial<typeof reportSyncJobs.$inferInsert> = {}) {
+  const isSyncing = sql`${reportSyncJobs.state} = 'syncing'`
+  return {
+    state: sql`CASE WHEN ${isSyncing} THEN 'syncing' ELSE 'pending' END`,
+    rerunRequested: isSyncing,
+    nextAttemptAt: sql`CASE WHEN ${isSyncing} THEN ${reportSyncJobs.nextAttemptAt} ELSE now() END`,
+    updatedAt: new Date(),
+    ...extra,
+  }
+}
 
 /**
  * UPSERT a pending reconcile job. Idempotent against other reconciles for the
@@ -40,7 +58,7 @@ export async function enqueueSync(reportId: string, projectId: string): Promise<
     })
     .onConflictDoUpdate({
       target: [reportSyncJobs.reportId, reportSyncJobs.signature],
-      set: { state: "pending", nextAttemptAt: new Date(), updatedAt: new Date() },
+      set: requeueOnConflict(),
     })
   // Fire the sync worker in-process so the GitHub write lands within a
   // second of the dashboard write — no cron wait. Error handling lives
@@ -66,7 +84,7 @@ export async function enqueueCommentUpsert(reportId: string, commentId: string):
     })
     .onConflictDoUpdate({
       target: [reportSyncJobs.reportId, reportSyncJobs.signature],
-      set: { state: "pending", nextAttemptAt: new Date(), updatedAt: new Date(), payload },
+      set: requeueOnConflict({ payload }),
     })
   triggerReportSync(reportId)
 }
@@ -88,7 +106,7 @@ export async function enqueueCommentDelete(
     })
     .onConflictDoUpdate({
       target: [reportSyncJobs.reportId, reportSyncJobs.signature],
-      set: { state: "pending", nextAttemptAt: new Date(), updatedAt: new Date(), payload },
+      set: requeueOnConflict({ payload }),
     })
   triggerReportSync(reportId)
 }

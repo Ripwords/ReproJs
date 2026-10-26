@@ -77,6 +77,12 @@ export const reportSyncJobs = pgTable(
     state: text("state", { enum: ["pending", "syncing", "failed"] })
       .notNull()
       .default("pending"),
+    // Set when an enqueue lands while the row is `syncing`. The worker must
+    // not be reset to `pending` mid-flight (it would delete the row on
+    // completion, or a second worker would run a concurrent reconcile and
+    // create a duplicate GitHub issue); instead the runner requeues the job
+    // once after its current pass succeeds.
+    rerunRequested: boolean("rerun_requested").notNull().default(false),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
     nextAttemptAt: timestamp("next_attempt_at").defaultNow().notNull(),

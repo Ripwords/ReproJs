@@ -77,7 +77,27 @@ async function processClaimedJob(job: SyncJob): Promise<void> {
       // null / { kind: "reconcile" } → standard whole-report reconcile
       await reconcileReport(job.reportId)
     }
-    await db.delete(reportSyncJobs).where(jobKey)
+    // Only remove the row if nothing asked for a rerun while we were
+    // syncing. Otherwise a dashboard write that landed mid-flight would be
+    // silently dropped with the row.
+    const deleted = await db
+      .delete(reportSyncJobs)
+      .where(and(jobKey, eq(reportSyncJobs.rerunRequested, false)))
+      .returning({ reportId: reportSyncJobs.reportId })
+    if (deleted.length === 0) {
+      await db
+        .update(reportSyncJobs)
+        .set({
+          state: "pending",
+          rerunRequested: false,
+          attempts: 0,
+          lastError: null,
+          nextAttemptAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(jobKey)
+      triggerReportSync(job.reportId)
+    }
   } catch (err) {
     if (err instanceof ReconcileSkipped) {
       // reconcileReport has already deleted the job row (and siblings) —
@@ -91,6 +111,9 @@ async function processClaimedJob(job: SyncJob): Promise<void> {
       .update(reportSyncJobs)
       .set({
         state,
+        // The retry re-reads the report from scratch, which covers any
+        // write that asked for a rerun during this failed pass.
+        rerunRequested: false,
         attempts,
         lastError: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
         nextAttemptAt: new Date(Date.now() + backoffMs),
@@ -158,6 +181,7 @@ export async function recoverStuckJobs(): Promise<void> {
     .update(reportSyncJobs)
     .set({
       state: sql`CASE WHEN ${reportSyncJobs.attempts} + 1 >= ${MAX_ATTEMPTS} THEN 'failed' ELSE 'pending' END`,
+      rerunRequested: false,
       attempts: sql`${reportSyncJobs.attempts} + 1`,
       lastError: "worker crashed while syncing (recovered by stale-job sweep)",
       updatedAt: new Date(),
