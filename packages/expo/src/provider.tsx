@@ -279,7 +279,7 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     const attachments = await (
       await attachmentStore
     ).persist(id, [...screenshotEntries, ...userFileEntries])
-    await queueRef.current.enqueue({
+    const { evictedIds } = await queueRef.current.enqueue({
       id,
       createdAt: now,
       payload: {
@@ -291,6 +291,14 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       lastErrorAt: null,
       lastError: null,
     })
+    if (evictedIds.length > 0) {
+      // Eviction is data loss, same as a drop: the oldest unsent reports were
+      // discarded to make room. Say so, with ids, instead of vanishing them.
+      console.error(
+        `[repro] queue full (maxReports ${config.queue.maxReports}, maxBytes ${config.queue.maxBytes}): ` +
+          `discarded unsent report(s) ${evictedIds.join(", ")} to make room for ${id}`,
+      )
+    }
     setWizardOpen(false)
     setScreenshot(null)
     runFlush()

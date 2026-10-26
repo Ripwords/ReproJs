@@ -199,3 +199,28 @@ test("a failed write does not block later operations", async () => {
   await q.enqueue(queued("after"))
   expect((await q.all()).map((i) => i.id)).toEqual(["after"])
 })
+
+// A corrupt queue file was silently treated as empty. Whatever reports it
+// held are gone either way, but that must show up somewhere.
+test("a corrupt queue file is reported, then replaced by an empty queue", async () => {
+  memory.clear()
+  memory.set("@reprojs/expo/queue/v1", '{"items": [{"id": "half-written"')
+  const errors: unknown[][] = []
+  const originalError = console.error
+  console.error = (...args: unknown[]) => {
+    errors.push(args)
+  }
+  try {
+    const q = createQueueStorage({ maxReports: 10, maxBytes: 1024 })
+    expect(await q.all()).toEqual([])
+    expect(errors).toHaveLength(1)
+    // Shape that parses but is not a queue file (a different app version's
+    // format, say) is corrupt too — not a crash on `.items.push`.
+    memory.set("@reprojs/expo/queue/v1", '{"version": 2}')
+    await q.enqueue(queued("fresh"))
+    expect((await q.all()).map((i) => i.id)).toEqual(["fresh"])
+    expect(errors).toHaveLength(2)
+  } finally {
+    console.error = originalError
+  }
+})
