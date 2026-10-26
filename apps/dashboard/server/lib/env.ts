@@ -42,6 +42,24 @@ const Schema = z.object({
     }),
   DATABASE_URL: z.string().min(1),
   ATTACHMENT_URL_SECRET: z.string().min(1),
+  // Retired ATTACHMENT_URL_SECRET values, comma-separated. Used ONLY to
+  // verify links signed before a rotation; new links always use the current
+  // secret. Lets an operator rotate without breaking every screenshot already
+  // embedded in a GitHub issue.
+  ATTACHMENT_URL_SECRET_PREVIOUS: z
+    .string()
+    .optional()
+    .transform((raw) =>
+      (raw ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+    ),
+  // Signs the hidden footer on comments the dashboard posts to GitHub so
+  // echoes can be recognised. Defaults to BETTER_AUTH_SECRET, so rotating
+  // the session secret used to also break echo detection for every comment
+  // already on GitHub; set this to decouple the two.
+  COMMENT_SIGNING_SECRET: z.string().optional().default(""),
   // Base64-encoded 32-byte key used by `encryptedText` columns (AES-256-GCM
   // via HKDF). Generate with `openssl rand -base64 32`. Required iff any
   // encrypted row is written — we keep it optional so local/dev tooling that
@@ -185,6 +203,19 @@ export type Env = typeof env
  */
 export function getAuthRateLimitEnabled(): boolean {
   return env.AUTH_RATE_LIMIT_ENABLED ?? env.NODE_ENV === "production"
+}
+
+/** Secret used to sign/strip the bot footer on GitHub-synced comments. */
+export function getCommentSigningSecret(): string {
+  return env.COMMENT_SIGNING_SECRET || env.BETTER_AUTH_SECRET
+}
+
+/**
+ * Secrets accepted when VERIFYING a signed attachment link: the current one
+ * first, then any retired ones. Signing always uses the current secret.
+ */
+export function getAttachmentVerifySecrets(): string[] {
+  return [env.ATTACHMENT_URL_SECRET, ...env.ATTACHMENT_URL_SECRET_PREVIOUS]
 }
 
 /**

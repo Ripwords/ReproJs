@@ -9,10 +9,10 @@ import {
 import { and, eq } from "drizzle-orm"
 import { db } from "../../../../../db"
 import { reportAttachments, reports } from "../../../../../db/schema"
-import { env } from "../../../../../lib/env"
+import { getAttachmentVerifySecrets } from "../../../../../lib/env"
 import { requireProjectRole } from "../../../../../lib/permissions"
 import { getStorage } from "../../../../../lib/storage"
-import { verifyAttachmentToken } from "../../../../../lib/signed-attachment-url"
+import { verifyAttachmentTokenAny } from "../../../../../lib/signed-attachment-url"
 
 export default defineEventHandler(async (event) => {
   const projectId = getRouterParam(event, "id")
@@ -35,8 +35,8 @@ export default defineEventHandler(async (event) => {
     if (!Number.isFinite(expiresAt)) {
       throw createError({ statusCode: 401, statusMessage: "Invalid token" })
     }
-    const ok = verifyAttachmentToken({
-      secret: env.ATTACHMENT_URL_SECRET,
+    const ok = verifyAttachmentTokenAny({
+      secrets: getAttachmentVerifySecrets(),
       projectId,
       reportId,
       kind,

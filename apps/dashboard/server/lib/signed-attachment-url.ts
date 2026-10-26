@@ -33,6 +33,20 @@ export function verifyAttachmentToken(input: VerifyInput): boolean {
   }
 }
 
+/**
+ * Verify against several secrets (current + retired). Every candidate is
+ * checked so the time taken does not reveal which secret matched.
+ */
+export function verifyAttachmentTokenAny(
+  input: Omit<VerifyInput, "secret"> & { secrets: readonly string[] },
+): boolean {
+  let ok = false
+  for (const secret of input.secrets) {
+    if (verifyAttachmentToken({ ...input, secret })) ok = true
+  }
+  return ok
+}
+
 // Helper used by callers to build the full signed URL.
 export function buildSignedAttachmentUrl(params: {
   baseUrl: string

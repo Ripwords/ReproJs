@@ -33,7 +33,7 @@ import {
 } from "../../../lib/github-diff"
 import { consumeWriteLock } from "../../../lib/github-write-locks"
 import { stripBotFooter } from "../../../lib/comment-serializer"
-import { env } from "../../../lib/env"
+import { getCommentSigningSecret } from "../../../lib/env"
 import { resolveGithubUser } from "../../../lib/github-identities"
 import { isUniqueViolation } from "../../../lib/pg-errors"
 
@@ -551,7 +551,7 @@ export default defineEventHandler(async (event) => {
           return { ok: true, echo: true }
         }
 
-        const body = stripBotFooter(commentBody, env.BETTER_AUTH_SECRET)
+        const body = stripBotFooter(commentBody, getCommentSigningSecret())
         const resolved = githubUser
           ? await resolveGithubUser(String(githubUser.id), githubUser.login, githubUser.avatar_url)
           : null

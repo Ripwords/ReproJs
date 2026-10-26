@@ -16,7 +16,7 @@ import {
   type IssueStateUpdate,
 } from "@reprojs/integrations-github"
 import type { Octokit } from "@octokit/rest"
-import { env } from "./env"
+import { env, getCommentSigningSecret } from "./env"
 import {
   buildIssueBody,
   GITHUB_EMBED_SCREENSHOT_TTL_SECONDS,
@@ -351,7 +351,7 @@ async function reconcileCommentUpsert(
       name: authorRow?.name ?? authorName,
       githubLogin: authorRow?.handle ?? null,
     },
-    env.BETTER_AUTH_SECRET,
+    getCommentSigningSecret(),
   )
 
   if (comment.githubCommentId === null) {
@@ -524,7 +524,7 @@ async function backfillGithubComments(
 
   const valuesToInsert = newComments.map((c, i) => {
     const authorResolved = resolved[i]
-    const body = stripBotFooter(c.body, env.BETTER_AUTH_SECRET)
+    const body = stripBotFooter(c.body, getCommentSigningSecret())
     return {
       reportId,
       userId: authorResolved?.kind === "dashboard-user" ? authorResolved.userId : null,
