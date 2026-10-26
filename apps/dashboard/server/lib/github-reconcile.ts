@@ -1,6 +1,7 @@
 // apps/dashboard/server/lib/github-reconcile.ts
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, ne, sql } from "drizzle-orm"
 import { type LogsAttachment, type ReportContext } from "@reprojs/shared"
+import { isUniqueViolation } from "./pg-errors"
 import {
   addAssignees,
   checkUserCanBeAssigned,
@@ -373,10 +374,29 @@ async function reconcileCommentUpsert(
       kind: "comment_upsert",
       signature: signCommentUpsert(created.id, serializedBody),
     })
-    await db
-      .update(reportComments)
-      .set({ githubCommentId: created.id, updatedAt: new Date() })
-      .where(eq(reportComments.id, comment.id))
+    try {
+      await db
+        .update(reportComments)
+        .set({ githubCommentId: created.id, updatedAt: new Date() })
+        .where(eq(reportComments.id, comment.id))
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err
+      // The inbound `issue_comment.created` webhook for our own comment won
+      // the race and inserted a github-sourced copy under created.id. That
+      // is "already linked", not a failure — retrying would post the comment
+      // to GitHub again. Fold the copy into the dashboard comment.
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(reportComments)
+          .where(
+            and(eq(reportComments.githubCommentId, created.id), ne(reportComments.id, comment.id)),
+          )
+        await tx
+          .update(reportComments)
+          .set({ githubCommentId: created.id, updatedAt: new Date() })
+          .where(eq(reportComments.id, comment.id))
+      })
+    }
   } else {
     // Update on GitHub
     await recordWriteLock(db, {

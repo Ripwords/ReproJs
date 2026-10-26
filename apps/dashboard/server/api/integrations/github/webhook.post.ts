@@ -1,6 +1,6 @@
 // apps/dashboard/server/api/integrations/github/webhook.post.ts
 import { createError, defineEventHandler, getHeader, readRawBody, setResponseStatus } from "h3"
-import { and, eq } from "drizzle-orm"
+import { and, desc, eq, isNull } from "drizzle-orm"
 import { verifyWebhookSignature } from "@reprojs/integrations-github"
 import { db } from "../../../db"
 import {
@@ -35,6 +35,7 @@ import { consumeWriteLock } from "../../../lib/github-write-locks"
 import { stripBotFooter } from "../../../lib/comment-serializer"
 import { env } from "../../../lib/env"
 import { resolveGithubUser } from "../../../lib/github-identities"
+import { isUniqueViolation } from "../../../lib/pg-errors"
 
 interface IssueAssignee {
   login: string
@@ -540,6 +541,49 @@ export default defineEventHandler(async (event) => {
           : null
 
         if (action === "created") {
+          // Our own comment can echo back before reconcile has stored its
+          // github_comment_id: the write-lock is only recorded after
+          // createComment returns, so a fast webhook beats it and used to
+          // insert a duplicate github-sourced row (and the reconcile's later
+          // UPDATE then hit the unique constraint and retried, posting more
+          // copies). Link the pending dashboard comment instead.
+          const [pendingOurs] = await db
+            .select({ id: reportComments.id })
+            .from(reportComments)
+            .where(
+              and(
+                eq(reportComments.reportId, linked.r.id),
+                eq(reportComments.source, "dashboard"),
+                isNull(reportComments.githubCommentId),
+                isNull(reportComments.deletedAt),
+                eq(reportComments.body, body),
+              ),
+            )
+            .orderBy(desc(reportComments.createdAt))
+            .limit(1)
+          if (pendingOurs) {
+            let adopted: { id: string }[] = []
+            try {
+              adopted = await db
+                .update(reportComments)
+                .set({ githubCommentId: comment.id, updatedAt: new Date() })
+                .where(
+                  and(
+                    eq(reportComments.id, pendingOurs.id),
+                    isNull(reportComments.githubCommentId),
+                  ),
+                )
+                .returning({ id: reportComments.id })
+            } catch (err) {
+              // Lost a race with the reconcile side, which has already linked
+              // or recorded this id — fall through to the idempotent insert.
+              if (!isUniqueViolation(err)) throw err
+            }
+            if (adopted.length > 0) {
+              setResponseStatus(event, 202)
+              return { ok: true, linked: adopted[0]?.id }
+            }
+          }
           await db
             .insert(reportComments)
             .values({
