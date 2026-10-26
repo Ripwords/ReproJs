@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import PageHeader from "~/components/common/page-header.vue"
 import type { ProjectDTO, ProjectOverviewDTO, ReportSummaryDTO } from "@reprojs/shared"
-import AppEmptyState from "~/components/common/app-empty-state.vue"
+import InstallSnippet from "~/components/common/install-snippet.vue"
 import { priorityColor, priorityLabel } from "~/composables/use-report-format"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
@@ -230,15 +230,41 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
       </div>
     </div>
 
-    <!-- Activation CTA when no reports -->
-    <AppEmptyState
+    <!-- Activation: the real embed snippet when no reports have arrived -->
+    <section
       v-if="recentReports && recentReports.length === 0"
-      variant="gradient"
-      icon="i-heroicons-code-bracket"
-      title="Install the SDK to start receiving reports"
-      description="Add a single <script> tag to your site or npm-install @reprojs/core."
-      :action-label="installLink.label"
-      :action-to="installLink.to"
-    />
+      class="rounded-xl border border-default bg-default"
+    >
+      <div class="flex items-start justify-between gap-4 px-5 py-4 border-b border-default">
+        <div class="flex items-start gap-3 min-w-0">
+          <div
+            class="flex items-center justify-center size-9 rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15 shrink-0"
+          >
+            <UIcon name="i-heroicons-code-bracket" class="size-4" />
+          </div>
+          <div class="min-w-0">
+            <h2 class="text-base font-semibold text-default tracking-tight">
+              Install the SDK to start receiving reports
+            </h2>
+            <p class="mt-0.5 text-sm text-muted">
+              This snippet already contains this project's key. Prefer a package manager? The
+              install guide covers <code class="font-mono px-1 rounded bg-muted">init()</code> too.
+            </p>
+          </div>
+        </div>
+        <UButton
+          :to="installLink.to"
+          :label="installLink.label"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          trailing-icon="i-heroicons-arrow-right"
+          class="shrink-0"
+        />
+      </div>
+      <div class="px-5 py-4">
+        <InstallSnippet :project-key="project?.publicKey ?? null" />
+      </div>
+    </section>
   </div>
 </template>
