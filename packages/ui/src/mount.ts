@@ -235,7 +235,16 @@ function App() {
       showToast("Gallery unavailable — capture not saved")
       return false
     }
-    const { evicted } = await gallery.add(gi)
+    let evicted: GalleryItem[]
+    try {
+      ;({ evicted } = await gallery.add(gi))
+    } catch (err) {
+      // IndexedDB quota / private-mode / blocked-storage errors reject here.
+      // Without the catch the outcome bar stayed stuck on the failed save.
+      console.warn("[repro] gallery write failed", err)
+      showToast("Couldn't save to gallery — storage unavailable")
+      return false
+    }
     // store.add evicts oldest-first, so evicted[0] is the oldest dropped item.
     const oldest = evicted[0]
     if (oldest) {
