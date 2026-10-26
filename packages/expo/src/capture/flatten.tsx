@@ -79,41 +79,42 @@ export const FlattenView = forwardRef<FlattenHandle, Props>(function FlattenView
   }))
 
   return (
-    // Kept inside the layout at opacity 0 rather than parked at left: -9999.
-    // Views far offscreen are a candidate for the platform to skip drawing
-    // entirely, and an undrawn view captures blank. The opacity sits on this
-    // wrapper, not on the captured view, so the snapshot itself is opaque.
+    // Parked offscreen at left: -9999. This layout has been verified on
+    // device; do not swap it for an opacity-0 overlay without re-testing,
+    // because iOS captures via drawViewHierarchyInRect, which renders what is
+    // visible on screen and can return blank for a view under an alpha-0 parent.
     <View
-      pointerEvents="none"
-      style={{ position: "absolute", top: 0, left: 0, width, height, opacity: 0 }}
+      ref={viewRef}
+      collapsable={false}
+      // Transparent background so the exported PNG's letterbox bars (created by
+      // resizeMode="contain") are alpha-transparent — the dashboard's dark
+      // surface shows through instead of a hardcoded light-gray frame.
+      // `format: "png"` in captureRef preserves the alpha channel.
+      style={{
+        position: "absolute",
+        left: -9999,
+        width,
+        height,
+        backgroundColor: "transparent",
+      }}
     >
-      <View
-        ref={viewRef}
-        collapsable={false}
-        // Transparent background so the exported PNG's letterbox bars (created
-        // by resizeMode="contain") are alpha-transparent — the dashboard's dark
-        // surface shows through instead of a hardcoded light-gray frame.
-        // `format: "png"` in captureRef preserves the alpha channel.
-        style={{ width, height, backgroundColor: "transparent" }}
-      >
-        {/* resizeMode="contain" mirrors what the StepAnnotate preview uses, so
-            shape coordinates drawn on the preview land at the same pixel offsets
-            in the flattened PNG — no more cover-crop that clipped top + bottom. */}
-        <Image
-          source={{ uri }}
-          style={{ width, height }}
-          resizeMode="contain"
-          onLoad={() => loaded.resolve()}
-          onError={(e) =>
-            loaded.reject(
-              new Error(`Repro: screenshot failed to decode: ${e.nativeEvent.error ?? "unknown"}`),
-            )
-          }
-        />
-        <Svg width={width} height={height} style={{ position: "absolute", top: 0, left: 0 }}>
-          {shapes.map((s, i) => renderShape(s, i))}
-        </Svg>
-      </View>
+      {/* resizeMode="contain" mirrors what the StepAnnotate preview uses, so
+          shape coordinates drawn on the preview land at the same pixel offsets
+          in the flattened PNG — no more cover-crop that clipped top + bottom. */}
+      <Image
+        source={{ uri }}
+        style={{ width, height }}
+        resizeMode="contain"
+        onLoad={() => loaded.resolve()}
+        onError={(e) =>
+          loaded.reject(
+            new Error(`Repro: screenshot failed to decode: ${e.nativeEvent.error ?? "unknown"}`),
+          )
+        }
+      />
+      <Svg width={width} height={height} style={{ position: "absolute", top: 0, left: 0 }}>
+        {shapes.map((s, i) => renderShape(s, i))}
+      </Svg>
     </View>
   )
 })
