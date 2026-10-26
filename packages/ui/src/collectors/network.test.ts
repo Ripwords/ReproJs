@@ -98,6 +98,20 @@ describe("network collector — fetch", () => {
     expect(globalThis.fetch).toBe(originalFetch)
   })
 
+  test("stop leaves fetch alone when another library patched it after us", async () => {
+    const originalFetch = globalThis.fetch
+    const c = createNetworkCollector({})
+    c.start({})
+    // Sentry / an APM agent wraps whatever fetch is current — ours.
+    const theirs = async (input: RequestInfo | URL, init?: RequestInit) =>
+      originalFetch(input, init)
+    globalThis.fetch = theirs as typeof fetch
+    c.stop()
+    // Restoring our pre-Repro original here would have ripped their patch out.
+    expect(globalThis.fetch).toBe(theirs)
+    globalThis.fetch = originalFetch
+  })
+
   test("describes FormData bodies even without opting into requestBody", async () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = async () => new Response("")

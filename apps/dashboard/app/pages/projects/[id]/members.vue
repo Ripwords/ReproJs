@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PageHeader from "~/components/common/page-header.vue"
 import RelativeTime from "~/components/common/relative-time.vue"
+import AppLoadingSkeleton from "~/components/common/app-loading-skeleton.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
@@ -280,7 +281,9 @@ const columns = computed<TableColumn<ProjectMemberDTO>[]>(() => [
       Only project owners can invite or remove members and change roles.
     </p>
 
-    <UCard :ui="{ body: 'p-0' }">
+    <!-- Skeleton on first load only; a background refresh keeps the table. -->
+    <AppLoadingSkeleton v-if="pending && !members" variant="table" :rows="4" />
+    <UCard v-else :ui="{ body: 'p-0' }">
       <UTable
         :data="membersList"
         :columns="columns"

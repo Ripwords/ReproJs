@@ -34,7 +34,10 @@ export interface NetworkConfig {
 
 export interface NetworkCollector {
   start(config: NetworkConfig): void
+  /** Drains the buffer. Prefer `peek()` + `clear()` so a failed upload can retry with the same logs. */
   snapshot(): NetworkEntry[]
+  peek(): NetworkEntry[]
+  clear(): void
   stop(): void
 }
 
@@ -112,9 +115,22 @@ function headersToObject(h: Headers | Record<string, string> | undefined): Recor
   return { ...h }
 }
 
+async function readResponseBody(res: Response, entry: NetworkEntry, maxBytes: number) {
+  try {
+    const text = await res.clone().text()
+    if (entry.size === null) entry.size = text.length
+    entry.responseBody = redactBody(text, { maxBytes }) ?? undefined
+  } catch {
+    // Body unreadable (opaque, already consumed, aborted) — keep the entry
+    // without it rather than failing the fetch.
+  }
+}
+
 export function createNetworkCollector(_initial: NetworkConfig): NetworkCollector {
   let buffer: RingBuffer<NetworkEntry> | null = null
   let originalFetch: typeof globalThis.fetch | null = null
+  // Our own wrapper, so stop() can tell whether it is still the installed fetch.
+  let wrappedFetch: typeof globalThis.fetch | null = null
   let originalXHROpen: XMLHttpRequest["open"] | null = null
   let originalXHRSend: XMLHttpRequest["send"] | null = null
   let running = false
@@ -124,7 +140,7 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
     const orig = globalThis.fetch
     originalFetch = orig
     const maxBody = cfg.maxBodyBytes ?? 16_384
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const wrapper = async (input: RequestInfo | URL, init?: RequestInit) => {
       const method = init?.method ?? (input instanceof Request ? input.method : "GET")
       const rawUrl =
         input instanceof Request ? input.url : typeof input === "string" ? input : input.toString()
@@ -186,18 +202,7 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
           const parsed = Number.parseInt(cl, 10)
           if (Number.isFinite(parsed) && parsed >= 0) size = parsed
         }
-        let responseBody: string | undefined
-        if (cfg.responseBody) {
-          try {
-            const clone = res.clone()
-            const text = await clone.text()
-            if (size === null) size = text.length
-            responseBody = redactBody(text, { maxBytes: maxBody }) ?? undefined
-          } catch {
-            responseBody = undefined
-          }
-        }
-        buffer?.push({
+        const entry: NetworkEntry = {
           id,
           ts,
           method,
@@ -209,8 +214,15 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
           requestHeaders,
           responseHeaders,
           requestBody,
-          responseBody,
-        })
+        }
+        buffer?.push(entry)
+        if (cfg.responseBody) {
+          // Read the clone in the background and patch the entry in place.
+          // Awaiting the body here would hold the host's `await fetch()`
+          // until the stream closes — a streaming/SSE response never does,
+          // so the host would hang.
+          void readResponseBody(res, entry, maxBody)
+        }
         return res
       } catch (err) {
         const durationMs = performance.now() - started
@@ -230,6 +242,8 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
         throw err
       }
     }
+    wrappedFetch = wrapper
+    globalThis.fetch = wrapper
   }
 
   function wrapXHR() {
@@ -293,12 +307,22 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
     snapshot() {
       return buffer?.drain() ?? []
     },
+    peek() {
+      return buffer?.peek() ?? []
+    },
+    clear() {
+      buffer?.clear()
+    },
     stop() {
       if (!running) return
-      if (originalFetch) globalThis.fetch = originalFetch
+      // Only unwrap if we're still the outermost wrapper. If something else
+      // (Sentry, an APM agent) patched fetch after us, restoring our
+      // pre-Repro original would silently rip their patch out too.
+      if (originalFetch && globalThis.fetch === wrappedFetch) globalThis.fetch = originalFetch
       if (originalXHROpen) XMLHttpRequest.prototype.open = originalXHROpen
       if (originalXHRSend) XMLHttpRequest.prototype.send = originalXHRSend
       originalFetch = null
+      wrappedFetch = null
       originalXHROpen = null
       originalXHRSend = null
       buffer = null

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { postReport, type IntakeInput } from "./intake-client"
+import { postReport, uploadTimeoutMs, type IntakeInput } from "./intake-client"
 import type { ResolvedConfig } from "./config"
 
 interface FakeRequest {
@@ -136,5 +136,50 @@ test("postReport serializes media as media[N] parts + an aligned mediaMeta and n
     ])
   } finally {
     fake.restore()
+  }
+})
+
+test("postReport still posts when AbortSignal.timeout is unavailable (Safari < 16)", async () => {
+  const fake = installFakeFetch({ status: 201, body: { id: "r1" } })
+  const original = AbortSignal.timeout
+  ;(AbortSignal as { timeout?: unknown }).timeout = undefined
+  try {
+    const result = await postReport(fakeConfig, {
+      title: "t",
+      description: "",
+      context: fakeContext,
+    })
+    expect(result.ok).toBe(true)
+    expect(fake.calls[0]?.init?.signal).toBeInstanceOf(AbortSignal)
+  } finally {
+    AbortSignal.timeout = original
+    fake.restore()
+  }
+})
+
+test("uploadTimeoutMs scales with payload size: 30 s base + 10 s per MB, capped at 10 min", () => {
+  const MB = 1_048_576
+  expect(uploadTimeoutMs(0)).toBe(30_000)
+  expect(uploadTimeoutMs(MB)).toBe(40_000)
+  expect(uploadTimeoutMs(50 * MB)).toBe(530_000)
+  expect(uploadTimeoutMs(100 * MB)).toBe(600_000)
+})
+
+test("postReport maps an aborted (timed-out) upload to a human message", async () => {
+  const original = globalThis.fetch
+  globalThis.fetch = (async () => {
+    throw new DOMException("The operation was aborted.", "AbortError")
+  }) as typeof fetch
+  try {
+    const result = await postReport(fakeConfig, {
+      title: "t",
+      description: "",
+      context: fakeContext,
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("unreachable")
+    expect(result.message).toBe("Upload timed out — check your connection and try again")
+  } finally {
+    globalThis.fetch = original
   }
 })

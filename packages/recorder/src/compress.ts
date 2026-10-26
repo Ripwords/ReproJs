@@ -29,6 +29,20 @@ export async function gzipEvents(events: RecorderEvent[], opts: GzipOptions): Pr
   const lastTs = events[events.length - 1]?.timestamp ?? 0
   const durationMs = Math.max(0, lastTs - firstTs)
 
+  // Safari < 16.4 and Firefox < 113 have no CompressionStream. Submitting
+  // the report without a replay beats a ReferenceError that hangs the
+  // wizard's spinner.
+  if (typeof CompressionStream === "undefined") {
+    warnNoCompressionOnce()
+    return {
+      bytes: null,
+      eventCount: events.length,
+      durationMs,
+      truncated: false,
+      droppedEvents: 0,
+    }
+  }
+
   // NOTE: Known cosmetic off-by-one — the loop runs `maxRetries + 1` times and
   // is followed by a final-state check so the last truncation round is
   // actually evaluated. Tightening to `<` + removing the final check breaks
@@ -74,6 +88,15 @@ export async function gzipEvents(events: RecorderEvent[], opts: GzipOptions): Pr
     truncated: true,
     droppedEvents: droppedTotal,
   }
+}
+
+let warnedNoCompression = false
+function warnNoCompressionOnce(): void {
+  if (warnedNoCompression) return
+  warnedNoCompression = true
+  console.warn(
+    "[repro] CompressionStream is unavailable in this browser; session replay will not be attached",
+  )
 }
 
 async function gzipBytes(events: RecorderEvent[]): Promise<Uint8Array> {

@@ -69,7 +69,10 @@ export async function openGallery(deps?: { indexedDB?: IDBFactory }): Promise<Ga
   const listAll = async (): Promise<GalleryItem[]> => {
     const tx = db.transaction(STORE, "readonly")
     const rows = await req(tx.objectStore(STORE).getAll() as IDBRequest<GalleryItem[]>)
-    return rows.toSorted((a, b) => b.createdAt - a.createdAt)
+    // Not `toSorted` — missing on Chrome < 110 / Safari < 16, which threw here
+    // and left the outcome bar stuck on save.
+    // oxlint-disable-next-line unicorn/no-array-sort
+    return [...rows].sort((a, b) => b.createdAt - a.createdAt)
   }
 
   return {

@@ -39,11 +39,15 @@ That flag is **debug-only**. A release build has no cleartext exemption, so a pr
 npx expo install @reprojs/expo \
   react-native-view-shot react-native-svg react-native-gesture-handler \
   @react-native-async-storage/async-storage @react-native-community/netinfo \
-  expo-device expo-constants \
+  expo-device expo-constants expo-file-system \
   expo-document-picker expo-image-picker
 ```
 
 `expo install` picks versions matching your Expo SDK channel.
+
+`expo-document-picker` and `expo-image-picker` are **optional** peers: they power the wizard's "Add attachment" sources (Files and Photos). Leave them out and the SDK still works; the first time a reporter taps "Add attachment" it logs a one-time `console.warn` naming the missing module.
+
+`expo-file-system` is what makes the [offline queue](#offline-queue) durable: queued screenshots and picked files are copied into the app's document directory until the report is sent. Without it the queue still works, but attachments stay in temporary storage and are dropped from the report if the OS has purged them by the time it is sent.
 
 ### Minimum versions
 
@@ -59,8 +63,9 @@ npx expo install @reprojs/expo \
 | `@react-native-community/netinfo` | 11.3 |
 | `expo-device` | 6 |
 | `expo-constants` | 16 |
-| `expo-document-picker` | any (matches your Expo SDK) |
-| `expo-image-picker` | any (matches your Expo SDK) |
+| `expo-file-system` | any (matches your Expo SDK; both the legacy and the SDK 54+ API work) |
+| `expo-document-picker` | any (matches your Expo SDK); optional |
+| `expo-image-picker` | any (matches your Expo SDK); optional |
 
 ## Add the config plugin
 
@@ -183,7 +188,7 @@ Pass `position` as the initial corner before the user has dragged it; after the 
 
 - **Screenshot** — single annotated PNG. Flattened client-side into a transparent-letterbox PNG so the host app's dark surface shows through on the dashboard.
 - **Console** — last 200 entries of `console.log / info / warn / error / debug`. Stack traces on warn + error.
-- **Network** — last 100 `fetch` calls. Method, URL, status, duration, bytes, headers. Headers `authorization`, `cookie`, `x-api-key` are redacted by default. XHR patching is v1.1.
+- **Network** — last 100 `fetch` calls. Method, URL, status, duration, bytes, headers. Headers `authorization`, `cookie`, `x-api-key` are redacted by default. Only `fetch` is patched: requests made through `XMLHttpRequest`, including axios (which uses XHR on React Native), are not recorded.
 - **Breadcrumbs** — custom events via `useRepro().log(event, data)`. Last 50.
 - **Device** — iOS/Android, OS version, device model, app version + build, locale, timezone, viewport + screen size, DPR, connectivity (`4g`, `wifi`, etc.).
 
@@ -194,6 +199,10 @@ Reports that fail to POST (no network, 5xx, etc.) are persisted to AsyncStorage 
 - `NetInfo` reports online after being offline
 - The app comes to foreground (`AppState` change)
 - The host calls `useRepro().queue.flush()` manually
+
+Each upload attempt is aborted after `queue.submitTimeoutMs` (default 60 s) and retried later, so one request that never settles (captive portal, half-open connection after a network switch) cannot stall the queue.
+
+Attachments are copied into `<documentDirectory>/repro-queue/<report-id>/` when the report is queued (needs `expo-file-system`) and deleted once the report is sent, dropped, or evicted. The screenshot and picker output live in `tmp/` and the cache directory, which iOS and Android purge on their own schedule; the copy is what lets a queued report outlive an app restart or update. If an attachment is unreadable when the report is finally sent, the report goes out **without** it and a `console.warn` names the file. Only a misconfigured `intakeUrl` (redirect or non-JSON answer) is treated as fatal.
 
 The queue is not encrypted — documented privacy tradeoff for v1. Don't use as a session vault for secrets.
 

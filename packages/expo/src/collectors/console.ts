@@ -42,6 +42,7 @@ export interface ConsoleCollector {
 export function createConsoleCollector(opts: { max: number }): ConsoleCollector {
   const buf = new RingBuffer<ConsoleEntry>(opts.max)
   const originals: Partial<Record<(typeof LEVELS)[number], (...args: unknown[]) => void>> = {}
+  const installed: Partial<Record<(typeof LEVELS)[number], (...args: unknown[]) => void>> = {}
   let started = false
 
   function start() {
@@ -54,6 +55,12 @@ export function createConsoleCollector(opts: { max: number }): ConsoleCollector 
       if (existing?.[SENTINEL]) continue
       originals[level] = existing
       const wrapped = ((...args: unknown[]) => {
+        // Record only while this wrapper is the one we installed; it may
+        // outlive stop() inside another logger's chain.
+        if (installed[level] !== wrapped) {
+          existing.apply(console, args)
+          return
+        }
         try {
           buf.push({
             level,
@@ -70,6 +77,7 @@ export function createConsoleCollector(opts: { max: number }): ConsoleCollector 
         existing.apply(console, args)
       }) as ((...args: unknown[]) => void) & { [SENTINEL]?: boolean }
       wrapped[SENTINEL] = true
+      installed[level] = wrapped
       console[level] = wrapped as (typeof console)[typeof level]
     }
   }
@@ -79,9 +87,14 @@ export function createConsoleCollector(opts: { max: number }): ConsoleCollector 
     started = false
     for (const level of LEVELS) {
       const original = originals[level]
-      if (original) {
+      // Only unwind a level that still holds our wrapper. If a logger wrapped
+      // console.* after us, restoring the pre-Repro function would rip its
+      // wrapper out; ours keeps calling through, so leaving it is harmless.
+      if (original && console[level] === installed[level]) {
         console[level] = original as (typeof console)[typeof level]
       }
+      delete originals[level]
+      delete installed[level]
     }
   }
 

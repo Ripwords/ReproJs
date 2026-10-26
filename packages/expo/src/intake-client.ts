@@ -13,18 +13,23 @@ export class IntakeError extends Error {
   retryable: boolean
   /**
    * A client-side defect that retrying can never resolve — a misconfigured
-   * `intakeUrl`, or a local file that cannot be read. Distinct from a plain
+   * `intakeUrl` (redirect or non-JSON answer). Distinct from a plain
    * network failure (offline), which carries no status and MUST stay
    * retryable so the offline queue keeps working.
    */
   fatal: boolean
-  constructor(status: number, message: string, opts?: { fatal?: boolean }) {
+  constructor(status: number, message: string, opts?: { fatal?: boolean; retryable?: boolean }) {
     super(message)
     this.status = status
     this.fatal = opts?.fatal ?? false
-    this.retryable = !this.fatal && (status >= 500 || status === 429)
+    this.retryable = !this.fatal && (opts?.retryable ?? (status >= 500 || status === 429))
   }
 }
+
+/** Upper bound for one multipart POST. Generous because a report can carry
+ *  several megabytes of attachments over a phone uplink, but finite because a
+ *  request that never settles used to freeze the whole queue. */
+export const DEFAULT_SUBMIT_TIMEOUT_MS = 60_000
 
 export interface IntakeClient {
   submit: (args: IntakeSubmitArgs) => Promise<IntakeResponse>
@@ -78,9 +83,12 @@ export function createIntakeClient(opts: {
   fetchImpl?: typeof fetch
   /** Injectable for tests; defaults to an XHR read of the local file. */
   blobFromUri?: (uri: string) => Promise<Blob>
+  /** Abort a single POST after this long. Defaults to {@link DEFAULT_SUBMIT_TIMEOUT_MS}. */
+  timeoutMs?: number
 }): IntakeClient {
   const f = opts.fetchImpl ?? fetch
   const readBlob = opts.blobFromUri ?? xhrBlobFromUri
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_SUBMIT_TIMEOUT_MS
 
   return {
     async submit({ idempotencyKey, input, attachments, logs }) {
@@ -113,11 +121,16 @@ export function createIntakeClient(opts: {
               // eslint-disable-next-line no-await-in-loop
               blob = await readBlob(a.uri)
             } catch (err) {
-              throw new IntakeError(
-                0,
-                `attachment unreadable (${filename}): ${(err as Error).message}`,
-                { fatal: true },
+              // The file is gone (iOS purged tmp/, the app was updated, the
+              // user cleared storage). That is a defect in this one part, not
+              // in the report: a title, description and logs with a missing
+              // screenshot beat a report that is silently deleted. Skip the
+              // part and keep going. This path is only reachable for
+              // attachments the queue failed to copy into its own directory.
+              console.warn(
+                `[repro] attachment ${filename} (${a.uri}) is unreadable and will be left out of the report: ${(err as Error).message}`,
               )
+              continue
             }
             form.append(field, blob, filename)
           } else {
@@ -134,12 +147,31 @@ export function createIntakeClient(opts: {
       }
 
       const preferBlobParts = isExpoWinterFetch(f)
-      const post = (form: FormData) =>
-        f(`${opts.intakeUrl}/reports`, {
-          method: "POST",
-          body: form as unknown as BodyInit,
-          headers: { "idempotency-key": idempotencyKey },
-        })
+      const post = async (form: FormData): Promise<Response> => {
+        // One controller per attempt: a request that never settles (captive
+        // portal, half-open socket after a network switch) must not hang
+        // `submit()` — and with it the flusher's `running` flag — forever.
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), timeoutMs)
+        try {
+          return await f(`${opts.intakeUrl}/reports`, {
+            method: "POST",
+            body: form as unknown as BodyInit,
+            headers: { "idempotency-key": idempotencyKey },
+            signal: controller.signal,
+          })
+        } catch (err) {
+          if (controller.signal.aborted) {
+            // Says nothing about the report itself; the next flush retries it.
+            throw new IntakeError(0, `upload timed out after ${timeoutMs} ms`, {
+              retryable: true,
+            })
+          }
+          throw err
+        } finally {
+          clearTimeout(timer)
+        }
+      }
 
       let res: Response
       try {

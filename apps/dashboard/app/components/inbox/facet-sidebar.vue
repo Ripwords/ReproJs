@@ -16,6 +16,7 @@
 <script setup lang="ts">
 import type { ReportPriority } from "@reprojs/shared"
 import { REPORT_PRIORITIES, priorityLabel } from "~/composables/use-report-format"
+import { QUICK_VIEWS, type QuickViewId } from "~/utils/inbox-quick-views"
 
 interface Assignee {
   login: string
@@ -32,6 +33,8 @@ interface Props {
   selectedAssignee: string[]
   selectedTags: string[]
   selectedSource: string[]
+  /** The quick view whose facets exactly match the current filters, if any. */
+  activeView: QuickViewId | null
 }
 
 const props = defineProps<Props>()
@@ -40,6 +43,7 @@ const emit = defineEmits<{
   assignee: [string[]]
   tag: [string[]]
   source: [string[]]
+  view: [QuickViewId]
 }>()
 
 const PRIORITIES = REPORT_PRIORITIES
@@ -99,6 +103,36 @@ const priorityDot: Record<ReportPriority, string> = {
 
 <template>
   <aside class="space-y-7 text-sm">
+    <!-- Quick views: named presets over the same URL filters. A view is
+         "active" only when the filters match it exactly, so adding a facet
+         on top of a view visibly leaves the view. -->
+    <section>
+      <h3 class="px-2 mb-2 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Views</h3>
+      <ul>
+        <li v-for="v in QUICK_VIEWS" :key="v.id">
+          <button
+            type="button"
+            :aria-pressed="activeView === v.id"
+            :title="v.description"
+            class="group w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors"
+            :class="
+              activeView === v.id
+                ? 'bg-elevated text-default font-semibold'
+                : 'text-muted hover:text-default hover:bg-elevated/60'
+            "
+            @click="emit('view', v.id)"
+          >
+            <UIcon
+              :name="v.icon"
+              class="size-3.5 shrink-0"
+              :class="activeView === v.id ? 'text-primary' : 'text-muted'"
+            />
+            <span class="flex-1 text-left font-medium">{{ v.label }}</span>
+          </button>
+        </li>
+      </ul>
+    </section>
+
     <section>
       <h3 class="px-2 mb-2 text-sm font-semibold uppercase tracking-[0.14em] text-muted">
         Assignee

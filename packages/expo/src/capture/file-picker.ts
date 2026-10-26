@@ -18,6 +18,21 @@ function makeAttachmentId(prefix: string, i: number): string {
   return `${prefix}-${Date.now()}-${i}`
 }
 
+const warnedMissing = new Set<string>()
+
+/**
+ * The pickers are optional peers. Without one, "Add attachment" used to do
+ * nothing at all — no error, no picker, no hint. Say why, once per module.
+ */
+function warnMissingPicker(moduleName: string, feature: string): void {
+  if (warnedMissing.has(moduleName)) return
+  warnedMissing.add(moduleName)
+  console.warn(
+    `[repro] ${feature} needs the optional peer dependency ${moduleName}, which is not installed. ` +
+      `Run \`npx expo install ${moduleName}\` and rebuild to enable it.`,
+  )
+}
+
 /**
  * Pick from the system file picker (Documents app on iOS, system picker on
  * Android). Accepts any file type — same as the web SDK. Each asset is
@@ -32,9 +47,12 @@ export async function pickFromFiles({ multiple = true }: { multiple?: boolean } 
     const mod = await import("expo-document-picker")
     getDocumentAsync = mod.getDocumentAsync
   } catch {
+    getDocumentAsync = undefined
+  }
+  if (!getDocumentAsync) {
+    warnMissingPicker("expo-document-picker", "Attaching files")
     return []
   }
-  if (!getDocumentAsync) return []
 
   const result = await getDocumentAsync({
     multiple,
@@ -70,9 +88,12 @@ export async function pickFromPhotos({ multiple = true }: { multiple?: boolean }
     const mod = await import("expo-image-picker")
     launch = mod.launchImageLibraryAsync
   } catch {
+    launch = undefined
+  }
+  if (!launch) {
+    warnMissingPicker("expo-image-picker", "Attaching photos")
     return []
   }
-  if (!launch) return []
 
   const result = await launch({
     mediaTypes: "Images",

@@ -72,6 +72,35 @@ export function inboxLocationQuery(
   return next
 }
 
+const INBOX_PARAMS = ["status", "priority", "tag", "assignee", "source", "q", "sort", "page"]
+const STATUS_VALUES = new Set(["open", "in_progress", "resolved", "closed"])
+const DEFAULT_STATUS = ["open"]
+
+/**
+ * Which status filter a visit should start on, or null to leave the URL alone.
+ *
+ * A URL that already carries any inbox state (a deep link from the Overview
+ * tiles, a bookmarked filter, a page number) is the user's intent and wins.
+ * Otherwise this is a fresh visit: restore the tab remembered in the cookie,
+ * where "all" means the user explicitly picked All last time, and anything
+ * missing or unrecognised means the Open tab — a triage inbox should not open
+ * on closed work.
+ */
+export function initialStatusForVisit(
+  routeQuery: LocationQuery,
+  remembered: string | null | undefined,
+): string[] | null {
+  if (INBOX_PARAMS.some((k) => k in routeQuery)) return null
+  if (remembered === "all") return null
+  const statuses = parseCsv(remembered).filter((s) => STATUS_VALUES.has(s))
+  return statuses.length > 0 ? statuses : [...DEFAULT_STATUS]
+}
+
+/** The cookie value for a chosen status tab; `[]` (All) is stored as "all". */
+export function rememberedStatusTab(status: readonly string[]): string {
+  return status.length === 0 ? "all" : status.join(",")
+}
+
 export function inboxApiQuery(query: InboxQuery): string {
   const parts: string[] = []
   if (query.status.length) parts.push(`status=${query.status.join(",")}`)

@@ -41,6 +41,27 @@ describe("registerAllCollectors", () => {
     expect(snapshotAll().logs.breadcrumbs[0]?.event).toBe("checkout.done")
   })
 
+  test("snapshotAll does not drain — a retry after a failed upload still has the logs", () => {
+    const { snapshotAll, stopAll, breadcrumb } = registerAllCollectors({})
+    stops.push(stopAll)
+    breadcrumb("first.attempt")
+    const first = snapshotAll()
+    expect(first.logs.breadcrumbs.map((b) => b.event)).toEqual(["first.attempt"])
+    // Simulates "Send report" again after a 5xx/timeout: the second snapshot
+    // must still carry everything the first one did.
+    const second = snapshotAll()
+    expect(second.logs.breadcrumbs.map((b) => b.event)).toEqual(["first.attempt"])
+  })
+
+  test("clearBuffers empties the log buffers once the upload has succeeded", () => {
+    const { snapshotAll, stopAll, breadcrumb, clearBuffers } = registerAllCollectors({})
+    stops.push(stopAll)
+    breadcrumb("sent")
+    expect(snapshotAll().logs.breadcrumbs.length).toBe(1)
+    clearBuffers()
+    expect(snapshotAll().logs.breadcrumbs.length).toBe(0)
+  })
+
   test("applyBeforeSend returns original when hook returns undefined (bypass)", () => {
     const { applyBeforeSend, stopAll } = registerAllCollectors({})
     stops.push(stopAll)

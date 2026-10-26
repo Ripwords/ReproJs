@@ -7,7 +7,12 @@ import { createError, defineEventHandler, getRouterParam } from "h3"
 import { and, eq } from "drizzle-orm"
 import type { ReportContext, ReportDetailDTO } from "@reprojs/shared"
 import { db } from "../../../../../db"
-import { reportAssignees, reportAttachments, reports } from "../../../../../db/schema"
+import {
+  reportAssignees,
+  reportAttachments,
+  reportSyncJobs,
+  reports,
+} from "../../../../../db/schema"
 import { requireProjectRole } from "../../../../../lib/permissions"
 
 export default defineEventHandler(async (event): Promise<ReportDetailDTO> => {
@@ -44,48 +49,67 @@ export default defineEventHandler(async (event): Promise<ReportDetailDTO> => {
     throw createError({ statusCode: 404, statusMessage: "Report not found" })
   }
 
-  // Parallel: screenshot thumbnail + replay existence + assignees + all attachments.
-  // Mirrors how the list endpoint computes `thumbnailUrl` and `hasReplay`.
-  const [screenshotRows, replayRows, assigneeRows, attachmentRows] = await Promise.all([
-    db
-      .select({ id: reportAttachments.id })
-      .from(reportAttachments)
-      .where(
-        and(eq(reportAttachments.reportId, reportId), eq(reportAttachments.kind, "screenshot")),
-      )
-      .limit(1),
-    db
-      .select({ id: reportAttachments.id })
-      .from(reportAttachments)
-      .where(and(eq(reportAttachments.reportId, reportId), eq(reportAttachments.kind, "replay")))
-      .limit(1),
-    db
-      .select({
-        login: reportAssignees.githubLogin,
-        avatarUrl: reportAssignees.githubAvatarUrl,
-      })
-      .from(reportAssignees)
-      .where(eq(reportAssignees.reportId, reportId)),
-    db
-      .select({
-        id: reportAttachments.id,
-        kind: reportAttachments.kind,
-        contentType: reportAttachments.contentType,
-        sizeBytes: reportAttachments.sizeBytes,
-        filename: reportAttachments.filename,
-        scannedAt: reportAttachments.scannedAt,
-        scanStatus: reportAttachments.scanStatus,
-        scanEngine: reportAttachments.scanEngine,
-        scanDurationMs: reportAttachments.scanDurationMs,
-        durationMs: reportAttachments.durationMs,
-        trimStartMs: reportAttachments.trimStartMs,
-        trimEndMs: reportAttachments.trimEndMs,
-      })
-      .from(reportAttachments)
-      .where(eq(reportAttachments.reportId, reportId)),
-  ])
+  // Parallel: screenshot thumbnail + replay existence + assignees + all
+  // attachments + the GitHub reconcile job. Mirrors how the list endpoint
+  // computes `thumbnailUrl` and `hasReplay`.
+  const [screenshotRows, replayRows, assigneeRows, attachmentRows, syncJobRows] = await Promise.all(
+    [
+      db
+        .select({ id: reportAttachments.id })
+        .from(reportAttachments)
+        .where(
+          and(eq(reportAttachments.reportId, reportId), eq(reportAttachments.kind, "screenshot")),
+        )
+        .limit(1),
+      db
+        .select({ id: reportAttachments.id })
+        .from(reportAttachments)
+        .where(and(eq(reportAttachments.reportId, reportId), eq(reportAttachments.kind, "replay")))
+        .limit(1),
+      db
+        .select({
+          login: reportAssignees.githubLogin,
+          avatarUrl: reportAssignees.githubAvatarUrl,
+        })
+        .from(reportAssignees)
+        .where(eq(reportAssignees.reportId, reportId)),
+      db
+        .select({
+          id: reportAttachments.id,
+          kind: reportAttachments.kind,
+          contentType: reportAttachments.contentType,
+          sizeBytes: reportAttachments.sizeBytes,
+          filename: reportAttachments.filename,
+          scannedAt: reportAttachments.scannedAt,
+          scanStatus: reportAttachments.scanStatus,
+          scanEngine: reportAttachments.scanEngine,
+          scanDurationMs: reportAttachments.scanDurationMs,
+          durationMs: reportAttachments.durationMs,
+          trimStartMs: reportAttachments.trimStartMs,
+          trimEndMs: reportAttachments.trimEndMs,
+        })
+        .from(reportAttachments)
+        .where(eq(reportAttachments.reportId, reportId)),
+      // Only the "reconcile" job: it is what creates/updates the issue and what
+      // the Retry button re-enqueues (POST github-sync). Comment jobs stay on
+      // the Integrations page's failed list.
+      db
+        .select({
+          state: reportSyncJobs.state,
+          attempts: reportSyncJobs.attempts,
+          lastError: reportSyncJobs.lastError,
+          updatedAt: reportSyncJobs.updatedAt,
+        })
+        .from(reportSyncJobs)
+        .where(
+          and(eq(reportSyncJobs.reportId, reportId), eq(reportSyncJobs.signature, "reconcile")),
+        )
+        .limit(1),
+    ],
+  )
 
   const ctx = row.context as ReportContext
+  const syncJob = syncJobRows[0]
 
   return {
     id: row.id,
@@ -131,5 +155,13 @@ export default defineEventHandler(async (event): Promise<ReportDetailDTO> => {
       trimStartMs: a.trimStartMs ?? null,
       trimEndMs: a.trimEndMs ?? null,
     })),
+    githubSync: syncJob
+      ? {
+          state: syncJob.state,
+          attempts: syncJob.attempts,
+          lastError: syncJob.lastError ?? null,
+          updatedAt: syncJob.updatedAt.toISOString(),
+        }
+      : null,
   }
 })

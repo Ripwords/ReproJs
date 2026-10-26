@@ -1,5 +1,5 @@
 // apps/dashboard/server/lib/enqueue-sync.ts
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { db } from "../db"
 import { githubIntegrations, reportSyncJobs } from "../db/schema"
 import type { SyncJobPayload } from "../db/schema"
@@ -14,6 +14,24 @@ const signatureCommentUpsert = (commentId: string): string => `comment_upsert:${
 const signatureCommentDelete = (commentId: string): string => `comment_delete:${commentId}`
 
 /**
+ * ON CONFLICT SET clause shared by every enqueue. A row that is currently
+ * `syncing` is left alone and flagged `rerun_requested` — flipping it back
+ * to `pending` let a second worker claim it (two concurrent reconciles, two
+ * GitHub issues) and let the first worker's completion DELETE wipe the new
+ * request. `pending` / `failed` rows are made runnable immediately as before.
+ */
+function requeueOnConflict(extra: Partial<typeof reportSyncJobs.$inferInsert> = {}) {
+  const isSyncing = sql`${reportSyncJobs.state} = 'syncing'`
+  return {
+    state: sql`CASE WHEN ${isSyncing} THEN 'syncing' ELSE 'pending' END`,
+    rerunRequested: isSyncing,
+    nextAttemptAt: sql`CASE WHEN ${isSyncing} THEN ${reportSyncJobs.nextAttemptAt} ELSE now() END`,
+    updatedAt: new Date(),
+    ...extra,
+  }
+}
+
+/**
  * UPSERT a pending reconcile job. Idempotent against other reconciles for the
  * same report; coexists with any pending comment jobs for that report.
  * No-op if project has no connected integration.
@@ -24,11 +42,19 @@ const signatureCommentDelete = (commentId: string): string => `comment_delete:${
  */
 export async function enqueueSync(reportId: string, projectId: string): Promise<void> {
   const [gi] = await db
-    .select({ status: githubIntegrations.status })
+    .select({
+      status: githubIntegrations.status,
+      repoOwner: githubIntegrations.repoOwner,
+      repoName: githubIntegrations.repoName,
+    })
     .from(githubIntegrations)
     .where(eq(githubIntegrations.projectId, projectId))
     .limit(1)
   if (!gi || gi.status !== "connected") return
+  // Connected but no repository picked yet: reconcile has nowhere to write
+  // and would just burn its five attempts into a `failed` row of noise. The
+  // repo picker triggers a sync once a repo is chosen.
+  if (!gi.repoOwner || !gi.repoName) return
   await db
     .insert(reportSyncJobs)
     .values({
@@ -40,7 +66,7 @@ export async function enqueueSync(reportId: string, projectId: string): Promise<
     })
     .onConflictDoUpdate({
       target: [reportSyncJobs.reportId, reportSyncJobs.signature],
-      set: { state: "pending", nextAttemptAt: new Date(), updatedAt: new Date() },
+      set: requeueOnConflict(),
     })
   // Fire the sync worker in-process so the GitHub write lands within a
   // second of the dashboard write — no cron wait. Error handling lives
@@ -66,7 +92,7 @@ export async function enqueueCommentUpsert(reportId: string, commentId: string):
     })
     .onConflictDoUpdate({
       target: [reportSyncJobs.reportId, reportSyncJobs.signature],
-      set: { state: "pending", nextAttemptAt: new Date(), updatedAt: new Date(), payload },
+      set: requeueOnConflict({ payload }),
     })
   triggerReportSync(reportId)
 }
@@ -88,7 +114,7 @@ export async function enqueueCommentDelete(
     })
     .onConflictDoUpdate({
       target: [reportSyncJobs.reportId, reportSyncJobs.signature],
-      set: { state: "pending", nextAttemptAt: new Date(), updatedAt: new Date(), payload },
+      set: requeueOnConflict({ payload }),
     })
   triggerReportSync(reportId)
 }

@@ -2,7 +2,6 @@ import {
   createError,
   defineEventHandler,
   getHeader,
-  getRequestIP,
   readMultipartFormData,
   setResponseHeader,
 } from "h3"
@@ -11,6 +10,7 @@ import { randomUUID } from "node:crypto"
 import { LogsAttachment, MediaMetaEntry, ReportIntakeInput } from "@reprojs/shared"
 import { db } from "../../db"
 import { githubIntegrations, projects, reports, reportAttachments } from "../../db/schema"
+import type { NewReportAttachment } from "../../db/schema"
 import {
   applyIntakePostCors,
   applyIntakePreflightCors,
@@ -18,6 +18,7 @@ import {
 } from "../../lib/intake-cors"
 import { enqueueSync } from "../../lib/enqueue-sync"
 import { env } from "../../lib/env"
+import { getClientIp } from "../../lib/client-ip"
 import { getAnonKeyLimiter, getIpLimiter, getKeyLimiter } from "../../lib/rate-limit"
 import { getStorage } from "../../lib/storage"
 import { scanBytes } from "../../lib/clamav"
@@ -102,7 +103,7 @@ export default defineEventHandler(async (event) => {
       : rawOrigin
   // TRUST_XFF is OFF by default — a public deployment must not be trivially
   // rate-limit-bypassed via a spoofed X-Forwarded-For header.
-  const ip = getRequestIP(event, { xForwardedFor: env.TRUST_XFF }) ?? "unknown"
+  const ip = getClientIp(event)
 
   // Pre-buffer size gate: readMultipartFormData below buffers the ENTIRE body
   // into RAM before any other check runs, so an oversized (or maliciously huge)
@@ -191,15 +192,24 @@ export default defineEventHandler(async (event) => {
   // Idempotency-Key for this project, return the existing report id without
   // re-inserting. This runs BEFORE honeypot/dwell gates so legitimate mobile
   // retries always get a stable response even if those gates would reject.
+  //
+  // Only a report whose attachments are all present qualifies. A row with
+  // fewer attachments than this request carries is a half-stored report from
+  // a failed earlier attempt; we fall through and repair it in place (same
+  // id) instead of handing back a report the SDK can never complete.
+  let repairTarget: { id: string } | null = null
   if (idempotencyKey) {
-    const [existing] = await db
-      .select({ id: reports.id })
-      .from(reports)
-      .where(and(eq(reports.projectId, project.id), eq(reports.idempotencyKey, idempotencyKey)))
-      .limit(1)
+    const existing = await findReportByIdempotencyKey(db, project.id, idempotencyKey)
     if (existing) {
-      event.node.res.statusCode = 200
-      return { id: existing.id }
+      const expected = countExpectedAttachments(
+        parts,
+        env.REPLAY_FEATURE_ENABLED && project.replayEnabled,
+      )
+      if (existing.attachmentCount >= expected) {
+        event.node.res.statusCode = 200
+        return { id: existing.id }
+      }
+      repairTarget = { id: existing.id }
     }
   }
 
@@ -516,200 +526,217 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // SEC2: Daily ceiling — hard cap on reports per project per rolling 24h
-  // window. Previously the COUNT and INSERT ran in separate statements which
-  // allowed concurrent requests to all observe count = cap-1 and each commit
-  // an insert, breaching the cap by up to (concurrency - 1) per burst.
-  //
-  // Fix: wrap the count-check + insert in a single transaction guarded by a
-  // pg_advisory_xact_lock keyed on (project_id, rolling window start). The
-  // lock serializes only intakes for the same project — other projects are
-  // unaffected, and readers outside this path are never blocked. Advisory
-  // locks avoid the retry storms a full SERIALIZABLE isolation would produce.
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const txResult = await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`intake:${project.id}:daily`}))`)
-
-    const [countRow] = await tx
-      .select({ c: count() })
-      .from(reports)
-      .where(and(eq(reports.projectId, project.id), gte(reports.createdAt, dayAgo)))
-    const todayCount = countRow?.c ?? 0
-    if (todayCount >= project.dailyReportCap) {
-      return { overCap: true as const }
-    }
-
-    const [inserted] = await tx
-      .insert(reports)
-      .values({
-        projectId: project.id,
-        title: parsed.title,
-        description: parsed.description ?? null,
-        context: { ...parsed.context, ...(parsed.metadata ? { metadata: parsed.metadata } : {}) },
-        origin,
-        ip,
-        source: parsed.context.source,
-        devicePlatform: parsed.context.systemInfo?.devicePlatform ?? null,
-        idempotencyKey,
-      })
-      .returning()
-    return { overCap: false as const, report: inserted }
-  })
-
-  if (txResult.overCap) {
-    event.node.res.setHeader("Retry-After", "3600")
-    throw createError({ statusCode: 429, statusMessage: "Daily report cap reached" })
-  }
-  const report = txResult.report
-  if (!report) {
-    throw createError({ statusCode: 500, statusMessage: "Insert failed" })
-  }
-
+  // ── Replay validation (BEFORE any write) ───────────────────────────────────
+  // The size check used to run after the report row was committed, so a
+  // replay a few bytes over the cap produced a 413 *and* an orphan report
+  // with zero attachments. Every part is now validated before the first
+  // storage or DB write.
   const replayPart = parts.find((p) => p.name === "replay")
-  const replayFeatureOn = env.REPLAY_FEATURE_ENABLED
-  const projectAllowsReplay = project.replayEnabled
-  const replayDisabled = !replayFeatureOn || !projectAllowsReplay
-  let replayStored = false
-
-  if (replayPart?.data && replayPart.data.length > 0) {
-    if (replayPart.data.length > env.INTAKE_REPLAY_MAX_BYTES) {
-      throw createError({ statusCode: 413, statusMessage: "Replay payload too large" })
-    }
-    if (replayDisabled) {
-      // Silently drop — success-with-signal semantics (see spec §6).
-    } else {
-      const storage = await getStorage()
-      const key = `${report.id}/replay.json.gz`
-      await storage.put(key, new Uint8Array(replayPart.data), "application/gzip")
-      await db.insert(reportAttachments).values({
-        reportId: report.id,
-        kind: "replay",
-        storageKey: key,
-        contentType: "application/gzip",
-        sizeBytes: replayPart.data.length,
-      })
-      replayStored = true
-    }
+  const replayDisabled = !env.REPLAY_FEATURE_ENABLED || !project.replayEnabled
+  const replayData = replayPart?.data && replayPart.data.length > 0 ? replayPart.data : null
+  if (replayData !== null && replayData.length > env.INTAKE_REPLAY_MAX_BYTES) {
+    throw createError({ statusCode: 413, statusMessage: "Replay payload too large" })
   }
+  // Silently drop when disabled — success-with-signal semantics (see spec §6).
+  const replayStored = replayData !== null && !replayDisabled
 
-  // P3: Call getStorage() once and fan out attachment writes with Promise.all.
-  // Screenshot and logs uploads no longer serialize.
   const screenshotData =
     screenshotPart?.data && screenshotPart.data.length > 0 ? screenshotPart.data : null
   const logsData = parsedLogs && logsPart?.data ? logsPart.data : null
-  if (screenshotData !== null || logsData !== null) {
-    const storage = await getStorage()
-    const writes: Promise<void>[] = []
-    if (screenshotData !== null) {
-      const key = `${report.id}/screenshot.png`
-      writes.push(
-        storage
-          .put(key, new Uint8Array(screenshotData), "image/png")
-          .then(() =>
-            db.insert(reportAttachments).values({
-              reportId: report.id,
-              kind: "screenshot",
-              storageKey: key,
-              contentType: "image/png",
-              sizeBytes: screenshotData.length,
-            }),
-          )
-          .then(() => undefined),
-      )
-    }
-    if (logsData !== null) {
-      const key = `${report.id}/logs.json`
-      writes.push(
-        storage
-          .put(key, new Uint8Array(logsData), "application/json")
-          .then(() =>
-            db.insert(reportAttachments).values({
-              reportId: report.id,
-              kind: "logs",
-              storageKey: key,
-              contentType: "application/json",
-              sizeBytes: logsData.length,
-            }),
-          )
-          .then(() => undefined),
-      )
-    }
-    await Promise.all(writes)
+
+  // ── Attachment plan ─────────────────────────────────────────────────────────
+  // Storage keys embed the report id, so pick it up front. For an idempotent
+  // retry that found a half-stored row we reuse that row's id and repair it
+  // in place; otherwise mint a fresh one.
+  const reportId = repairTarget?.id ?? randomUUID()
+  const planned: PlannedAttachment[] = []
+  if (replayStored && replayData !== null) {
+    planned.push({
+      bytes: new Uint8Array(replayData),
+      row: {
+        kind: "replay",
+        storageKey: `${reportId}/replay.json.gz`,
+        contentType: "application/gzip",
+        sizeBytes: replayData.length,
+      },
+    })
+  }
+  if (screenshotData !== null) {
+    planned.push({
+      bytes: new Uint8Array(screenshotData),
+      row: {
+        kind: "screenshot",
+        storageKey: `${reportId}/screenshot.png`,
+        contentType: "image/png",
+        sizeBytes: screenshotData.length,
+      },
+    })
+  }
+  if (logsData !== null) {
+    planned.push({
+      bytes: new Uint8Array(logsData),
+      row: {
+        kind: "logs",
+        storageKey: `${reportId}/logs.json`,
+        contentType: "application/json",
+        sizeBytes: logsData.length,
+      },
+    })
+  }
+  for (const { idx, part } of userParts) {
+    const safeName = sanitizeFilename(part.filename ?? "", idx)
+    const mime = part.type ?? "application/octet-stream"
+    const meta = scanMetaByIdx.get(idx)
+    planned.push({
+      bytes: new Uint8Array(part.data),
+      row: {
+        kind: "user-file",
+        storageKey: `${reportId}/user/${idx}-${safeName}`,
+        contentType: mime,
+        sizeBytes: part.data.length,
+        filename: safeName,
+        scannedAt: meta?.scannedAt ?? null,
+        scanStatus: meta?.scanStatus ?? null,
+        scanEngine: meta?.scanEngine ?? null,
+        scanDurationMs: meta?.scanDurationMs ?? null,
+      },
+    })
+  }
+  for (const { idx, data, mime } of mediaParts) {
+    const m = mediaMetaByIdx.get(idx)!
+    const ext = MEDIA_EXT[mime] ?? "bin"
+    const scanMeta = mediaScanMetaByIdx.get(idx)
+    planned.push({
+      bytes: new Uint8Array(data),
+      row: {
+        kind: "media",
+        storageKey: `${reportId}/media/${idx}.${ext}`,
+        contentType: mime,
+        sizeBytes: data.length,
+        filename: `media-${idx}.${ext}`,
+        durationMs: m.durationMs ?? null,
+        trimStartMs: m.trim?.startMs ?? null,
+        trimEndMs: m.trim?.endMs ?? null,
+        scannedAt: scanMeta?.scannedAt ?? null,
+        scanStatus: scanMeta?.scanStatus ?? null,
+        scanEngine: scanMeta?.scanEngine ?? null,
+        scanDurationMs: scanMeta?.scanDurationMs ?? null,
+      },
+    })
   }
 
-  // ── Persist user-file attachments (kind = "user-file") ────────────────────
-  // All validation + virus-scanning ran above, BEFORE the report row was
-  // inserted, so by the time we get here every part is known-clean and
-  // within size/count budgets. Storage put + DB insert is all that's left.
-  if (userParts.length > 0) {
-    const storage = await getStorage()
-    const writtenKeys: string[] = []
-    try {
-      await Promise.all(
-        userParts.map(async ({ idx, part }) => {
-          const safeName = sanitizeFilename(part.filename ?? "", idx)
-          const mime = part.type ?? "application/octet-stream"
-          const key = `${report.id}/user/${idx}-${safeName}`
-          await storage.put(key, new Uint8Array(part.data), mime)
-          writtenKeys.push(key)
-          const meta = scanMetaByIdx.get(idx)
-          await db.insert(reportAttachments).values({
-            reportId: report.id,
-            kind: "user-file",
-            storageKey: key,
-            contentType: mime,
-            sizeBytes: part.data.length,
-            filename: safeName,
-            scannedAt: meta?.scannedAt ?? null,
-            scanStatus: meta?.scanStatus ?? null,
-            scanEngine: meta?.scanEngine ?? null,
-            scanDurationMs: meta?.scanDurationMs ?? null,
-          })
-        }),
-      )
-    } catch (err) {
-      await rollbackPuts(storage, writtenKeys)
-      throw err
-    }
+  // ── Blobs first ─────────────────────────────────────────────────────────────
+  // Storage is written before any row exists, so a failed upload can never
+  // leave a report that points at missing bytes. Keys only ever contain
+  // report-scoped paths, so a rollback here cannot touch anyone else's data.
+  const storage = await getStorage()
+  const plannedKeys = planned.map((p) => p.row.storageKey)
+  const writtenKeys: string[] = []
+  try {
+    await Promise.all(
+      planned.map(async (p) => {
+        await storage.put(p.row.storageKey, p.bytes, p.row.contentType)
+        writtenKeys.push(p.row.storageKey)
+      }),
+    )
+  } catch (err) {
+    console.error("[intake] attachment storage write failed", err)
+    await rollbackPuts(storage, writtenKeys)
+    throw createError({ statusCode: 500, statusMessage: "Attachment storage failed" })
   }
 
-  // ── Persist gallery media attachments (kind = "media") ────────────────────
-  // All validation + virus-scanning ran above, BEFORE the report row was
-  // inserted, so every part here is known-clean and within its size cap.
-  if (mediaParts.length > 0) {
-    const storage = await getStorage()
-    const writtenKeys: string[] = []
-    try {
-      // Sequential (not Promise.all) so writtenKeys only ever contains keys
-      // that have actually landed in storage before any failure, in a
-      // well-defined order — mirrors the user-file block's rollback contract.
-      for (const { idx, data, mime } of mediaParts) {
-        const m = mediaMetaByIdx.get(idx)!
-        const ext = MEDIA_EXT[mime] ?? "bin"
-        const key = `${report.id}/media/${idx}.${ext}`
-        await storage.put(key, new Uint8Array(data), mime)
-        writtenKeys.push(key)
-        const scanMeta = mediaScanMetaByIdx.get(idx)
-        await db.insert(reportAttachments).values({
-          reportId: report.id,
-          kind: "media",
-          storageKey: key,
-          contentType: mime,
-          sizeBytes: data.length,
-          filename: `media-${idx}.${ext}`,
-          durationMs: m.durationMs ?? null,
-          trimStartMs: m.trim?.startMs ?? null,
-          trimEndMs: m.trim?.endMs ?? null,
-          scannedAt: scanMeta?.scannedAt ?? null,
-          scanStatus: scanMeta?.scanStatus ?? null,
-          scanEngine: scanMeta?.scanEngine ?? null,
-          scanDurationMs: scanMeta?.scanDurationMs ?? null,
-        })
+  // ── One transaction: report row + every attachment row ─────────────────────
+  // SEC2: Daily ceiling — hard cap on reports per project per rolling 24h
+  // window. The COUNT and INSERT run in one transaction guarded by a
+  // pg_advisory_xact_lock keyed on the project, so concurrent requests can't
+  // all observe count = cap-1 and each commit. The lock serializes only
+  // intakes for the same project. The same lock also serializes idempotent
+  // retries, so the re-check below is authoritative.
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  type TxOutcome =
+    | { kind: "created" }
+    | { kind: "repaired" }
+    | { kind: "duplicate"; id: string }
+    | { kind: "overCap" }
+  let txResult: TxOutcome
+  try {
+    txResult = await db.transaction(async (tx): Promise<TxOutcome> => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`intake:${project.id}:daily`}))`)
+
+      const current = idempotencyKey
+        ? await findReportByIdempotencyKey(tx, project.id, idempotencyKey)
+        : null
+      if (current && current.id !== reportId) {
+        // Another request with the same key committed while we were uploading.
+        return { kind: "duplicate", id: current.id }
       }
-    } catch (err) {
-      await rollbackPuts(storage, writtenKeys)
-      throw err
-    }
+
+      if (current) {
+        // Repair: the row exists but its attachments never landed. Replace
+        // whatever partial set is there with the full plan.
+        await tx.delete(reportAttachments).where(eq(reportAttachments.reportId, reportId))
+      } else {
+        const [countRow] = await tx
+          .select({ c: count() })
+          .from(reports)
+          .where(and(eq(reports.projectId, project.id), gte(reports.createdAt, dayAgo)))
+        if ((countRow?.c ?? 0) >= project.dailyReportCap) {
+          return { kind: "overCap" }
+        }
+        const inserted = await tx
+          .insert(reports)
+          .values({
+            id: reportId,
+            projectId: project.id,
+            title: parsed.title,
+            description: parsed.description ?? null,
+            context: {
+              ...parsed.context,
+              ...(parsed.metadata ? { metadata: parsed.metadata } : {}),
+            },
+            origin,
+            ip,
+            source: parsed.context.source,
+            devicePlatform: parsed.context.systemInfo?.devicePlatform ?? null,
+            idempotencyKey,
+          })
+          // Belt and braces for the partial unique index on
+          // (project_id, idempotency_key): the advisory lock already
+          // serializes same-project intakes, but a conflict here must never
+          // surface as a 500.
+          .onConflictDoNothing({
+            target: [reports.projectId, reports.idempotencyKey],
+            where: sql`${reports.idempotencyKey} IS NOT NULL`,
+          })
+          .returning({ id: reports.id })
+        if (inserted.length === 0) {
+          const winner = idempotencyKey
+            ? await findReportByIdempotencyKey(tx, project.id, idempotencyKey)
+            : null
+          if (!winner) throw new Error("report insert conflicted but no winner row found")
+          return { kind: "duplicate", id: winner.id }
+        }
+      }
+
+      if (planned.length > 0) {
+        await tx.insert(reportAttachments).values(planned.map((p) => ({ reportId, ...p.row })))
+      }
+      return current ? { kind: "repaired" } : { kind: "created" }
+    })
+  } catch (err) {
+    await rollbackPuts(storage, plannedKeys)
+    throw err
+  }
+
+  if (txResult.kind === "overCap") {
+    await rollbackPuts(storage, plannedKeys)
+    event.node.res.setHeader("Retry-After", "3600")
+    throw createError({ statusCode: 429, statusMessage: "Daily report cap reached" })
+  }
+  if (txResult.kind === "duplicate") {
+    await rollbackPuts(storage, plannedKeys)
+    event.node.res.statusCode = 200
+    return { id: txResult.id }
   }
 
   // Auto-create GitHub issue on intake when the toggle is on.
@@ -734,7 +761,7 @@ export default defineEventHandler(async (event) => {
     integration.repoOwner &&
     integration.repoName
   ) {
-    await enqueueSync(report.id, project.id).catch((err) => {
+    await enqueueSync(reportId, project.id).catch((err) => {
       console.error("[github] enqueueSync failed on intake", err)
     })
   }
@@ -742,9 +769,56 @@ export default defineEventHandler(async (event) => {
   event.node.res.statusCode = 201
   event.node.res.setHeader("Repro-Scan-Enabled", env.INTAKE_USER_FILE_SCAN_ENABLED ? "1" : "0")
   return {
-    id: report.id,
+    id: reportId,
     scanEnabled: env.INTAKE_USER_FILE_SCAN_ENABLED,
     ...(replayPart ? { replayStored, replayDisabled } : {}),
     ...(logsPart ? { logsStored: !logsRejected && logsData !== null } : {}),
   }
 })
+
+interface PlannedAttachment {
+  bytes: Uint8Array
+  row: Omit<NewReportAttachment, "reportId">
+}
+
+type DbExecutor = Pick<typeof db, "select">
+
+/** The report row (if any) already holding this (project, Idempotency-Key). */
+async function findReportByIdempotencyKey(
+  ex: DbExecutor,
+  projectId: string,
+  key: string,
+): Promise<{ id: string; attachmentCount: number } | null> {
+  const [row] = await ex
+    .select({ id: reports.id })
+    .from(reports)
+    .where(and(eq(reports.projectId, projectId), eq(reports.idempotencyKey, key)))
+    .limit(1)
+  if (!row) return null
+  const [c] = await ex
+    .select({ c: count() })
+    .from(reportAttachments)
+    .where(eq(reportAttachments.reportId, row.id))
+  return { id: row.id, attachmentCount: c?.c ?? 0 }
+}
+
+/**
+ * How many attachment rows a request *would* produce, judged from the raw
+ * multipart parts alone. Used by the idempotency short-circuit to tell a
+ * complete prior submission (return 200) from a half-stored one (repair).
+ * Deliberately a cheap upper bound: a part that later fails validation makes
+ * us fall through to the full path, which is the safe direction.
+ */
+function countExpectedAttachments(
+  parts: NonNullable<Awaited<ReturnType<typeof readMultipartFormData>>>,
+  replayAllowed: boolean,
+): number {
+  let n = 0
+  for (const p of parts) {
+    if (!p.data || p.data.length === 0 || !p.name) continue
+    if (p.name === "screenshot" || p.name === "logs") n++
+    else if (p.name === "replay" && replayAllowed) n++
+    else if (/^attachment\[\d+\]$/.test(p.name) || MEDIA_PART_RE.test(p.name)) n++
+  }
+  return n
+}

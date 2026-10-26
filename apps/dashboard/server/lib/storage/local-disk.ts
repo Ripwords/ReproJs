@@ -1,9 +1,23 @@
+import { randomUUID } from "node:crypto"
 import { createReadStream } from "node:fs"
-import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import type { StorageAdapter, StorageStream } from "./index"
 
 const CONTENT_TYPE_SUFFIX = ".contenttype"
+const TMP_SUFFIX = ".tmp"
+
+/** Write to a sibling temp file and rename over the target (atomic on POSIX). */
+async function writeAtomic(path: string, data: Uint8Array | string): Promise<void> {
+  const tmp = `${path}.${randomUUID()}${TMP_SUFFIX}`
+  try {
+    await writeFile(tmp, data)
+    await rename(tmp, path)
+  } catch (err) {
+    await unlink(tmp).catch(() => undefined)
+    throw err
+  }
+}
 
 export class LocalDiskAdapter implements StorageAdapter {
   private readonly root: string
@@ -15,8 +29,12 @@ export class LocalDiskAdapter implements StorageAdapter {
   async put(key: string, bytes: Uint8Array, contentType: string) {
     const full = this.resolveKey(key)
     await mkdir(dirname(full), { recursive: true })
-    await writeFile(full, bytes)
-    await writeFile(`${full}${CONTENT_TYPE_SUFFIX}`, contentType, "utf8")
+    // Write-then-rename so a crash or a concurrent reader mid-write can never
+    // observe a truncated blob or sidecar under the final name.
+    await Promise.all([
+      writeAtomic(full, bytes),
+      writeAtomic(`${full}${CONTENT_TYPE_SUFFIX}`, contentType),
+    ])
     return { key }
   }
 

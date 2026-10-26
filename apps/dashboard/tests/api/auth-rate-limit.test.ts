@@ -15,7 +15,7 @@ import { createUser, truncateDomain } from "../helpers"
 await setup({ server: true, port: 3000, host: "localhost" })
 setDefaultTimeout(30000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
 const MAX = 5
 
 // Each test picks a unique IP. better-auth's rate-limit key is `ip|path`, and

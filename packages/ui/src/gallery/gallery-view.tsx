@@ -91,6 +91,8 @@ interface TileProps {
   previewOpen: boolean
   copyState: CopyState
   copyError: string | null
+  // Minted share URL to show in a selectable field when the clipboard write failed.
+  fallbackUrl: string | null
   onTogglePreview: (id: string) => void
   onDelete: (id: string) => void
   onCopyLink: (item: GalleryItem) => void
@@ -103,6 +105,7 @@ function Tile({
   previewOpen,
   copyState,
   copyError,
+  fallbackUrl,
   onTogglePreview,
   onDelete,
   onCopyLink,
@@ -181,6 +184,17 @@ function Tile({
       ),
     ),
     copyError ? h("div", { class: "ft-gallery-copy-error" }, copyError) : null,
+    fallbackUrl
+      ? h("input", {
+          class: "ft-gallery-share-url",
+          type: "text",
+          readOnly: true,
+          value: fallbackUrl,
+          "aria-label": "Share link",
+          onFocus: (e: Event) => (e.currentTarget as HTMLInputElement).select(),
+          onClick: (e: Event) => (e.currentTarget as HTMLInputElement).select(),
+        })
+      : null,
     previewOpen
       ? h(
           "div",
@@ -212,6 +226,7 @@ export function GalleryView({
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [copyStates, setCopyStates] = useState<Record<string, CopyState>>({})
   const [copyErrors, setCopyErrors] = useState<Record<string, string>>({})
+  const [fallbackUrls, setFallbackUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -250,27 +265,30 @@ export function GalleryView({
     const live =
       item.shareUrl && (!item.shareExpiresAt || Date.parse(item.shareExpiresAt) > Date.now())
     if (live) {
-      try {
-        await navigator.clipboard.writeText(item.shareUrl)
-        setCopyStates((s) => ({ ...s, [item.id]: "copied" }))
-      } catch {
-        setCopyStates((s) => ({ ...s, [item.id]: "error" }))
-        setCopyErrors((s) => ({ ...s, [item.id]: "Couldn't copy to clipboard" }))
-      }
+      await copyToClipboard(item.id, item.shareUrl)
       return
     }
     const result = await onCopyLink(item)
     if ("url" in result) {
-      try {
-        await navigator.clipboard.writeText(result.url)
-        setCopyStates((s) => ({ ...s, [item.id]: "copied" }))
-      } catch {
-        setCopyStates((s) => ({ ...s, [item.id]: "error" }))
-        setCopyErrors((s) => ({ ...s, [item.id]: "Couldn't copy to clipboard" }))
-      }
+      await copyToClipboard(item.id, result.url)
     } else {
       setCopyStates((s) => ({ ...s, [item.id]: "error" }))
       setCopyErrors((s) => ({ ...s, [item.id]: result.error }))
+    }
+  }
+
+  // Safari (and any browser after a long await) refuses clipboard writes
+  // outside a user gesture; minting the link can take up to 60 s. Rather than
+  // throw the freshly minted URL away, surface it in a selectable field.
+  async function copyToClipboard(id: string, url: string) {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopyStates((s) => ({ ...s, [id]: "copied" }))
+      setFallbackUrls((s) => ({ ...s, [id]: "" }))
+    } catch {
+      setCopyStates((s) => ({ ...s, [id]: "error" }))
+      setCopyErrors((s) => ({ ...s, [id]: "Couldn't copy to clipboard — select the link below" }))
+      setFallbackUrls((s) => ({ ...s, [id]: url }))
     }
   }
 
@@ -305,6 +323,7 @@ export function GalleryView({
                   previewOpen: previewId === item.id,
                   copyState: copyStates[item.id] ?? "idle",
                   copyError: copyErrors[item.id] || null,
+                  fallbackUrl: fallbackUrls[item.id] || null,
                   onTogglePreview: togglePreview,
                   onDelete: handleDelete,
                   onCopyLink: handleCopyLink,

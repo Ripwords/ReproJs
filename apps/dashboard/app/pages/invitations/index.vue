@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import RelativeTime from "~/components/common/relative-time.vue"
+import AppLoadingSkeleton from "~/components/common/app-loading-skeleton.vue"
 import type { PendingInvitationDTO } from "@reprojs/shared"
 
 useHead({ title: "Pending invitations" })
@@ -24,9 +25,9 @@ function inviterLabel(inv: PendingInvitationDTO): string {
       </p>
     </div>
 
-    <UCard v-if="pending">
-      <p class="text-sm text-muted">Loading…</p>
-    </UCard>
+    <div v-if="pending" class="space-y-3" aria-busy="true" aria-label="Loading invitations">
+      <AppLoadingSkeleton v-for="n in 2" :key="n" variant="card" />
+    </div>
 
     <UCard v-else-if="invites.length === 0">
       <div class="text-center py-6">

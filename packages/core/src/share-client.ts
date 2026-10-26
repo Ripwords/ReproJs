@@ -1,6 +1,7 @@
 import type { ShareMintResponse } from "@reprojs/shared"
 import type { TrimRange } from "@reprojs/sdk-utils"
 import type { ResolvedConfig } from "./config"
+import { isAbortError, timeoutSignal } from "./timeout-signal"
 
 export interface ShareLinkInput {
   blob: Blob
@@ -72,7 +73,7 @@ export async function mintShareLink(
       method: "POST",
       body,
       credentials: "omit",
-      signal: AbortSignal.timeout(60_000),
+      signal: timeoutSignal(60_000),
     })
     if (!res.ok) {
       return { ok: false, message: messageForStatus(res.status) }
@@ -80,6 +81,9 @@ export async function mintShareLink(
     const data = (await res.json()) as ShareMintResponse
     return { ok: true, url: data.shareUrl, token: data.token, expiresAt: data.expiresAt }
   } catch (err) {
+    if (isAbortError(err)) {
+      return { ok: false, message: "Upload timed out — check your connection and try again" }
+    }
     return {
       ok: false,
       message: err instanceof Error ? err.message : "Network error",

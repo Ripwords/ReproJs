@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "preact/hooks"
 import type { Config, ConfigInput } from "../types"
+import { canAddConfig, permissionsToRevoke } from "../lib/config-rules"
 import {
   hasOriginPermission,
   removeOriginPermission,
@@ -79,6 +80,10 @@ export function useConfigs() {
       if (intakeOrigin === null) {
         return { ok: false, message: "Invalid intake endpoint URL." }
       }
+      // Read storage rather than `items`: the options page and popup can
+      // both be open, and this hook's state may lag a save made elsewhere.
+      const allowed = canAddConfig(input.origin, await listConfigs())
+      if (!allowed.ok) return allowed
       // Persist FIRST — survives popup tear-down triggered by the native
       // permission prompt. setLastIntakeEndpoint captures the explicit choice
       // so the next Add form pre-fills it.
@@ -100,10 +105,13 @@ export function useConfigs() {
       const target = items.find((c) => c.id === id)
       if (!target) return
       await deleteConfig(id)
-      // Drop only the page-origin permission. The intake origin may still be
-      // in use by another config pointing at the same dashboard; dropping it
-      // here would force the user to re-grant it for the next config.
-      await removeOriginPermission(target.origin)
+      // Drop the page-origin permission only when no remaining config still
+      // needs it (see permissionsToRevoke). The intake origin is never
+      // dropped here: other configs usually point at the same dashboard.
+      const remaining = await listConfigs()
+      for (const origin of permissionsToRevoke(target, remaining)) {
+        await removeOriginPermission(origin)
+      }
       await refresh()
     },
     [items, refresh],

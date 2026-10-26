@@ -20,7 +20,10 @@ export interface ConsoleConfig {
 
 export interface ConsoleCollector {
   start(config: ConsoleConfig): void
+  /** Drains the buffer. Prefer `peek()` + `clear()` so a failed upload can retry with the same logs. */
   snapshot(): ConsoleEntry[]
+  peek(): ConsoleEntry[]
+  clear(): void
   stop(): void
 }
 
@@ -112,6 +115,12 @@ export function createConsoleCollector(_initial: ConsoleConfig): ConsoleCollecto
     },
     snapshot() {
       return buffer?.drain() ?? []
+    },
+    peek() {
+      return buffer?.peek() ?? []
+    },
+    clear() {
+      buffer?.clear()
     },
     stop() {
       if (!running) return

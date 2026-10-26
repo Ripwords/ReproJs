@@ -9,7 +9,7 @@ import { createUser, seedProject, truncateDomain, truncateSharedMedia } from "..
 await setup({ server: true, port: 3000, host: "localhost" })
 setDefaultTimeout(15000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
 const PK = "rp_pk_SHAREPAGE1234567890123456"
 
 const BUFFER = new Uint8Array(32).map((_, i) => i)

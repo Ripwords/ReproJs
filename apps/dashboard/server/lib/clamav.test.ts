@@ -60,6 +60,14 @@ describe("scanBytes", () => {
     expect(result.reason).toBe("infected")
   })
 
+  test("throws (fail-closed) when the scanner returns no verdict", async () => {
+    process.env.INTAKE_USER_FILE_SCAN_ENABLED = "true"
+    _reloadEnvForTesting()
+    // clamscan yields isInfected: null when clamd timed out or cut the stream.
+    _setClientForTesting(fakeClient({ isInfected: null }))
+    await expect(scanBytes(new Uint8Array([1, 2, 3]))).rejects.toThrow(/no verdict/)
+  })
+
   test("throws (fail-closed) when scanner errors", async () => {
     process.env.INTAKE_USER_FILE_SCAN_ENABLED = "true"
     _reloadEnvForTesting()

@@ -61,6 +61,15 @@ export function Reporter({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const hpRef = useRef<HTMLInputElement>(null)
+  // The post-success auto-close timer. Cleared on unmount so a widget torn
+  // down (init() re-mount, close()) during the 1.5 s doesn't call a stale
+  // onClose into a tree that no longer exists.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current)
+    }
+  }, [])
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [attachmentErrors, setAttachmentErrors] = useState<string[]>([])
   // Saved items the user pulled in through the browse sheet. Kept separate
@@ -89,9 +98,12 @@ export function Reporter({
   }, [mediaItems])
 
   useEffect(() => {
+    // Restore whatever the host had set (e.g. its own modal's "hidden"), not
+    // "" — clearing it unconditionally re-enabled scrolling behind host UI.
+    const previous = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
-      document.body.style.overflow = ""
+      document.body.style.overflow = previous
     }
   }, [])
 
@@ -217,18 +229,31 @@ export function Reporter({
     setSubmitting(true)
     setSubmitError(null)
     const media = mediaItems.filter((item) => selectedMediaIds.includes(item.id))
-    const res = await onSubmit({
-      title: title.trim(),
-      description: description.trim(),
-      media,
-      attachments,
-      dwellMs: Math.max(0, Math.round(performance.now() - openedAt)),
-      honeypot: hpRef.current?.value ?? "",
-    })
-    setSubmitting(false)
+    // onSubmit wraps snapshotting, gzip and the network round-trip. Any of
+    // those can throw (missing browser API, serialization error) — if that
+    // escaped, `submitting` would never reset and the spinner would hang
+    // with Back disabled. Fail into the error card instead.
+    let res: ReporterSubmitResult
+    try {
+      res = await onSubmit({
+        title: title.trim(),
+        description: description.trim(),
+        media,
+        attachments,
+        dwellMs: Math.max(0, Math.round(performance.now() - openedAt)),
+        honeypot: hpRef.current?.value ?? "",
+      })
+    } catch (err) {
+      res = {
+        ok: false,
+        message: err instanceof Error && err.message ? err.message : "Something went wrong.",
+      }
+    } finally {
+      setSubmitting(false)
+    }
     if (res.ok) {
       setSuccess(true)
-      setTimeout(onClose, 1500)
+      closeTimer.current = setTimeout(onClose, 1500)
     } else {
       setSubmitError(res.message ?? "Something went wrong.")
     }

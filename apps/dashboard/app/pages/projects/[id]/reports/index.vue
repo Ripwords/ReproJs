@@ -4,17 +4,37 @@ import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
-import type { ReportListDTO, ReportPriority, ReportStatus, ReportSummaryDTO } from "@reprojs/shared"
+import type {
+  BulkUpdateInput,
+  ReportListDTO,
+  ReportPriority,
+  ReportStatus,
+  ReportSummaryDTO,
+} from "@reprojs/shared"
+import { inverseBulkChange, type BulkChange, type BulkUndoSnapshot } from "~/utils/bulk-undo"
 import StatusTabs from "~/components/inbox/status-tabs.vue"
 import FacetSidebar from "~/components/inbox/facet-sidebar.vue"
 import SearchSort from "~/components/inbox/search-sort.vue"
 import BulkActionBar from "~/components/inbox/bulk-action-bar.vue"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
-import { INBOX_PAGE_SIZE, useInboxQuery } from "~/composables/use-inbox-query"
+import KeyboardShortcutsModal from "~/components/common/keyboard-shortcuts-modal.vue"
+import {
+  INBOX_PAGE_SIZE,
+  inboxLocationQuery,
+  initialStatusForVisit,
+  rememberedStatusTab,
+  useInboxQuery,
+} from "~/composables/use-inbox-query"
 import { useKeyboardShortcuts } from "~/composables/useKeyboardShortcuts"
-import { priorityColor, priorityLabel } from "~/composables/use-report-format"
+import {
+  priorityColor,
+  priorityLabel,
+  statusColor,
+  statusLabel,
+} from "~/composables/use-report-format"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
+import { activeQuickView, quickViewPatch, type QuickViewId } from "~/utils/inbox-quick-views"
 
 const UCheckbox = resolveComponent("UCheckbox")
 const UBadge = resolveComponent("UBadge")
@@ -27,6 +47,35 @@ const projectId = computed(() => route.params.id as string)
 useHead({ title: "Reports" })
 
 const { query, update, toApi } = useInboxQuery()
+
+// ---- Default tab ----
+// A fresh visit (no inbox params in the URL) opens on the tab the user last
+// chose for this project, defaulting to Open. Deep links keep their own
+// state. Runs before the list fetch so the first request is already the
+// right one, and uses `replace` so Back doesn't land on the unfiltered URL.
+const rememberedTab = useCookie<string | null>(`inbox-status-${projectId.value}`, {
+  default: () => null,
+})
+const initialStatus = initialStatusForVisit(route.query, rememberedTab.value)
+if (initialStatus) {
+  await navigateTo(
+    { query: inboxLocationQuery(query.value, { status: initialStatus }) },
+    { replace: true },
+  )
+}
+
+function changeStatus(status: ReportStatus[]) {
+  rememberedTab.value = rememberedStatusTab(status)
+  update({ status })
+}
+
+// ---- Quick views ----
+const currentView = computed<QuickViewId | null>(() => activeQuickView(query.value))
+function applyView(id: QuickViewId) {
+  const patch = quickViewPatch(id)
+  rememberedTab.value = rememberedStatusTab(patch.status)
+  update(patch)
+}
 
 const listUrl = computed(() => `/api/projects/${projectId.value}/reports?${toApi()}`)
 const { data, pending, refresh } = useApi<ReportListDTO>(listUrl, { watch: [listUrl] })
@@ -74,21 +123,62 @@ watch(
   { immediate: true },
 )
 
-async function bulkStatus(status: ReportStatus) {
-  submittingBulk.value = true
-  const n = checkedIds.value.length
+// One path for every bulk action. Before posting, snapshot the selected
+// rows so the success toast can offer Undo: the inverse is one request per
+// previous value (see utils/bulk-undo), posted through the same endpoint.
+async function postBulk(body: BulkUpdateInput) {
+  await $fetch(`/api/projects/${projectId.value}/reports/bulk-update`, {
+    method: "POST",
+    body,
+    credentials: "include",
+  })
+}
+
+async function undoBulk(inverse: BulkUpdateInput[]) {
   try {
-    await $fetch(`/api/projects/${projectId.value}/reports/bulk-update`, {
-      method: "POST",
-      body: { reportIds: checkedIds.value, status },
-      credentials: "include",
+    // Sequential on purpose: each group is one request and the server
+    // enqueues GitHub syncs per batch; parallel posts gain nothing here.
+    for (const body of inverse) await postBulk(body) // oxlint-disable-line no-await-in-loop
+    await refresh()
+    toast.add({ title: "Change undone", color: "success", icon: "i-heroicons-arrow-uturn-left" })
+  } catch (err) {
+    toast.add({
+      title: "Could not undo",
+      description: describeApiError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
     })
+  }
+}
+
+async function runBulk(change: BulkChange) {
+  submittingBulk.value = true
+  const ids = checkedIds.value
+  const n = ids.length
+  const before: BulkUndoSnapshot[] = reports.value
+    .filter((r) => ids.includes(r.id))
+    .map((r) => ({ id: r.id, status: r.status, assignees: r.assignees.map((a) => a.login) }))
+  try {
+    await postBulk({ reportIds: ids, ...change })
     clearSelection()
     await refresh()
+    const inverse = inverseBulkChange(before, change)
     toast.add({
       title: `${n} report${n === 1 ? "" : "s"} updated`,
       color: "success",
       icon: "i-heroicons-check-circle",
+      actions:
+        inverse.length > 0
+          ? [
+              {
+                label: "Undo",
+                icon: "i-heroicons-arrow-uturn-left",
+                color: "neutral",
+                variant: "outline",
+                onClick: () => void undoBulk(inverse),
+              },
+            ]
+          : undefined,
     })
   } catch (err) {
     toast.add({
@@ -101,33 +191,8 @@ async function bulkStatus(status: ReportStatus) {
     submittingBulk.value = false
   }
 }
-async function bulkAssign(login: string | null) {
-  submittingBulk.value = true
-  const n = checkedIds.value.length
-  try {
-    await $fetch(`/api/projects/${projectId.value}/reports/bulk-update`, {
-      method: "POST",
-      body: { reportIds: checkedIds.value, assignees: login ? [login] : [] },
-      credentials: "include",
-    })
-    clearSelection()
-    await refresh()
-    toast.add({
-      title: `${n} report${n === 1 ? "" : "s"} updated`,
-      color: "success",
-      icon: "i-heroicons-check-circle",
-    })
-  } catch (err) {
-    toast.add({
-      title: "Could not update reports",
-      description: describeApiError(err),
-      color: "error",
-      icon: "i-heroicons-exclamation-triangle",
-    })
-  } finally {
-    submittingBulk.value = false
-  }
-}
+const bulkStatus = (status: ReportStatus) => runBulk({ status })
+const bulkAssign = (login: string | null) => runBulk({ assignees: login ? [login] : [] })
 
 // Row click / keyboard activation navigates to the dedicated report page.
 // Replaces the previous drawer integration — dedicated page gives full width,
@@ -160,15 +225,34 @@ const hasActiveFilters = computed(
     query.value.source.length > 0,
 )
 
+// Source facets are counted project-wide (not by the active filters), so
+// their sum tells "this project has never received a report" apart from
+// "this tab is empty". The former gets the install CTA even though the
+// default Open tab is technically a filter.
+const projectHasReports = computed(() => {
+  const s = data.value?.facets.source
+  if (!s) return true
+  return s.web + s.expo + s.ios + s.android > 0
+})
+const showInstallState = computed(() => !projectHasReports.value)
+
 const { isAdmin } = useSession()
 const installLink = computed(() => installLinkFor(isAdmin.value, projectId.value))
 
 function clearFilters() {
+  rememberedTab.value = "all"
   update({ q: "", status: [], priority: [], assignee: [], tag: [], source: [] })
 }
 
 // ---- Keyboard navigation ----
+// j/k (or the arrows) move a highlight through the rows; Enter opens the
+// highlighted report. UTable renders every row with tabindex=0 (because we
+// pass @select), so the highlighted row also receives focus — screen
+// readers announce it and Tab continues from there. The highlight class is
+// applied through UTable's `meta.class.tr`, which is the only per-row hook.
+const ROW_HIGHLIGHT_CLASS = "inbox-row-highlighted"
 const highlightedIndex = ref(-1)
+const tableWrap = ref<HTMLElement | null>(null)
 
 watch(reports, (next) => {
   if (next.length === 0) {
@@ -178,6 +262,19 @@ watch(reports, (next) => {
   }
 })
 
+const tableMeta = {
+  class: {
+    tr: (row: { index: number }) =>
+      row.index === highlightedIndex.value ? ROW_HIGHLIGHT_CLASS : "",
+  },
+}
+
+function bodyRows(): HTMLElement[] {
+  const root = tableWrap.value
+  if (!root) return []
+  return Array.from(root.querySelectorAll<HTMLElement>('tbody tr[data-slot="tr"]'))
+}
+
 function moveSelection(delta: number) {
   const list = reports.value
   if (list.length === 0) return
@@ -186,10 +283,12 @@ function moveSelection(delta: number) {
     list.length - 1,
   )
   highlightedIndex.value = next
-  if (typeof document !== "undefined") {
-    const row = document.querySelector<HTMLElement>(`[data-row-index="${next}"]`)
+  // Wait for the class to land on the new row before scrolling/focusing it.
+  void nextTick(() => {
+    const row = bodyRows()[next]
     row?.scrollIntoView({ block: "nearest" })
-  }
+    row?.focus({ preventScroll: true })
+  })
 }
 function openCurrent() {
   const list = reports.value
@@ -198,6 +297,25 @@ function openCurrent() {
   const row = list[idx]
   if (row) openReport(row.id)
 }
+
+// Tabbing onto a row (mouse users, screen readers) moves the highlight too,
+// so a following j/k or Enter acts on the row that actually has focus.
+function onTableFocusIn(e: FocusEvent) {
+  const tr = (e.target as HTMLElement | null)?.closest<HTMLElement>('tbody tr[data-slot="tr"]')
+  if (!tr) return
+  const idx = bodyRows().indexOf(tr)
+  if (idx >= 0) highlightedIndex.value = idx
+}
+
+const shortcutsOpen = ref(false)
+const shortcutList = [
+  { keys: ["j", "k"], label: "Move highlight down / up" },
+  { keys: ["↓", "↑"], label: "Move highlight down / up" },
+  { keys: ["Enter"], label: "Open highlighted report" },
+  { keys: ["?"], label: "Show this help" },
+  { keys: ["Esc"], label: "On a report: back to the inbox" },
+  { keys: ["1", "…", "0"], label: "On a report: jump to a tab" },
+]
 
 useKeyboardShortcuts({
   j: () => moveSelection(1),
@@ -210,7 +328,21 @@ useKeyboardShortcuts({
     e.preventDefault()
     moveSelection(-1)
   },
-  enter: () => openCurrent(),
+  enter: (e) => {
+    // Leave Enter alone on real controls outside the rows (pagination,
+    // dropdown triggers, links) — they have their own Enter behaviour.
+    const t = e.target as HTMLElement | null
+    const onControl = t?.closest('button, a, [role="menuitem"], [role="option"]')
+    const inRow = t?.closest('tbody tr[data-slot="tr"]')
+    if (onControl && !inRow) return
+    e.preventDefault()
+    openCurrent()
+  },
+  "?": (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+    e.preventDefault()
+    shortcutsOpen.value = !shortcutsOpen.value
+  },
 })
 
 // ---- Columns ----
@@ -249,6 +381,18 @@ const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
     header: "Title",
     cell: ({ row }) =>
       h("div", { class: "font-medium text-default truncate max-w-[32rem]" }, row.original.title),
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) =>
+      h(UBadge, {
+        label: statusLabel(row.original.status),
+        color: statusColor(row.original.status),
+        variant: "subtle",
+        size: "md",
+        class: "font-medium whitespace-nowrap",
+      }),
   },
   {
     id: "source",
@@ -358,10 +502,12 @@ function onRowSelect(_e: Event, row: TableRowLike) {
       :selected-assignee="query.assignee"
       :selected-tags="query.tag"
       :selected-source="query.source"
+      :active-view="currentView"
       @priority="update({ priority: $event })"
       @assignee="update({ assignee: $event })"
       @tag="update({ tag: $event })"
       @source="update({ source: $event })"
+      @view="applyView"
     />
 
     <div class="flex-1 min-w-0 flex flex-col">
@@ -395,22 +541,28 @@ function onRowSelect(_e: Event, row: TableRowLike) {
         :selected="query.status as ReportStatus[]"
         :counts="data?.facets.status ?? ({} as Record<ReportStatus, number>)"
         :total="data?.total ?? 0"
-        @change="update({ status: $event })"
+        @change="changeStatus"
       />
 
-      <div class="flex-1 min-h-0 overflow-y-auto rounded-xl border border-default bg-default">
+      <div
+        ref="tableWrap"
+        class="flex-1 min-h-0 overflow-y-auto rounded-xl border border-default bg-default"
+        @focusin="onTableFocusIn"
+      >
         <AppEmptyState
           v-if="!pending && reports.length === 0"
-          :icon="hasActiveFilters ? 'i-heroicons-funnel' : 'i-heroicons-inbox'"
-          :title="hasActiveFilters ? 'No reports match these filters' : 'No reports yet'"
+          :icon="showInstallState ? 'i-heroicons-inbox' : 'i-heroicons-funnel'"
+          :title="showInstallState ? 'No reports yet' : 'No reports match these filters'"
           :description="
-            hasActiveFilters
-              ? 'Try clearing the search or adjusting the filters.'
-              : 'Reports will appear here when the SDK is installed and users submit bugs.'
+            showInstallState
+              ? 'Reports will appear here when the SDK is installed and users submit bugs.'
+              : hasActiveFilters
+                ? 'Try clearing the search or adjusting the filters.'
+                : 'Nothing here right now.'
           "
-          :action-label="hasActiveFilters ? 'Clear filters' : installLink.label"
-          :action-to="hasActiveFilters ? undefined : installLink.to"
-          :variant="hasActiveFilters ? 'plain' : 'gradient'"
+          :action-label="showInstallState ? installLink.label : 'Clear filters'"
+          :action-to="showInstallState ? installLink.to : undefined"
+          :variant="showInstallState ? 'gradient' : 'plain'"
           @action="clearFilters"
         />
         <UTable
@@ -420,14 +572,32 @@ function onRowSelect(_e: Event, row: TableRowLike) {
           :columns="columns"
           :loading="pending"
           :get-row-id="getRowId"
+          :meta="tableMeta"
           :ui="{
             th: 'text-sm font-medium text-muted',
             td: 'py-2 text-sm',
-            tr: 'cursor-pointer hover:bg-neutral-50/50 dark:hover:bg-neutral-900/30',
+            tr: 'cursor-pointer hover:bg-neutral-50/50 dark:hover:bg-neutral-900/30 focus-visible:outline-none focus-visible:bg-primary/5 [&.inbox-row-highlighted]:bg-primary/10 [&.inbox-row-highlighted]:shadow-[inset_2px_0_0_0_var(--ui-primary)]',
           }"
           @select="onRowSelect"
         />
       </div>
+
+      <div class="mt-2 flex items-center justify-end">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-default transition-colors"
+          @click="shortcutsOpen = true"
+        >
+          <UKbd>?</UKbd>
+          <span>Keyboard shortcuts</span>
+        </button>
+      </div>
+
+      <KeyboardShortcutsModal
+        :open="shortcutsOpen"
+        :shortcuts="shortcutList"
+        @update:open="shortcutsOpen = $event"
+      />
 
       <div
         v-if="pageCount > 1"

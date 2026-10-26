@@ -26,9 +26,12 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   ...REPORT_STATUSES.map((s) => ({ key: s, label: statusLabel(s) })),
 ]
 
+// A deep link can select several statuses (`?status=open,in_progress`);
+// every selected tab lights up so the filter is visible, not just a
+// single-value one. Clicking a tab still selects exactly that status.
 function isActive(key: TabKey): boolean {
   if (key === "all") return props.selected.length === 0
-  return props.selected.length === 1 && props.selected[0] === key
+  return props.selected.includes(key)
 }
 
 function countFor(key: TabKey): number {

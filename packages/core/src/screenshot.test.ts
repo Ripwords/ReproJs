@@ -29,8 +29,10 @@ mock.module("modern-screenshot", () => ({
 let displayMediaResult: Blob | null = null
 let displayDuringDisplayMediaCapture: string | null = null
 let displayMediaCalls = 0
+let displayMediaSupported = true
 
 mock.module("./display-media", () => ({
+  isDisplayMediaSupported: () => displayMediaSupported,
   captureViaDisplayMedia: async () => {
     displayMediaCalls += 1
     const host = document.getElementById("repro-host") as HTMLElement | null
@@ -48,6 +50,7 @@ beforeEach(() => {
   displayMediaCalls = 0
   displayDuringDisplayMediaCapture = null
   displayMediaResult = null
+  displayMediaSupported = true
   const stale = document.getElementById("repro-host")
   if (stale) stale.remove()
 })
@@ -135,15 +138,31 @@ describe("capture (orchestration)", () => {
     expect(domToBlobCalls).toBe(0)
   })
 
-  test("auto: returns null when display-media returns null (no DOM fallback)", async () => {
+  test("auto: returns null when the user declines the prompt (no DOM fallback)", async () => {
     // The DOM fallback used to run here, but it can stall indefinitely on
     // heavy pages and strands users on the "Capturing…" overlay. A null
-    // result lets the wizard advance to the description step without a
-    // screenshot.
+    // result lets the widget toast and keep the user in the flow.
     displayMediaResult = null
     const blob = await capture({ method: "auto" })
     expect(blob).toBeNull()
     expect(displayMediaCalls).toBe(1)
+    expect(domToBlobCalls).toBe(0)
+  })
+
+  test("auto: falls back to the DOM path when getDisplayMedia does not exist (mobile)", async () => {
+    // iOS Safari / Chrome and most Android browsers have no Screen Capture
+    // API, so without this branch mobile users could never take a screenshot.
+    displayMediaSupported = false
+    const blob = await capture({ method: "auto" })
+    expect(blob).toBeInstanceOf(Blob)
+    expect(displayMediaCalls).toBe(0)
+    expect(domToBlobCalls).toBe(1)
+  })
+
+  test("display-media: does not fall back to DOM even when the API is missing", async () => {
+    displayMediaSupported = false
+    const blob = await capture({ method: "display-media" })
+    expect(blob).toBeNull()
     expect(domToBlobCalls).toBe(0)
   })
 

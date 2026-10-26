@@ -1,5 +1,5 @@
 import { h } from "preact"
-import { useEffect, useRef } from "preact/hooks"
+import { useEffect, useRef, useState } from "preact/hooks"
 import { Canvas } from "../annotation/canvas"
 import { flatten } from "../annotation/flatten"
 import { DEFAULT_SHORTCUTS, registerShortcuts, type Action } from "../annotation/shortcuts"
@@ -21,6 +21,8 @@ interface Props {
 
 export function StepAnnotate({ bg, steps, currentStep, onSkip, onNext, onCancel }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const [flattening, setFlattening] = useState(false)
+  const [flattenError, setFlattenError] = useState<string | null>(null)
   useEffect(() => {
     const dispatch = (action: Action) => {
       switch (action) {
@@ -62,8 +64,22 @@ export function StepAnnotate({ bg, steps, currentStep, onSkip, onNext, onCancel 
   }, [bg])
 
   async function handleNext() {
-    const blob = await flatten(bg, shapes.value)
-    onNext(blob)
+    if (flattening) return
+    setFlattening(true)
+    setFlattenError(null)
+    try {
+      const blob = await flatten(bg, shapes.value)
+      onNext(blob)
+    } catch (err) {
+      // Safari caps canvases around 16.7 MP; past that toBlob yields null and
+      // flatten rejects. Without this the Continue button silently did nothing.
+      console.warn("[repro] annotation flatten failed", err)
+      setFlattenError(
+        "Couldn't save the annotated image — try Skip to continue without annotations.",
+      )
+    } finally {
+      setFlattening(false)
+    }
   }
 
   function handleClose() {
@@ -82,6 +98,7 @@ export function StepAnnotate({ bg, steps, currentStep, onSkip, onNext, onCancel 
       onClose: handleClose,
     }),
     h("div", { class: "ft-wizard-body ft-wizard-annotate" }, h(Canvas, { bg })),
+    flattenError ? h("div", { class: "ft-error-card", role: "alert" }, flattenError) : null,
     h(
       "footer",
       { class: "ft-wizard-footer" },
@@ -90,7 +107,7 @@ export function StepAnnotate({ bg, steps, currentStep, onSkip, onNext, onCancel 
         "div",
         { style: { display: "flex", gap: "8px" } },
         h(SecondaryButton, { label: "Skip", onClick: onSkip }),
-        h(PrimaryButton, { label: "Continue", onClick: handleNext }),
+        h(PrimaryButton, { label: "Continue", onClick: handleNext, loading: flattening }),
       ),
     ),
   )

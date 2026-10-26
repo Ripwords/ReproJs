@@ -15,11 +15,28 @@ You need exactly four values to boot:
 
 Without these four the stack refuses to start (compose refuses interpolation; the dashboard refuses to boot).
 
-::: warning Rotating `ATTACHMENT_URL_SECRET` breaks existing image links
-The dashboard signs the links to screenshots it embeds in GitHub issues and to images pasted into comments. These links don't expire in practice: issue screenshots are valid for about 100 years and comment images for one year. Changing `ATTACHMENT_URL_SECRET` invalidates every link signed so far. Each screenshot already embedded in a GitHub issue shows as a broken image, and so does every image pasted into a comment, in both the dashboard and GitHub. There's no way to re-sign old links, so rotate only if the secret has leaked.
+::: warning Rotating `ATTACHMENT_URL_SECRET` breaks existing image links unless you keep the old value
+The dashboard signs the links to screenshots it embeds in GitHub issues and to images pasted into comments. These links don't expire in practice: issue screenshots are valid for about 100 years and comment images for one year. Changing `ATTACHMENT_URL_SECRET` on its own invalidates every link signed so far. Each screenshot already embedded in a GitHub issue shows as a broken image, and so does every image pasted into a comment, in both the dashboard and GitHub. There's no way to re-sign old links.
+
+To rotate safely, move the old value into `ATTACHMENT_URL_SECRET_PREVIOUS` (see below). Old links keep working; new links use the new secret. If the old secret has leaked, leave it out of `ATTACHMENT_URL_SECRET_PREVIOUS` and accept the broken links.
 
 A signed link needs no sign-in. Anyone who can see the GitHub issue can open its screenshot, and on a public repository that's everyone.
 :::
+
+## Secret rotation
+
+Both optional. Neither is needed for a fresh install.
+
+| Variable                          | Default                     | Description                                                                                                                                                                                    |
+| --------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ATTACHMENT_URL_SECRET_PREVIOUS`  | —                           | Retired `ATTACHMENT_URL_SECRET` values, comma-separated. Used only to **verify** links signed before a rotation; new links are always signed with `ATTACHMENT_URL_SECRET`. Drop a value from the list once you no longer need links signed with it to work. |
+| `COMMENT_SIGNING_SECRET`          | value of `BETTER_AUTH_SECRET` | Signs the hidden footer on comments the dashboard posts to GitHub, so the webhook can tell its own comments from real ones. Set it so that rotating `BETTER_AUTH_SECRET` (which signs out everyone) does not also make every comment already on GitHub look foreign. Changing this value has the same effect on existing comments. |
+
+```bash
+# rotation example
+ATTACHMENT_URL_SECRET=<new value from openssl rand -hex 32>
+ATTACHMENT_URL_SECRET_PREVIOUS=<old value>
+```
 
 ## Hostnames
 

@@ -3,7 +3,10 @@
 interface Tab {
   id: string
   label: string
+  /** Something is in this tab, but how much is not known yet (lazy-loaded). */
   hasData?: boolean
+  /** Number of entries in this tab; shown as a badge and read by screen readers. */
+  count?: number
 }
 
 interface Props {
@@ -32,7 +35,15 @@ const emit = defineEmits<{ "update:modelValue": [string] }>()
     >
       {{ tab.label }}
       <span
-        v-if="tab.hasData"
+        v-if="tab.count !== undefined && tab.count > 0"
+        class="inline-flex items-center justify-center ml-1.5 min-w-5 px-1 h-4.5 rounded-md text-xs font-semibold tabular-nums"
+        :class="modelValue === tab.id ? 'bg-elevated text-default' : 'bg-elevated/60 text-muted'"
+      >
+        {{ tab.count > 999 ? "999+" : tab.count }}
+        <span class="sr-only">entries</span>
+      </span>
+      <span
+        v-else-if="tab.hasData && tab.count === undefined"
         class="inline-block ml-1.5 size-1.5 rounded-full bg-muted/70"
         aria-hidden="true"
       />

@@ -164,7 +164,9 @@ export function WizardSheet({
         hint: shapes.length > 0 ? String(shapes.length) : undefined,
       })
     }
-    lines.push({ label: "Console, network & breadcrumbs" })
+    // Only `fetch` is patched; XHR/axios traffic is not recorded, so do not
+    // promise "network" wholesale.
+    lines.push({ label: "Console, fetch requests & breadcrumbs" })
     lines.push({ label: "Device & environment info" })
     if (attachments.length > 0) {
       lines.push({

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PageHeader from "~/components/common/page-header.vue"
 import SettingsIdentityRow from "~/components/settings/identity-row.vue"
+import { describeApiError } from "~/utils/api-error"
 
 useHead({ title: "Linked accounts" })
 
@@ -39,16 +40,38 @@ async function connectGithub() {
       credentials: "include",
     })
     window.location.href = res.redirectUrl
-  } catch {
-    toast.add({ title: "Could not start link flow", color: "error" })
+  } catch (err) {
+    toast.add({
+      title: "Could not start link flow",
+      description: describeApiError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
     connecting.value = false
   }
 }
 
+const disconnecting = ref(false)
 async function disconnectGithub() {
-  await $fetch("/api/me/identities/github", { method: "DELETE", credentials: "include" })
-  await refresh()
-  toast.add({ title: "GitHub account disconnected" })
+  disconnecting.value = true
+  try {
+    await $fetch("/api/me/identities/github", { method: "DELETE", credentials: "include" })
+    await refresh()
+    toast.add({
+      title: "GitHub account disconnected",
+      color: "success",
+      icon: "i-heroicons-check-circle",
+    })
+  } catch (err) {
+    toast.add({
+      title: "Could not disconnect",
+      description: describeApiError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
+    })
+  } finally {
+    disconnecting.value = false
+  }
 }
 </script>
 
@@ -66,6 +89,7 @@ async function disconnectGithub() {
         icon="i-simple-icons-github"
         :item="github"
         :connecting="connecting"
+        :disconnecting="disconnecting"
         @connect="connectGithub"
         @disconnect="disconnectGithub"
       />

@@ -82,6 +82,27 @@ describe("mount mode machine", () => {
     expect(root.textContent).not.toContain("Record screen")
   })
 
+  test("a failed capture toasts and returns to the menu instead of closing the widget", async () => {
+    let closes = 0
+    setupDom()
+    mount(makeOpts({ capture: async () => null, onClose: () => closes++ }))
+    const root = createShadowHost()
+
+    openMenu()
+    await flush()
+    const captureLabel = walkAllByClass(root, "ft-menu-label").find(
+      (el) => el.textContent?.trim() === "Capture",
+    )
+    if (!captureLabel) throw new Error("menu has no Capture row")
+    ;(captureLabel as unknown as HTMLElement).click()
+    await flush()
+
+    expect(root.textContent).toContain("Screenshot unavailable")
+    // Back on the menu, widget still open — a silent close looked like a crash.
+    expect(root.textContent).toContain("Record screen")
+    expect(closes).toBe(0)
+  })
+
   test("close() returns to closed and fires onClose exactly once", async () => {
     let closes = 0
     let opens = 0
