@@ -17,9 +17,11 @@ Leave the project's origin allowlist **empty**. Mobile apps send no `Origin` hea
 npx expo install @reprojs/expo \
   react-native-view-shot react-native-svg react-native-gesture-handler \
   @react-native-async-storage/async-storage @react-native-community/netinfo \
-  expo-device expo-constants \
+  expo-device expo-constants expo-file-system \
   expo-document-picker expo-image-picker
 ```
+
+`expo-file-system` keeps queued attachments in the app's document directory (`repro-queue/`) until the report is sent, so a report written while offline survives an app restart or update. Without it the queue still works, but attachments stay in temporary storage and are dropped from the report if the OS has purged them by the time it is sent.
 
 Add the config plugin to `app.json`:
 

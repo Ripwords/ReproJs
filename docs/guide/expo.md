@@ -39,11 +39,13 @@ That flag is **debug-only**. A release build has no cleartext exemption, so a pr
 npx expo install @reprojs/expo \
   react-native-view-shot react-native-svg react-native-gesture-handler \
   @react-native-async-storage/async-storage @react-native-community/netinfo \
-  expo-device expo-constants \
+  expo-device expo-constants expo-file-system \
   expo-document-picker expo-image-picker
 ```
 
 `expo install` picks versions matching your Expo SDK channel.
+
+`expo-file-system` is what makes the [offline queue](#offline-queue) durable: queued screenshots and picked files are copied into the app's document directory until the report is sent. Without it the queue still works, but attachments stay in temporary storage and are dropped from the report if the OS has purged them by the time it is sent.
 
 ### Minimum versions
 
@@ -59,6 +61,7 @@ npx expo install @reprojs/expo \
 | `@react-native-community/netinfo` | 11.3 |
 | `expo-device` | 6 |
 | `expo-constants` | 16 |
+| `expo-file-system` | any (matches your Expo SDK; both the legacy and the SDK 54+ API work) |
 | `expo-document-picker` | any (matches your Expo SDK) |
 | `expo-image-picker` | any (matches your Expo SDK) |
 
@@ -194,6 +197,8 @@ Reports that fail to POST (no network, 5xx, etc.) are persisted to AsyncStorage 
 - `NetInfo` reports online after being offline
 - The app comes to foreground (`AppState` change)
 - The host calls `useRepro().queue.flush()` manually
+
+Attachments are copied into `<documentDirectory>/repro-queue/<report-id>/` when the report is queued (needs `expo-file-system`) and deleted once the report is sent, dropped, or evicted. The screenshot and picker output live in `tmp/` and the cache directory, which iOS and Android purge on their own schedule; the copy is what lets a queued report outlive an app restart or update. If an attachment is unreadable when the report is finally sent, the report goes out **without** it and a `console.warn` names the file. Only a misconfigured `intakeUrl` (redirect or non-JSON answer) is treated as fatal.
 
 The queue is not encrypted — documented privacy tradeoff for v1. Don't use as a session vault for secrets.
 

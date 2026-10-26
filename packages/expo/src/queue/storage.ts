@@ -57,7 +57,28 @@ async function write(file: QueueFile): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(file))
 }
 
-export function createQueueStorage(opts: { maxReports: number; maxBytes: number }): QueueStorage {
+export function createQueueStorage(opts: {
+  maxReports: number
+  maxBytes: number
+  /**
+   * Called with every item that leaves the queue, whichever way it goes:
+   * `remove`, eviction inside `enqueue`, or `clear`. The provider uses it to
+   * delete the attachment copies the item owns on disk. Runs after the queue
+   * file is written; a rejection is logged, never propagated.
+   */
+  onRemove?: (item: QueueItem) => Promise<void> | void
+}): QueueStorage {
+  async function released(items: QueueItem[]) {
+    for (const item of items) {
+      try {
+        // eslint-disable-next-line no-await-in-loop -- cleanup is sequential on purpose; it is file I/O on a phone
+        await opts.onRemove?.(item)
+      } catch (err) {
+        console.warn(`[repro] queue cleanup failed for report ${item.id}`, err)
+      }
+    }
+  }
+
   return {
     async all() {
       const f = await read()
@@ -65,17 +86,18 @@ export function createQueueStorage(opts: { maxReports: number; maxBytes: number 
     },
     async enqueue(item) {
       const f = await read()
-      const evicted: string[] = []
+      const evicted: QueueItem[] = []
       f.items.push(item)
       f.sizeBytes += itemBytes(item)
       while (f.items.length > opts.maxReports || f.sizeBytes > opts.maxBytes) {
         const head = f.items.shift()
         if (!head) break
-        evicted.push(head.id)
+        evicted.push(head)
         f.sizeBytes -= itemBytes(head)
       }
       await write(f)
-      return { evictedIds: evicted }
+      await released(evicted)
+      return { evictedIds: evicted.map((i) => i.id) }
     },
     async update(id, patch) {
       const f = await read()
@@ -94,9 +116,12 @@ export function createQueueStorage(opts: { maxReports: number; maxBytes: number 
       if (removed) f.sizeBytes -= itemBytes(removed)
       f.items.splice(idx, 1)
       await write(f)
+      if (removed) await released([removed])
     },
     async clear() {
+      const f = await read()
       await AsyncStorage.removeItem(STORAGE_KEY)
+      await released(f.items)
     },
   }
 }

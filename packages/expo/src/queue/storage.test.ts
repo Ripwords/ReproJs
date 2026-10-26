@@ -95,3 +95,59 @@ test("remove deletes by id", async () => {
   await q.remove("k")
   expect(await q.all()).toEqual([])
 })
+
+// Queued attachments are copies the SDK owns on disk. Whatever path takes an
+// item out of the queue — a successful send, a drop, eviction of the oldest
+// report, or clear() — must hand the item back so those files get deleted.
+// Eviction is the easy one to forget: the caller only ever sees the ids.
+const queued = (id: string) => ({
+  id,
+  createdAt: new Date().toISOString(),
+  payload: { input: { title: id } as never, attachments: [] },
+  attempts: 0,
+  lastErrorAt: null,
+  lastError: null,
+})
+
+test("onRemove receives every item that leaves the queue, including evictions", async () => {
+  memory.clear()
+  const removed: string[] = []
+  const q = createQueueStorage({
+    maxReports: 1,
+    maxBytes: 1024,
+    onRemove: async (item) => {
+      removed.push(item.id)
+    },
+  })
+  await q.enqueue(queued("a"))
+  await q.enqueue(queued("b")) // evicts a
+  expect(removed).toEqual(["a"])
+  await q.remove("b")
+  expect(removed).toEqual(["a", "b"])
+  await q.remove("b") // already gone: no second callback
+  expect(removed).toEqual(["a", "b"])
+  await q.enqueue(queued("c"))
+  await q.clear()
+  expect(removed).toEqual(["a", "b", "c"])
+})
+
+test("a throwing onRemove does not prevent the queue from being updated", async () => {
+  memory.clear()
+  const q = createQueueStorage({
+    maxReports: 5,
+    maxBytes: 1024,
+    onRemove: async () => {
+      throw new Error("disk error")
+    },
+  })
+  await q.enqueue({
+    id: "x",
+    createdAt: new Date().toISOString(),
+    payload: { input: { title: "x" } as never, attachments: [] },
+    attempts: 0,
+    lastErrorAt: null,
+    lastError: null,
+  })
+  await q.remove("x")
+  expect(await q.all()).toEqual([])
+})

@@ -13,7 +13,7 @@ export class IntakeError extends Error {
   retryable: boolean
   /**
    * A client-side defect that retrying can never resolve — a misconfigured
-   * `intakeUrl`, or a local file that cannot be read. Distinct from a plain
+   * `intakeUrl` (redirect or non-JSON answer). Distinct from a plain
    * network failure (offline), which carries no status and MUST stay
    * retryable so the offline queue keeps working.
    */
@@ -113,11 +113,16 @@ export function createIntakeClient(opts: {
               // eslint-disable-next-line no-await-in-loop
               blob = await readBlob(a.uri)
             } catch (err) {
-              throw new IntakeError(
-                0,
-                `attachment unreadable (${filename}): ${(err as Error).message}`,
-                { fatal: true },
+              // The file is gone (iOS purged tmp/, the app was updated, the
+              // user cleared storage). That is a defect in this one part, not
+              // in the report: a title, description and logs with a missing
+              // screenshot beat a report that is silently deleted. Skip the
+              // part and keep going. This path is only reachable for
+              // attachments the queue failed to copy into its own directory.
+              console.warn(
+                `[repro] attachment ${filename} (${a.uri}) is unreadable and will be left out of the report: ${(err as Error).message}`,
               )
+              continue
             }
             form.append(field, blob, filename)
           } else {

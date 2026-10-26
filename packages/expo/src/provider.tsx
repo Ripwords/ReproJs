@@ -7,6 +7,7 @@ import { createNetworkCollector } from "./collectors/network"
 import { createBreadcrumbsCollector, type Attachment } from "@reprojs/sdk-utils"
 import { createQueueStorage, type QueueItemAttachment } from "./queue/storage"
 import { createQueueFlusher } from "./queue/flush"
+import { createAttachmentStore, loadAttachmentFs } from "./queue/attachment-store"
 import { createConnectivityListener } from "./queue/netinfo"
 import { createIntakeClient } from "./intake-client"
 import { captureView } from "./capture/screenshot"
@@ -100,8 +101,25 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     }),
   )
   const breadcrumbsRef = useRef(createBreadcrumbsCollector({}))
+  // Resolved once per provider. `expo-file-system` is a dynamic import so a
+  // host that has not installed it still gets a working (if non-durable) queue.
+  const [attachmentStore] = useState(() =>
+    loadAttachmentFs().then((fs) => {
+      if (!fs) {
+        console.warn(
+          "[repro] expo-file-system is not installed: queued attachments stay in temporary " +
+            "storage and may be lost if the app restarts before the report is sent.",
+        )
+      }
+      return createAttachmentStore(fs)
+    }),
+  )
   const queueRef = useRef(
-    createQueueStorage({ maxReports: config.queue.maxReports, maxBytes: config.queue.maxBytes }),
+    createQueueStorage({
+      maxReports: config.queue.maxReports,
+      maxBytes: config.queue.maxBytes,
+      onRemove: async (item) => (await attachmentStore).discard(item.id),
+    }),
   )
   const clientRef = useRef(createIntakeClient({ intakeUrl: config.intakeUrl }))
   // Bumped after every flush so `useRepro().queue` re-renders with the real
@@ -236,28 +254,32 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
       _dwellMs: dwellMs,
     }
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    // Queue attachment list: screenshot first (if captured), then any
+    // user-supplied files from the picker.
+    const screenshotUri = res.annotatedUri ?? res.rawUri
+    const screenshotEntries: QueueItemAttachment[] = screenshotUri
+      ? [{ kind: "screenshot" as const, uri: screenshotUri, bytes: 0 }]
+      : []
+    const userFileEntries: QueueItemAttachment[] = res.attachments.map((a) => ({
+      kind: "user-file" as const,
+      // previewUrl carries the file:// uri from expo-document-picker.
+      uri: a.previewUrl ?? a.id,
+      bytes: a.size,
+      filename: a.filename,
+      contentType: a.mime,
+    }))
+    // Copy out of tmp/ and the cache dir before the report is persisted, so a
+    // queued report survives an app restart or update. Also fills in the real
+    // screenshot size, which the queue's maxBytes cap depends on.
+    const attachments = await (
+      await attachmentStore
+    ).persist(id, [...screenshotEntries, ...userFileEntries])
     await queueRef.current.enqueue({
       id,
       createdAt: now,
       payload: {
         input,
-        // Build the queue attachment list: screenshot first (if captured),
-        // then any user-supplied files from the picker.
-        attachments: (() => {
-          const screenshotUri = res.annotatedUri ?? res.rawUri
-          const screenshotEntries: QueueItemAttachment[] = screenshotUri
-            ? [{ kind: "screenshot" as const, uri: screenshotUri, bytes: 0 }]
-            : []
-          const userFileEntries: QueueItemAttachment[] = res.attachments.map((a) => ({
-            kind: "user-file" as const,
-            // previewUrl carries the file:// uri from expo-document-picker.
-            uri: a.previewUrl ?? a.id,
-            bytes: a.size,
-            filename: a.filename,
-            contentType: a.mime,
-          }))
-          return [...screenshotEntries, ...userFileEntries]
-        })(),
+        attachments,
         logs: logsJson,
       },
       attempts: 0,
