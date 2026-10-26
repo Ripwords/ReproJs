@@ -65,12 +65,23 @@ async function withHiddenHost<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+// Safari refuses canvases above ~16.7 million pixels (toBlob returns null),
+// and other engines get very slow well before that. A 4K viewport at 2× DPR
+// is ~33 MP, so cap the backing-store pixel count and lower the scale to fit.
+const MAX_CANVAS_PIXELS = 16_000_000
+
+export function domCaptureScale(width: number, height: number, dpr: number): number {
+  const area = Math.max(1, width) * Math.max(1, height)
+  const maxScale = Math.sqrt(MAX_CANVAS_PIXELS / area)
+  return Math.max(0.1, Math.min(dpr || 1, maxScale))
+}
+
 async function captureViaDom(opts: CaptureOptions): Promise<Blob | null> {
   const root = document.documentElement
   const pinner = createOverlayPinner(root, buildFilter(opts))
   try {
     return await domToBlob(root, {
-      scale: window.devicePixelRatio || 1,
+      scale: domCaptureScale(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1),
       width: window.innerWidth,
       height: window.innerHeight,
       // Opt-in in modern-screenshot (every other feature defaults on). Without
