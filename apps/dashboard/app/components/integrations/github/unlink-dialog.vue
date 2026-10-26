@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { describeApiError } from "~/utils/api-error"
+import type { GithubLinkKind } from "@reprojs/shared"
 /**
  * Dual-mode confirmation dialog:
  *
@@ -20,6 +21,8 @@ interface Props {
   // Unlink-report mode:
   issueNumber?: number
   repoFullName?: string
+  /** `attached` reports only ever added comments to the issue; say so. */
+  linkKind?: GithubLinkKind | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -27,6 +30,7 @@ const props = withDefaults(defineProps<Props>(), {
   projectId: undefined,
   issueNumber: undefined,
   repoFullName: undefined,
+  linkKind: null,
 })
 
 const emit = defineEmits<{
@@ -51,9 +55,11 @@ const description = computed(() => {
   if (isDisconnect.value) {
     return "Existing issues remain on GitHub but new reports will stop syncing. You can reconnect any time."
   }
-  return props.repoFullName
-    ? `The GitHub issue will stay open in ${props.repoFullName} but won't sync with the dashboard anymore. You can create a new issue afterward.`
-    : "The GitHub issue will stay open but won't sync with the dashboard anymore. You can create a new issue afterward."
+  const where = props.repoFullName ? ` in ${props.repoFullName}` : ""
+  if (props.linkKind === "attached") {
+    return `The report stops following the issue${where}. Comments Repro already posted stay on GitHub; the issue itself is not changed. You can attach or create an issue afterward.`
+  }
+  return `The GitHub issue will stay open${where} but won't sync with the dashboard anymore. Comments already posted stay on GitHub. You can create a new issue afterward.`
 })
 
 const confirmLabel = computed(() => (isDisconnect.value ? "Disconnect" : "Unlink"))
