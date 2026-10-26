@@ -44,6 +44,19 @@ describe("gzipEvents", () => {
     expect(result.bytes.length).toBeLessThanOrEqual(500)
   })
 
+  test("returns null bytes (no throw) when CompressionStream is unavailable", async () => {
+    const original = globalThis.CompressionStream
+    // Safari < 16.4 / Firefox < 113 have no CompressionStream at all.
+    ;(globalThis as { CompressionStream?: unknown }).CompressionStream = undefined
+    try {
+      const result = await gzipEvents([makeEvent(1)], { maxBytes: 1_000_000 })
+      expect(result.bytes).toBeNull()
+      expect(result.eventCount).toBe(1)
+    } finally {
+      globalThis.CompressionStream = original
+    }
+  })
+
   test("returns null bytes when unable to fit after max retries", async () => {
     const events = Array.from({ length: 10 }, (_, i) => makeEvent(i, 10_000))
     const result = await gzipEvents(events, { maxBytes: 100, maxRetries: 3 })
