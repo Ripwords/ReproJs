@@ -137,7 +137,7 @@ function makePngBlob(): Blob {
 }
 
 describe("CaptureFlow", () => {
-  test("a null capture (denied dialog) discards silently without reaching annotate", async () => {
+  test("a null capture (denied dialog) reports `failed` — not a user discard — without reaching annotate", async () => {
     const host = mountHost()
     let doneOutcome: unknown = null
 
@@ -153,7 +153,7 @@ describe("CaptureFlow", () => {
 
     await waitFor(() => doneOutcome !== null)
 
-    expect(doneOutcome).toEqual({ action: "discarded" })
+    expect(doneOutcome).toEqual({ action: "failed" })
     expect(walkAllByClass(host, "ft-wizard-annotate").length).toBe(0)
 
     render(null, host)

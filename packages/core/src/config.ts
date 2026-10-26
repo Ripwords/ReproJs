@@ -11,9 +11,12 @@ export interface ReplayInitConfig {
 
 export interface ScreenshotConfig {
   // Which capture path to use:
-  //   "auto" (default) — try the browser's getDisplayMedia first
-  //     (pixel-perfect, ~50ms after the user accepts the "Share this tab?"
-  //     prompt), fall back to the DOM path on denial / unavailability.
+  //   "auto" (default) — use the browser's getDisplayMedia when the API
+  //     exists (pixel-perfect, ~50ms after the user accepts the "Share this
+  //     tab?" prompt). Falls back to the DOM path only when the API is
+  //     missing (mobile browsers). If the user declines the prompt there is
+  //     no fallback: the widget shows "Screenshot unavailable" and stays
+  //     open so they can retry or continue without one.
   //   "display-media" — require getDisplayMedia; return null if missing
   //     or denied. No fallback.
   //   "dom" — skip the prompt entirely; use modern-screenshot. Slower on

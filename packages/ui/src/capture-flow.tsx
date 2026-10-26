@@ -20,6 +20,10 @@ type CaptureOutcome =
   | { action: "saved"; item: PendingMediaItem }
   | { action: "discarded" }
   | { action: "report"; item: PendingMediaItem }
+  // No screenshot could be produced (prompt denied, API missing on a page
+  // where the DOM path also failed, undecodable bytes). Distinct from
+  // "discarded" so the host can keep the widget open and explain.
+  | { action: "failed" }
 
 interface CaptureFlowProps {
   onCapture: () => Promise<Blob | null>
@@ -35,10 +39,10 @@ function buildItem(blob: Blob): PendingMediaItem {
   return { kind: "image", blob, mime: blob.type || "image/png" }
 }
 
-// capture -> annotate -> outcome. Mirrors Reporter's capture/decode
-// bootstrap (reporter.tsx): a denied capture dialog resolves the capture
-// promise with null and must exit silently — never surface an error — and a
-// screenshot that fails to decode must not leave the flow stranded either.
+// capture -> annotate -> outcome. A denied capture dialog resolves the
+// capture promise with null, and a screenshot can fail to decode; both
+// report `failed` so the host can toast and keep the widget open — closing
+// it silently used to look like the widget had crashed.
 export function CaptureFlow({ onCapture, onDone }: CaptureFlowProps) {
   const [stage, setStage] = useState<Stage>({ kind: "capturing" })
 
@@ -51,9 +55,14 @@ export function CaptureFlow({ onCapture, onDone }: CaptureFlowProps) {
     // (and its zoom/pan carries onto a differently sized image).
     resetAnnotations()
     ;(async () => {
-      const blob = await onCapture()
+      let blob: Blob | null = null
+      try {
+        blob = await onCapture()
+      } catch (err) {
+        console.warn("[repro] screenshot capture threw:", err)
+      }
       if (!blob) {
-        if (!cancelled) onDone({ action: "discarded" })
+        if (!cancelled) onDone({ action: "failed" })
         return
       }
       decoded = await decodeImage(blob)
@@ -62,7 +71,7 @@ export function CaptureFlow({ onCapture, onDone }: CaptureFlowProps) {
         return
       }
       if (!decoded) {
-        onDone({ action: "discarded" })
+        onDone({ action: "failed" })
         return
       }
       setStage({ kind: "annotate", bg: decoded, raw: blob })

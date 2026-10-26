@@ -298,6 +298,20 @@ function App() {
     }
   }
 
+  // The capture produced nothing (prompt denied, decode failed). Unlike a
+  // user-initiated discard this must not close the widget — that read as a
+  // crash. Explain, then return to wherever the capture was launched from.
+  function afterCaptureFailed() {
+    showToast("Screenshot unavailable — try again or continue without one")
+    if (returnToReportRef.current) {
+      returnToReportRef.current = false
+      setOpenedAt(performance.now())
+      setMode("report")
+    } else {
+      setMode("menu")
+    }
+  }
+
   function openReportMode(fromReturn = false) {
     if (!fromReturn) {
       returnToReportRef.current = false
@@ -448,6 +462,10 @@ function App() {
       onDone: (outcome) => {
         if (outcome.action === "discarded") {
           afterMediaDiscarded()
+          return
+        }
+        if (outcome.action === "failed") {
+          afterCaptureFailed()
           return
         }
         void resolveMedia(outcome.item, outcome.action === "report" ? "report" : "saved")
