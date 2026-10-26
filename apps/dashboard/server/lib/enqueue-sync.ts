@@ -42,11 +42,19 @@ function requeueOnConflict(extra: Partial<typeof reportSyncJobs.$inferInsert> = 
  */
 export async function enqueueSync(reportId: string, projectId: string): Promise<void> {
   const [gi] = await db
-    .select({ status: githubIntegrations.status })
+    .select({
+      status: githubIntegrations.status,
+      repoOwner: githubIntegrations.repoOwner,
+      repoName: githubIntegrations.repoName,
+    })
     .from(githubIntegrations)
     .where(eq(githubIntegrations.projectId, projectId))
     .limit(1)
   if (!gi || gi.status !== "connected") return
+  // Connected but no repository picked yet: reconcile has nowhere to write
+  // and would just burn its five attempts into a `failed` row of noise. The
+  // repo picker triggers a sync once a repo is chosen.
+  if (!gi.repoOwner || !gi.repoName) return
   await db
     .insert(reportSyncJobs)
     .values({
