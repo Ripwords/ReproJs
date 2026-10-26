@@ -10,6 +10,7 @@ import FacetSidebar from "~/components/inbox/facet-sidebar.vue"
 import SearchSort from "~/components/inbox/search-sort.vue"
 import BulkActionBar from "~/components/inbox/bulk-action-bar.vue"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
+import KeyboardShortcutsModal from "~/components/common/keyboard-shortcuts-modal.vue"
 import {
   INBOX_PAGE_SIZE,
   inboxLocationQuery,
@@ -221,7 +222,14 @@ function clearFilters() {
 }
 
 // ---- Keyboard navigation ----
+// j/k (or the arrows) move a highlight through the rows; Enter opens the
+// highlighted report. UTable renders every row with tabindex=0 (because we
+// pass @select), so the highlighted row also receives focus — screen
+// readers announce it and Tab continues from there. The highlight class is
+// applied through UTable's `meta.class.tr`, which is the only per-row hook.
+const ROW_HIGHLIGHT_CLASS = "inbox-row-highlighted"
 const highlightedIndex = ref(-1)
+const tableWrap = ref<HTMLElement | null>(null)
 
 watch(reports, (next) => {
   if (next.length === 0) {
@@ -231,6 +239,19 @@ watch(reports, (next) => {
   }
 })
 
+const tableMeta = {
+  class: {
+    tr: (row: { index: number }) =>
+      row.index === highlightedIndex.value ? ROW_HIGHLIGHT_CLASS : "",
+  },
+}
+
+function bodyRows(): HTMLElement[] {
+  const root = tableWrap.value
+  if (!root) return []
+  return Array.from(root.querySelectorAll<HTMLElement>('tbody tr[data-slot="tr"]'))
+}
+
 function moveSelection(delta: number) {
   const list = reports.value
   if (list.length === 0) return
@@ -239,10 +260,12 @@ function moveSelection(delta: number) {
     list.length - 1,
   )
   highlightedIndex.value = next
-  if (typeof document !== "undefined") {
-    const row = document.querySelector<HTMLElement>(`[data-row-index="${next}"]`)
+  // Wait for the class to land on the new row before scrolling/focusing it.
+  void nextTick(() => {
+    const row = bodyRows()[next]
     row?.scrollIntoView({ block: "nearest" })
-  }
+    row?.focus({ preventScroll: true })
+  })
 }
 function openCurrent() {
   const list = reports.value
@@ -251,6 +274,25 @@ function openCurrent() {
   const row = list[idx]
   if (row) openReport(row.id)
 }
+
+// Tabbing onto a row (mouse users, screen readers) moves the highlight too,
+// so a following j/k or Enter acts on the row that actually has focus.
+function onTableFocusIn(e: FocusEvent) {
+  const tr = (e.target as HTMLElement | null)?.closest<HTMLElement>('tbody tr[data-slot="tr"]')
+  if (!tr) return
+  const idx = bodyRows().indexOf(tr)
+  if (idx >= 0) highlightedIndex.value = idx
+}
+
+const shortcutsOpen = ref(false)
+const shortcutList = [
+  { keys: ["j", "k"], label: "Move highlight down / up" },
+  { keys: ["↓", "↑"], label: "Move highlight down / up" },
+  { keys: ["Enter"], label: "Open highlighted report" },
+  { keys: ["?"], label: "Show this help" },
+  { keys: ["Esc"], label: "On a report: back to the inbox" },
+  { keys: ["1", "…", "0"], label: "On a report: jump to a tab" },
+]
 
 useKeyboardShortcuts({
   j: () => moveSelection(1),
@@ -263,7 +305,21 @@ useKeyboardShortcuts({
     e.preventDefault()
     moveSelection(-1)
   },
-  enter: () => openCurrent(),
+  enter: (e) => {
+    // Leave Enter alone on real controls outside the rows (pagination,
+    // dropdown triggers, links) — they have their own Enter behaviour.
+    const t = e.target as HTMLElement | null
+    const onControl = t?.closest('button, a, [role="menuitem"], [role="option"]')
+    const inRow = t?.closest('tbody tr[data-slot="tr"]')
+    if (onControl && !inRow) return
+    e.preventDefault()
+    openCurrent()
+  },
+  "?": (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+    e.preventDefault()
+    shortcutsOpen.value = !shortcutsOpen.value
+  },
 })
 
 // ---- Columns ----
@@ -465,7 +521,11 @@ function onRowSelect(_e: Event, row: TableRowLike) {
         @change="changeStatus"
       />
 
-      <div class="flex-1 min-h-0 overflow-y-auto rounded-xl border border-default bg-default">
+      <div
+        ref="tableWrap"
+        class="flex-1 min-h-0 overflow-y-auto rounded-xl border border-default bg-default"
+        @focusin="onTableFocusIn"
+      >
         <AppEmptyState
           v-if="!pending && reports.length === 0"
           :icon="showInstallState ? 'i-heroicons-inbox' : 'i-heroicons-funnel'"
@@ -489,14 +549,32 @@ function onRowSelect(_e: Event, row: TableRowLike) {
           :columns="columns"
           :loading="pending"
           :get-row-id="getRowId"
+          :meta="tableMeta"
           :ui="{
             th: 'text-sm font-medium text-muted',
             td: 'py-2 text-sm',
-            tr: 'cursor-pointer hover:bg-neutral-50/50 dark:hover:bg-neutral-900/30',
+            tr: 'cursor-pointer hover:bg-neutral-50/50 dark:hover:bg-neutral-900/30 focus-visible:outline-none focus-visible:bg-primary/5 [&.inbox-row-highlighted]:bg-primary/10 [&.inbox-row-highlighted]:shadow-[inset_2px_0_0_0_var(--ui-primary)]',
           }"
           @select="onRowSelect"
         />
       </div>
+
+      <div class="mt-2 flex items-center justify-end">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-default transition-colors"
+          @click="shortcutsOpen = true"
+        >
+          <UKbd>?</UKbd>
+          <span>Keyboard shortcuts</span>
+        </button>
+      </div>
+
+      <KeyboardShortcutsModal
+        :open="shortcutsOpen"
+        :shortcuts="shortcutList"
+        @update:open="shortcutsOpen = $event"
+      />
 
       <div
         v-if="pageCount > 1"
