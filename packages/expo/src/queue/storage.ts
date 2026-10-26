@@ -79,49 +79,67 @@ export function createQueueStorage(opts: {
     }
   }
 
+  // Every operation is a read-modify-write of one AsyncStorage key, and the
+  // flusher's remove/update overlap with the user's enqueue in practice. Chain
+  // them so each sees the previous one's write; a rejected operation must not
+  // poison the chain for the next caller.
+  let chain: Promise<unknown> = Promise.resolve()
+  function serialized<T>(op: () => Promise<T>): Promise<T> {
+    const next = chain.then(op, op)
+    chain = next
+    return next
+  }
+
   return {
     async all() {
-      const f = await read()
-      return f.items
+      return serialized(async () => (await read()).items)
     },
-    async enqueue(item) {
-      const f = await read()
-      const evicted: QueueItem[] = []
-      f.items.push(item)
-      f.sizeBytes += itemBytes(item)
-      while (f.items.length > opts.maxReports || f.sizeBytes > opts.maxBytes) {
-        const head = f.items.shift()
-        if (!head) break
-        evicted.push(head)
-        f.sizeBytes -= itemBytes(head)
-      }
-      await write(f)
-      await released(evicted)
-      return { evictedIds: evicted.map((i) => i.id) }
+    enqueue(item) {
+      return serialized(async () => {
+        const f = await read()
+        const evicted: QueueItem[] = []
+        f.items.push(item)
+        f.sizeBytes += itemBytes(item)
+        while (f.items.length > opts.maxReports || f.sizeBytes > opts.maxBytes) {
+          const head = f.items.shift()
+          if (!head) break
+          evicted.push(head)
+          f.sizeBytes -= itemBytes(head)
+        }
+        await write(f)
+        await released(evicted)
+        return { evictedIds: evicted.map((i) => i.id) }
+      })
     },
-    async update(id, patch) {
-      const f = await read()
-      const idx = f.items.findIndex((i) => i.id === id)
-      if (idx === -1) return
-      const current = f.items[idx]
-      if (!current) return
-      f.items[idx] = { ...current, ...patch }
-      await write(f)
+    update(id, patch) {
+      return serialized(async () => {
+        const f = await read()
+        const idx = f.items.findIndex((i) => i.id === id)
+        if (idx === -1) return
+        const current = f.items[idx]
+        if (!current) return
+        f.items[idx] = { ...current, ...patch }
+        await write(f)
+      })
     },
-    async remove(id) {
-      const f = await read()
-      const idx = f.items.findIndex((i) => i.id === id)
-      if (idx === -1) return
-      const removed = f.items[idx]
-      if (removed) f.sizeBytes -= itemBytes(removed)
-      f.items.splice(idx, 1)
-      await write(f)
-      if (removed) await released([removed])
+    remove(id) {
+      return serialized(async () => {
+        const f = await read()
+        const idx = f.items.findIndex((i) => i.id === id)
+        if (idx === -1) return
+        const removed = f.items[idx]
+        if (removed) f.sizeBytes -= itemBytes(removed)
+        f.items.splice(idx, 1)
+        await write(f)
+        if (removed) await released([removed])
+      })
     },
-    async clear() {
-      const f = await read()
-      await AsyncStorage.removeItem(STORAGE_KEY)
-      await released(f.items)
+    clear() {
+      return serialized(async () => {
+        const f = await read()
+        await AsyncStorage.removeItem(STORAGE_KEY)
+        await released(f.items)
+      })
     },
   }
 }
