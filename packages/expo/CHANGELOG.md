@@ -1,5 +1,17 @@
 # Changelog
 
+## expo-v0.3.7
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.6...expo-v0.3.7)
+
+### 🚀 Enhancements
+
+- **expo:** Related GitHub issue field in the report form ([a1523e4](https://github.com/Ripwords/ReproJs/commit/a1523e4))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## expo-v0.3.6
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.5...expo-v0.3.6)
