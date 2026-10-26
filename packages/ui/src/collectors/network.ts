@@ -129,6 +129,8 @@ async function readResponseBody(res: Response, entry: NetworkEntry, maxBytes: nu
 export function createNetworkCollector(_initial: NetworkConfig): NetworkCollector {
   let buffer: RingBuffer<NetworkEntry> | null = null
   let originalFetch: typeof globalThis.fetch | null = null
+  // Our own wrapper, so stop() can tell whether it is still the installed fetch.
+  let wrappedFetch: typeof globalThis.fetch | null = null
   let originalXHROpen: XMLHttpRequest["open"] | null = null
   let originalXHRSend: XMLHttpRequest["send"] | null = null
   let running = false
@@ -138,7 +140,7 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
     const orig = globalThis.fetch
     originalFetch = orig
     const maxBody = cfg.maxBodyBytes ?? 16_384
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const wrapper = async (input: RequestInfo | URL, init?: RequestInit) => {
       const method = init?.method ?? (input instanceof Request ? input.method : "GET")
       const rawUrl =
         input instanceof Request ? input.url : typeof input === "string" ? input : input.toString()
@@ -240,6 +242,8 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
         throw err
       }
     }
+    wrappedFetch = wrapper
+    globalThis.fetch = wrapper
   }
 
   function wrapXHR() {
@@ -311,10 +315,14 @@ export function createNetworkCollector(_initial: NetworkConfig): NetworkCollecto
     },
     stop() {
       if (!running) return
-      if (originalFetch) globalThis.fetch = originalFetch
+      // Only unwrap if we're still the outermost wrapper. If something else
+      // (Sentry, an APM agent) patched fetch after us, restoring our
+      // pre-Repro original would silently rip their patch out too.
+      if (originalFetch && globalThis.fetch === wrappedFetch) globalThis.fetch = originalFetch
       if (originalXHROpen) XMLHttpRequest.prototype.open = originalXHROpen
       if (originalXHRSend) XMLHttpRequest.prototype.send = originalXHRSend
       originalFetch = null
+      wrappedFetch = null
       originalXHROpen = null
       originalXHRSend = null
       buffer = null
