@@ -8,7 +8,7 @@ import { createUser, seedProject, truncateDomain, truncateReports } from "../hel
 await setup({ server: true, port: 3000, host: "localhost" })
 setDefaultTimeout(15000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
 const PK = "rp_pk_MEDIATEST1234567890abcd0"
 const ORIGIN = "https://example.com"
 

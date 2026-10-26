@@ -3,7 +3,6 @@ import {
   createError,
   defineEventHandler,
   getHeader,
-  getRequestIP,
   getRequestURL,
   readMultipartFormData,
 } from "h3"
@@ -17,6 +16,7 @@ import {
   isOriginAllowed,
 } from "../../lib/intake-cors"
 import { env } from "../../lib/env"
+import { getClientIp } from "../../lib/client-ip"
 import { getIpLimiter, getShareMintLimiter } from "../../lib/rate-limit"
 import { getStorage } from "../../lib/storage"
 import { rollbackPuts } from "../../lib/storage/rollback"
@@ -81,7 +81,7 @@ export default defineEventHandler(async (event) => {
   // TRUST_XFF is OFF by default — a public deployment must not be trivially
   // rate-limit-bypassed via a spoofed X-Forwarded-For header. Same rationale
   // as reports.ts.
-  const ip = getRequestIP(event, { xForwardedFor: env.TRUST_XFF }) ?? "unknown"
+  const ip = getClientIp(event)
 
   // Pre-buffer size gate: readMultipartFormData below buffers the ENTIRE body
   // into RAM before any other check runs, so an oversized (or maliciously huge)

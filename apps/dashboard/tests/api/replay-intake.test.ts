@@ -6,6 +6,8 @@ import { db } from "../../server/db"
 import { projects, reportAttachments } from "../../server/db/schema"
 
 await setup({ server: true, port: 3000, host: "localhost" })
+
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 setDefaultTimeout(15000)
 
 const PK = "rp_pk_ABCDEF1234567890abcdef12"
@@ -48,7 +50,7 @@ describe("replay intake", () => {
     fd.set("report", new Blob([buildReportJSON()], { type: "application/json" }))
     fd.set("screenshot", makePngBlob(), "s.png")
     fd.set("replay", new Blob([replay], { type: "application/gzip" }), "replay.json.gz")
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: fd,
@@ -76,7 +78,7 @@ describe("replay intake", () => {
     const fd = new FormData()
     fd.set("report", new Blob([buildReportJSON()], { type: "application/json" }))
     fd.set("screenshot", makePngBlob(), "s.png")
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: fd,
@@ -103,7 +105,7 @@ describe("replay intake", () => {
     fd.set("report", new Blob([buildReportJSON()], { type: "application/json" }))
     fd.set("screenshot", makePngBlob(), "s.png")
     fd.set("replay", new Blob([replay], { type: "application/gzip" }), "replay.json.gz")
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: fd,

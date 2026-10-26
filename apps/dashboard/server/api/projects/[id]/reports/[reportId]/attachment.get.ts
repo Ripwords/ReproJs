@@ -9,10 +9,10 @@ import {
 import { and, eq } from "drizzle-orm"
 import { db } from "../../../../../db"
 import { reportAttachments, reports } from "../../../../../db/schema"
-import { env } from "../../../../../lib/env"
+import { getAttachmentVerifySecrets } from "../../../../../lib/env"
 import { requireProjectRole } from "../../../../../lib/permissions"
 import { getStorage } from "../../../../../lib/storage"
-import { verifyAttachmentToken } from "../../../../../lib/signed-attachment-url"
+import { verifyAttachmentTokenAny } from "../../../../../lib/signed-attachment-url"
 
 export default defineEventHandler(async (event) => {
   const projectId = getRouterParam(event, "id")
@@ -35,8 +35,8 @@ export default defineEventHandler(async (event) => {
     if (!Number.isFinite(expiresAt)) {
       throw createError({ statusCode: 401, statusMessage: "Invalid token" })
     }
-    const ok = verifyAttachmentToken({
-      secret: env.ATTACHMENT_URL_SECRET,
+    const ok = verifyAttachmentTokenAny({
+      secrets: getAttachmentVerifySecrets(),
       projectId,
       reportId,
       kind,
@@ -151,7 +151,14 @@ export default defineEventHandler(async (event) => {
   setHeader(event, "Content-Type", safeType)
   setHeader(event, "X-Content-Type-Options", "nosniff")
   setHeader(event, "Content-Security-Policy", "default-src 'none'; img-src 'self' data:; sandbox")
-  setHeader(event, "Cache-Control", "private, max-age=3600")
+  // Token links are embedded in GitHub issues and fetched by GitHub's image
+  // proxy; the bytes behind a (report, kind) never change, so let caches keep
+  // them. Session responses stay private.
+  setHeader(
+    event,
+    "Cache-Control",
+    usedToken ? "public, max-age=31536000, immutable" : "private, max-age=3600",
+  )
   setResponseStatus(event, 200)
   // Mark `contentType` intentionally unused — we allowlist the served type.
   void contentType

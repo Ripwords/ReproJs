@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterAll } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { LocalDiskAdapter } from "./local-disk"
@@ -41,6 +41,18 @@ describe("LocalDiskAdapter", () => {
     const got = await adapter.get(key)
     expect(Array.from(got.bytes)).toEqual([1, 2, 3, 4, 5])
     expect(got.contentType).toBe("image/png")
+  })
+
+  test("put overwrites in place and leaves no temp files behind", async () => {
+    const adapter = new LocalDiskAdapter(root)
+    const key = "attachments/over/write.bin"
+    await adapter.put(key, new Uint8Array([1, 1, 1]), "application/octet-stream")
+    await adapter.put(key, new Uint8Array([2, 2]), "image/png")
+    const got = await adapter.get(key)
+    expect(Array.from(got.bytes)).toEqual([2, 2])
+    expect(got.contentType).toBe("image/png")
+    const entries = await readdir(join(root, "attachments/over"))
+    expect(entries.toSorted()).toEqual(["write.bin", "write.bin.contenttype"])
   })
 
   test("put creates parent directories", async () => {

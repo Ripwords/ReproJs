@@ -18,7 +18,7 @@
 import { Buffer } from "node:buffer"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { createError, defineEventHandler, getQuery, getRouterParam, setHeader } from "h3"
-import { env } from "../../../../../../../lib/env"
+import { getAttachmentVerifySecrets } from "../../../../../../../lib/env"
 import { requireProjectRole } from "../../../../../../../lib/permissions"
 import { getStorage } from "../../../../../../../lib/storage"
 
@@ -39,17 +39,21 @@ function verifyToken(params: {
   token: string
 }): boolean {
   if (params.expiresAt * 1000 < Date.now()) return false
-  const expected = createHmac("sha256", env.ATTACHMENT_URL_SECRET)
-    .update(
-      `comment-image:${params.projectId}:${params.reportId}:${params.fileId}:${params.expiresAt}`,
-    )
-    .digest("hex")
-  if (expected.length !== params.token.length) return false
-  try {
-    return timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(params.token, "hex"))
-  } catch {
-    return false
+  const payload = `comment-image:${params.projectId}:${params.reportId}:${params.fileId}:${params.expiresAt}`
+  // Accept the current secret and any retired ones (ATTACHMENT_URL_SECRET_PREVIOUS)
+  // so a rotation does not break images already pasted into synced comments.
+  // Every candidate is checked so timing does not reveal which one matched.
+  let ok = false
+  for (const secret of getAttachmentVerifySecrets()) {
+    const expected = createHmac("sha256", secret).update(payload).digest("hex")
+    if (expected.length !== params.token.length) continue
+    try {
+      if (timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(params.token, "hex"))) ok = true
+    } catch {
+      // malformed hex in token — treat as mismatch
+    }
   }
+  return ok
 }
 
 export default defineEventHandler(async (event): Promise<Buffer> => {

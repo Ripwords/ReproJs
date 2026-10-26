@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm"
-import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core"
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core"
 import { projects } from "./projects"
 
 export const reports = pgTable(
@@ -70,7 +80,9 @@ export const reports = pgTable(
       table.source,
       sql`${table.createdAt} DESC`,
     ),
-    projectIdempotencyKeyIdx: index("reports_project_idempotency_key_idx")
+    // UNIQUE so two retries racing on the same Idempotency-Key can never both
+    // insert; intake inserts with ON CONFLICT DO NOTHING against this index.
+    projectIdempotencyKeyIdx: uniqueIndex("reports_project_idempotency_key_idx")
       .on(table.projectId, table.idempotencyKey)
       .where(sql`${table.idempotencyKey} IS NOT NULL`),
   }),

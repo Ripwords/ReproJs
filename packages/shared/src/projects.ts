@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { normalizeOrigin } from "./origins"
 import { ReportEventKind, ReportPriority, ReportStatus } from "./reports"
 
 export const ProjectRole = z.enum(["viewer", "manager", "developer", "owner"])
@@ -25,9 +26,24 @@ export const CreateProjectInput = z.object({
 })
 export type CreateProjectInput = z.infer<typeof CreateProjectInput>
 
+// Stored in the canonical form a browser sends in the `Origin` header
+// (scheme + host [+ port], lower-cased, no path), so the intake allow-list
+// compare is exact. "https://App.Example.com/dashboard/" → "https://app.example.com".
+export const AllowedOriginInput = z
+  .string()
+  .url()
+  .transform((raw, ctx) => {
+    const origin = normalizeOrigin(raw)
+    if (!origin) {
+      ctx.addIssue({ code: "custom", message: "must be an absolute URL with a host" })
+      return z.NEVER
+    }
+    return origin
+  })
+
 export const UpdateProjectInput = z.object({
   name: z.string().min(1).max(80).optional(),
-  allowedOrigins: z.array(z.string().url()).max(20).optional(),
+  allowedOrigins: z.array(AllowedOriginInput).max(20).optional(),
   dailyReportCap: z.number().int().min(1).max(1_000_000).optional(),
   replayEnabled: z.boolean().optional(),
   shareLinksEnabled: z.boolean().optional(),

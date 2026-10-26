@@ -19,6 +19,8 @@ import {
 
 await setup({ server: true, port: 3000, host: "localhost" })
 
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
+
 const PK = "rp_pk_AUTOCREATE12345678901234"
 const ORIGIN = "http://localhost:4000"
 
@@ -74,7 +76,7 @@ describe("intake — autoCreateOnIntake", () => {
   test("toggle ON → POST intake → exactly one pending sync job for the new report", async () => {
     await seedConnectedProject({ autoCreateOnIntake: true })
 
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(buildReportJSON(PK), makePngBlob()),
@@ -96,7 +98,7 @@ describe("intake — autoCreateOnIntake", () => {
   test("toggle OFF → POST intake → no sync job enqueued", async () => {
     await seedConnectedProject({ autoCreateOnIntake: false })
 
-    const res = await fetch("http://localhost:3000/api/intake/reports", {
+    const res = await fetch(`${BASE_URL}/api/intake/reports`, {
       method: "POST",
       headers: { Origin: ORIGIN },
       body: buildMultipart(buildReportJSON(PK), makePngBlob()),
