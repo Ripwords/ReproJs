@@ -122,6 +122,57 @@ describe("webhook redelivery after a failed attempt", () => {
     expect(await deliveryRows(deliveryId)).toHaveLength(1)
   })
 
+  test("installation.unsuspend restores a suspended integration to connected", async () => {
+    const owner = await createUser("owner-unsuspend@example.com", "admin")
+    const pid = await seedProject({
+      name: "unsuspend",
+      publicKey: PK,
+      allowedOrigins: ["http://localhost:4000"],
+      createdBy: owner,
+    })
+    await db.insert(githubIntegrations).values({
+      projectId: pid,
+      installationId: INSTALLATION_ID,
+      repoOwner: "acme",
+      repoName: "frontend",
+      status: "connected",
+    })
+    // A second project on the same installation that never picked a repo must
+    // stay disconnected — it has nowhere to sync to until the picker runs.
+    const pidNoRepo = await seedProject({
+      name: "unsuspend-norepo",
+      publicKey: PK + "-norepo",
+      allowedOrigins: ["http://localhost:4000"],
+      createdBy: owner,
+    })
+    await db.insert(githubIntegrations).values({
+      projectId: pidNoRepo,
+      installationId: INSTALLATION_ID,
+      status: "disconnected",
+    })
+
+    const suspended = await sendWebhook(
+      "installation",
+      { action: "suspend", installation: { id: INSTALLATION_ID } },
+      crypto.randomUUID(),
+    )
+    expect(suspended.status).toBe(202)
+    const restored = await sendWebhook(
+      "installation",
+      { action: "unsuspend", installation: { id: INSTALLATION_ID } },
+      crypto.randomUUID(),
+    )
+    expect(restored.status).toBe(202)
+
+    const rows = await db
+      .select({ projectId: githubIntegrations.projectId, status: githubIntegrations.status })
+      .from(githubIntegrations)
+      .where(eq(githubIntegrations.installationId, INSTALLATION_ID))
+    const byProject = new Map(rows.map((r) => [r.projectId, r.status]))
+    expect(byProject.get(pid)).toBe("connected")
+    expect(byProject.get(pidNoRepo)).toBe("disconnected")
+  })
+
   test("a successfully processed delivery is still deduplicated on replay", async () => {
     const owner = await createUser("owner-replay@example.com", "admin")
     const pid = await seedProject({

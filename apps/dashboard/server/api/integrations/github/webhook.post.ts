@@ -1,6 +1,6 @@
 // apps/dashboard/server/api/integrations/github/webhook.post.ts
 import { createError, defineEventHandler, getHeader, readRawBody, setResponseStatus } from "h3"
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, desc, eq, isNull, ne } from "drizzle-orm"
 import { verifyWebhookSignature } from "@reprojs/integrations-github"
 import { db } from "../../../db"
 import {
@@ -213,6 +213,22 @@ export default defineEventHandler(async (event) => {
           .update(githubIntegrations)
           .set({ status: "disconnected", updatedAt: new Date() })
           .where(eq(githubIntegrations.installationId, p.installation.id))
+        invalidateInstallationRepos(p.installation.id)
+      } else if (p.action === "unsuspend") {
+        // GitHub lifts a suspension without a reinstall, so no OAuth round-trip
+        // ever flips the row back. Only rows that still have a repo picked are
+        // restored — a `disconnected` row without one needs the picker anyway.
+        await db
+          .update(githubIntegrations)
+          .set({ status: "connected", updatedAt: new Date() })
+          .where(
+            and(
+              eq(githubIntegrations.installationId, p.installation.id),
+              eq(githubIntegrations.status, "disconnected"),
+              ne(githubIntegrations.repoOwner, ""),
+              ne(githubIntegrations.repoName, ""),
+            ),
+          )
         invalidateInstallationRepos(p.installation.id)
       }
     } else if (kind === "installation_repositories") {
