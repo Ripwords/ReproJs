@@ -25,13 +25,31 @@ export function installBridge(): void {
       body?: unknown
       pageOrigin?: string
     } | null
-    if (!data || data.source !== SOURCE || data.type !== "request") return
+    if (!data || data.source !== SOURCE) return
     if (typeof data.id !== "string") return
-
     const id = data.id
 
-    chrome.runtime
-      .sendMessage({
+    if (data.type === "abort") {
+      // Best-effort cancel of the in-flight service-worker fetch. The page
+      // side has already rejected its promise; nothing to report back.
+      try {
+        void chrome.runtime.sendMessage({ type: "proxy-abort", id }).catch(() => {})
+      } catch {
+        // Orphaned bridge (extension reloaded) — nothing left to cancel.
+      }
+      return
+    }
+    if (data.type !== "request") return
+
+    // After the extension is reloaded or updated this content script keeps
+    // running but its chrome.runtime is dead: sendMessage throws
+    // synchronously ("Extension context invalidated"). Without the catch the
+    // page side waits out its full 60 s timeout on every submission. Answer
+    // immediately with `fallback: true` so the proxy hands the request to
+    // the page's own fetch.
+    let sent: Promise<unknown>
+    try {
+      sent = chrome.runtime.sendMessage({
         type: "proxy-fetch",
         id,
         url: data.url,
@@ -40,6 +58,26 @@ export function installBridge(): void {
         body: data.body,
         pageOrigin: data.pageOrigin,
       })
+    } catch (err) {
+      window.postMessage(
+        {
+          source: SOURCE,
+          type: "response",
+          id,
+          ok: false,
+          status: 0,
+          statusText: "",
+          bodyKind: "none",
+          body: null,
+          fallback: true,
+          error: `bridge: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        window.location.origin,
+      )
+      return
+    }
+
+    sent
       .then((response: unknown) => {
         const payload =
           response && typeof response === "object"
@@ -52,6 +90,9 @@ export function installBridge(): void {
         return
       })
       .catch((err: unknown) => {
+        // Rejected rather than thrown: the service worker is gone or never
+        // answered ("Could not establish connection", "message port closed").
+        // Same remedy — let the page try the network itself.
         window.postMessage(
           {
             source: SOURCE,
@@ -62,7 +103,8 @@ export function installBridge(): void {
             statusText: "",
             bodyKind: "none",
             body: null,
-            error: err instanceof Error ? err.message : String(err),
+            fallback: true,
+            error: `bridge: ${err instanceof Error ? err.message : String(err)}`,
           },
           window.location.origin,
         )

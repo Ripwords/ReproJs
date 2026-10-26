@@ -6,7 +6,7 @@ export default defineManifest({
   name: "Repro Tester",
   description: "Inject the Repro SDK into configured origins for internal QA.",
   version: pkg.version,
-  permissions: ["storage", "scripting", "activeTab", "tabs"],
+  permissions: ["storage", "scripting", "activeTab", "tabs", "webNavigation"],
   host_permissions: [],
   optional_host_permissions: ["<all_urls>"],
   icons: {

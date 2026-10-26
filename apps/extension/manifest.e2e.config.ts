@@ -5,7 +5,7 @@ export default defineManifest({
   manifest_version: 3,
   name: "Repro Tester (E2E)",
   version: pkg.version,
-  permissions: ["storage", "scripting", "activeTab", "tabs"],
+  permissions: ["storage", "scripting", "activeTab", "tabs", "webNavigation"],
   host_permissions: ["<all_urls>"],
   icons: {
     "16": "icons/16.png",

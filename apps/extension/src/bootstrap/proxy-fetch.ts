@@ -13,7 +13,9 @@
 // bridge.ts), forwarded to the service worker over chrome.runtime.sendMessage,
 // fetched there, and the response is relayed back.
 
-export function installFetchProxy(endpointOrigin: string): void {
+// `maxRawBodyBytes` is computed by the service worker from lib/proxy-limits
+// and passed in as an argument, because this function cannot import it.
+export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: number): void {
   const g = globalThis as unknown as {
     __REPRO_PROXY_INSTALLED__?: boolean
     __REPRO_PROXY_ORIGIN__?: string
@@ -59,6 +61,27 @@ export function installFetchProxy(endpointOrigin: string): void {
     const bytes = new Uint8Array(binary.length)
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
     return bytes.buffer
+  }
+
+  // Raw byte count of a body before base64 inflation. Strings count by
+  // UTF-16 length, which is within a factor of the UTF-8 size and only has
+  // to be a conservative estimate against a limit with headroom.
+  // oxlint-disable-next-line eslint-plugin-unicorn/consistent-function-scoping
+  function rawBodyBytes(body: BodyInit | null | undefined): number {
+    if (body == null) return 0
+    if (typeof body === "string") return body.length
+    if (body instanceof ArrayBuffer) return body.byteLength
+    if (ArrayBuffer.isView(body)) return body.byteLength
+    if (body instanceof Blob) return body.size
+    if (body instanceof FormData) {
+      let total = 0
+      for (const [name, value] of body.entries()) {
+        total += name.length + (typeof value === "string" ? value.length : (value as Blob).size)
+      }
+      return total
+    }
+    if (body instanceof URLSearchParams) return body.toString().length
+    return 0
   }
 
   async function serializeBody(body: BodyInit | null | undefined): Promise<unknown> {
@@ -107,6 +130,17 @@ export function installFetchProxy(endpointOrigin: string): void {
     }
     console.info("[repro-extension] proxying fetch →", targetUrl)
 
+    // The SDK passes AbortSignal.timeout(30_000). Without forwarding it the
+    // SDK's timeout only rejected the page-side promise while the service
+    // worker kept uploading, and the proxy's own 60 s timer was the only
+    // real bail-out.
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new DOMException("The operation was aborted.", "AbortError")
+    }
+
     const method = init?.method ?? (input instanceof Request ? input.method : "GET")
     const headersInit = init?.headers ?? (input instanceof Request ? input.headers : undefined)
     const headers: Record<string, string> = {}
@@ -124,6 +158,18 @@ export function installFetchProxy(endpointOrigin: string): void {
       } catch {
         bodyInit = null
       }
+    }
+    // Chrome caps runtime.sendMessage payloads; a body that would blow past
+    // it after base64 inflation dies inside the bridge with an unhelpful
+    // error and a 60 s hang. Hand it to the page's real fetch instead — on a
+    // CSP-strict host that may be blocked too, but then the SDK sees a
+    // normal, immediate network error rather than a silent stall.
+    const rawBytes = rawBodyBytes(bodyInit)
+    if (rawBytes > maxRawBodyBytes) {
+      console.warn(
+        `[repro-extension] request body is ${rawBytes} bytes, above the ${maxRawBodyBytes}-byte proxy limit; sending through the page's own fetch instead (CSP connect-src may block it)`,
+      )
+      return originalFetch(input, init)
     }
     const body = await serializeBody(bodyInit ?? null)
 
@@ -159,13 +205,29 @@ export function installFetchProxy(endpointOrigin: string): void {
       body: string | null
       contentType?: string
       error?: string
+      fallback?: boolean
     }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pending.delete(id)
+        signal?.removeEventListener("abort", onAbort)
         reject(new Error("repro proxy: timeout"))
       }, 60_000)
+      function onAbort(): void {
+        clearTimeout(timeout)
+        pending.delete(id)
+        // Tell the service worker to cancel the in-flight fetch too;
+        // otherwise the upload keeps running after the SDK gave up.
+        window.postMessage({ source: SOURCE, type: "abort", id }, window.location.origin)
+        reject(
+          signal?.reason instanceof Error
+            ? signal.reason
+            : new DOMException("The operation was aborted.", "AbortError"),
+        )
+      }
+      signal?.addEventListener("abort", onAbort, { once: true })
       pending.set(id, (msg) => {
         clearTimeout(timeout)
+        signal?.removeEventListener("abort", onAbort)
         resolve(
           msg as {
             ok: boolean
@@ -175,12 +237,22 @@ export function installFetchProxy(endpointOrigin: string): void {
             body: string | null
             contentType?: string
             error?: string
+            fallback?: boolean
           },
         )
       })
       window.postMessage(request, window.location.origin)
     })
 
+    if (response.fallback) {
+      // The bridge could not reach the service worker (extension reloaded
+      // or updated underneath this page). The proxy is dead for the rest of
+      // this document's life; the page's own fetch is the only route left.
+      console.warn(
+        `[repro-extension] ${response.error ?? "bridge unavailable"}; sending through the page's own fetch instead (CSP connect-src may block it)`,
+      )
+      return originalFetch(input, init)
+    }
     if (response.error) {
       throw new TypeError(`repro proxy: ${response.error}`)
     }

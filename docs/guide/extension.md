@@ -85,7 +85,8 @@ Other permissions:
 | `storage` | Stores the tester's local list of `{ label, origin, project key, intake endpoint }` entries. Never transmitted. |
 | `scripting` | Injects the bundled SDK into pages whose origin the tester has configured + granted permission for. |
 | `activeTab` | Ensures the SDK can run on the current tab when the user interacts with the extension. |
-| `tabs` | Lets the service worker observe `tabs.onUpdated` so it knows when to inject on a page load. Only the URL is read; tab titles, favicons, and content are not accessed. |
+| `tabs` | Lets the service worker observe `tabs.onUpdated` as a fallback injection trigger once a page reports `complete`. Only the URL is read; tab titles, favicons, and content are not accessed. |
+| `webNavigation` | Lets the service worker inject as soon as the page's DOM is parsed (`onDOMContentLoaded`) instead of waiting for every image and long-poll request to finish. Without it, pages that never reach `complete` would never get the launcher. Only the tab id, frame id, and URL of the navigation are read. |
 
 ## Data flow
 
@@ -118,13 +119,19 @@ The page origin isn't in the project's allowed-origins list. Add it in the dashb
 
 ### The launcher doesn't appear on a configured origin
 
-- **Permission revoked.** Open the popup. If the config card shows an amber stripe with "Permission required", click **Grant** and accept the Chrome prompt.
+- **Permission revoked.** Open the popup. If the config card shows an amber stripe with "Permission required", click **Grant** and accept the Chrome prompt. This covers both the site origin and the intake endpoint host — the extension refuses to inject when either is missing and logs `host permission missing for intake …` in the service worker console, because a widget that mounts but cannot submit is worse than no widget.
 - **Service worker stale.** Open `chrome://extensions`, find Repro Tester, click the blue "service worker" link, Inspect. If there are errors there, a hard-reload of the extension (click the reload icon on its card) usually fixes it.
+- **Wrong SDK build.** On every successful boot the page console prints `[repro-extension] Repro SDK vX.Y.Z booted`. If that version is older than you expect, the extension was built from a stale `packages/core/dist` — rerun `bun run sdk:build` before `bun run ext:build`.
+- **Extension was reloaded while the page was open.** The injected bridge loses its connection to the service worker. Submissions then go through the page's own `fetch` (logged as `bridge: … sending through the page's own fetch instead`), which a strict `connect-src` may block. Reload the page to re-inject.
 - **Config not saved.** Chrome closes the popup when its native permission prompt takes focus. The extension saves the config BEFORE requesting permission so this doesn't lose your work — if you denied the prompt, the config will still be in the list with a "Grant" button. Click it and try again.
 
 ### "Failed to execute 'attachShadow'"
 
 This used to fire when the injection raced itself on framework dev servers (Next.js Fast Refresh, etc.). It's fixed in current builds — update to the latest extension zip. If you still see it, the launcher should still work; report the environment in an issue.
+
+### Submission fails only for very large reports
+
+The proxy carries the report body through Chrome's extension messaging, which has a hard size cap. Bodies above roughly 30 MB (about 40 MB once encoded) are not proxied; the extension logs `above the … proxy limit; sending through the page's own fetch instead` and lets the browser send the request directly. On a CSP-strict host that direct request may be blocked by `connect-src`. Trim the recording or remove large attachments and resend.
 
 ### Reports take forever / hang
 
