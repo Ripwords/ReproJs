@@ -7,7 +7,12 @@ import {
 } from "h3"
 import { and, count, eq, gte, sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
-import { LogsAttachment, MediaMetaEntry, ReportIntakeInput } from "@reprojs/shared"
+import {
+  LogsAttachment,
+  MediaMetaEntry,
+  ReportIntakeInput,
+  parseRelatedIssueNumber,
+} from "@reprojs/shared"
 import { db } from "../../db"
 import { githubIntegrations, projects, reports, reportAttachments } from "../../db/schema"
 import type { NewReportAttachment } from "../../db/schema"
@@ -165,6 +170,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const idempotencyKey = getHeader(event, "idempotency-key") ?? null
+  // Reporter-typed "related issue". Stored as a hint for the dashboard only;
+  // nothing checks it against GitHub here, so the response never reveals
+  // whether the number exists. Unparseable text is dropped silently.
+  const reporterIssueHint =
+    parsed.relatedIssue !== undefined ? parseRelatedIssueNumber(parsed.relatedIssue) : null
 
   // Origin allowlist MUST be checked before the rate limiter takes, otherwise
   // an attacker with just a leaked project key can burn the legitimate SDK's
@@ -699,6 +709,7 @@ export default defineEventHandler(async (event) => {
             source: parsed.context.source,
             devicePlatform: parsed.context.systemInfo?.devicePlatform ?? null,
             idempotencyKey,
+            reporterIssueHint,
           })
           // Belt and braces for the partial unique index on
           // (project_id, idempotency_key): the advisory lock already
@@ -741,6 +752,9 @@ export default defineEventHandler(async (event) => {
 
   // Auto-create GitHub issue on intake when the toggle is on.
   // Runs after all attachments are persisted so the sync worker sees them.
+  // A report that references an existing issue is skipped: the reporter says
+  // this is a known bug, so a manager attaches it instead of a new issue
+  // being opened (and a guessed number can never produce a stray issue).
   // Fire-and-forget: enqueueSync is a single SQL UPSERT (microseconds), so a
   // plain await does not meaningfully delay the 201 response to the SDK.
   const [integration] = await db
@@ -759,7 +773,8 @@ export default defineEventHandler(async (event) => {
     integration.status === "connected" &&
     integration.autoCreateOnIntake &&
     integration.repoOwner &&
-    integration.repoName
+    integration.repoName &&
+    reporterIssueHint === null
   ) {
     await enqueueSync(reportId, project.id).catch((err) => {
       console.error("[github] enqueueSync failed on intake", err)
