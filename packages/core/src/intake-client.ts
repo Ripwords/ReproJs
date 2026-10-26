@@ -1,7 +1,7 @@
 import type { IntakeResponse, LogsAttachment, MediaMetaEntry, ReportContext } from "@reprojs/shared"
 import type { Attachment, TrimRange } from "@reprojs/sdk-utils"
 import type { ResolvedConfig } from "./config"
-import { timeoutSignal } from "./timeout-signal"
+import { isAbortError, timeoutSignal } from "./timeout-signal"
 
 /** A single gallery media item selected for a report. Serialized as a
  * `media[i]` multipart part plus one aligned entry in the `mediaMeta` JSON. */
@@ -48,6 +48,31 @@ export interface IntakeError {
   ok: false
   status: number
   message: string
+}
+
+const TIMEOUT_BASE_MS = 30_000
+const TIMEOUT_PER_MB_MS = 10_000
+const TIMEOUT_MAX_MS = 600_000
+const TIMEOUT_MESSAGE = "Upload timed out — check your connection and try again"
+
+/**
+ * Deadline for the intake POST. A flat 30 s was fine for a screenshot but
+ * the client allows up to 100 MB of video; a slow uplink aborted those
+ * mid-flight while the server kept processing, so a retry produced a
+ * duplicate report. Scale with the payload: 30 s + 10 s per MB, capped at
+ * 10 min.
+ */
+export function uploadTimeoutMs(bytes: number): number {
+  const mb = Math.max(0, bytes) / 1_048_576
+  return Math.min(TIMEOUT_MAX_MS, Math.round(TIMEOUT_BASE_MS + mb * TIMEOUT_PER_MB_MS))
+}
+
+function payloadBytes(body: FormData): number {
+  let total = 0
+  body.forEach((part) => {
+    total += typeof part === "string" ? part.length : part.size
+  })
+  return total
 }
 
 export async function postReport(
@@ -115,7 +140,7 @@ export async function postReport(
       method: "POST",
       body,
       credentials: "omit",
-      signal: timeoutSignal(30_000),
+      signal: timeoutSignal(uploadTimeoutMs(payloadBytes(body))),
     })
     if (res.ok) {
       const data = (await res.json()) as IntakeResponse
@@ -130,6 +155,7 @@ export async function postReport(
     }
     return { ok: false, status: res.status, message }
   } catch (err) {
+    if (isAbortError(err)) return { ok: false, status: 0, message: TIMEOUT_MESSAGE }
     return {
       ok: false,
       status: 0,
