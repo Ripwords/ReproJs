@@ -34,6 +34,8 @@ type SerializedBody =
       >
     }
 
+type ProxyAbort = { type: "proxy-abort"; id: string }
+
 type ProxyRequest = {
   type: "proxy-fetch"
   id: string
@@ -46,9 +48,9 @@ type ProxyRequest = {
   pageOrigin?: string
 }
 
-function fromBase64(b64: string): Uint8Array {
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(b64)
-  const bytes = new Uint8Array(binary.length)
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length))
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes
 }
@@ -109,13 +111,38 @@ function reject(sendResponse: (response: unknown) => void, error: string, status
   })
 }
 
+// In-flight fetches, keyed by sender tab + request id so a page can only
+// abort its own requests. The SDK's AbortSignal (30 s timeout) reaches us
+// as a separate "proxy-abort" message relayed by the bridge.
+const inflight = new Map<string, AbortController>()
+
+function inflightKey(sender: chrome.runtime.MessageSender, id: string): string {
+  return `${sender.tab?.id ?? "?"}:${id}`
+}
+
 export function registerProxyHandler(): void {
   chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
-    const msg = message as Partial<ProxyRequest> | null
-    if (!msg || msg.type !== "proxy-fetch") return false
+    const msg = message as Partial<ProxyRequest> | Partial<ProxyAbort> | null
+    if (!msg) return false
+
+    if (msg.type === "proxy-abort") {
+      if (typeof msg.id === "string") inflight.get(inflightKey(sender, msg.id))?.abort()
+      return false
+    }
+    if (msg.type !== "proxy-fetch") return false
+
+    // Register before the first await so an abort that races the config
+    // lookup still lands. Removed in `finally` below.
+    const controller = new AbortController()
+    const key = typeof msg.id === "string" ? inflightKey(sender, msg.id) : null
+    if (key) inflight.set(key, controller)
 
     void (async () => {
       try {
+        if (controller.signal.aborted) {
+          reject(sendResponse, "proxy: aborted")
+          return
+        }
         // F1 guard: require a sender tab and derive its origin ourselves.
         // sender.tab.url is set by Chrome from the actual tab URL — it
         // cannot be spoofed by the page's JS.
@@ -207,6 +234,7 @@ export function registerProxyHandler(): void {
           method,
           headers,
           body,
+          signal: controller.signal,
         })
 
         const contentType = response.headers.get("content-type") ?? ""
@@ -231,6 +259,8 @@ export function registerProxyHandler(): void {
         })
       } catch (err) {
         reject(sendResponse, err instanceof Error ? err.message : String(err))
+      } finally {
+        if (key) inflight.delete(key)
       }
     })()
 

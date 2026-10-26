@@ -107,6 +107,17 @@ export function installFetchProxy(endpointOrigin: string): void {
     }
     console.info("[repro-extension] proxying fetch →", targetUrl)
 
+    // The SDK passes AbortSignal.timeout(30_000). Without forwarding it the
+    // SDK's timeout only rejected the page-side promise while the service
+    // worker kept uploading, and the proxy's own 60 s timer was the only
+    // real bail-out.
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new DOMException("The operation was aborted.", "AbortError")
+    }
+
     const method = init?.method ?? (input instanceof Request ? input.method : "GET")
     const headersInit = init?.headers ?? (input instanceof Request ? input.headers : undefined)
     const headers: Record<string, string> = {}
@@ -162,10 +173,25 @@ export function installFetchProxy(endpointOrigin: string): void {
     }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pending.delete(id)
+        signal?.removeEventListener("abort", onAbort)
         reject(new Error("repro proxy: timeout"))
       }, 60_000)
+      function onAbort(): void {
+        clearTimeout(timeout)
+        pending.delete(id)
+        // Tell the service worker to cancel the in-flight fetch too;
+        // otherwise the upload keeps running after the SDK gave up.
+        window.postMessage({ source: SOURCE, type: "abort", id }, window.location.origin)
+        reject(
+          signal?.reason instanceof Error
+            ? signal.reason
+            : new DOMException("The operation was aborted.", "AbortError"),
+        )
+      }
+      signal?.addEventListener("abort", onAbort, { once: true })
       pending.set(id, (msg) => {
         clearTimeout(timeout)
+        signal?.removeEventListener("abort", onAbort)
         resolve(
           msg as {
             ok: boolean

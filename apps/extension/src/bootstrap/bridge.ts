@@ -25,10 +25,21 @@ export function installBridge(): void {
       body?: unknown
       pageOrigin?: string
     } | null
-    if (!data || data.source !== SOURCE || data.type !== "request") return
+    if (!data || data.source !== SOURCE) return
     if (typeof data.id !== "string") return
-
     const id = data.id
+
+    if (data.type === "abort") {
+      // Best-effort cancel of the in-flight service-worker fetch. The page
+      // side has already rejected its promise; nothing to report back.
+      try {
+        void chrome.runtime.sendMessage({ type: "proxy-abort", id }).catch(() => {})
+      } catch {
+        // Orphaned bridge (extension reloaded) — nothing left to cancel.
+      }
+      return
+    }
+    if (data.type !== "request") return
 
     chrome.runtime
       .sendMessage({
