@@ -61,6 +61,19 @@ async function tryInject(tabId: number, url: string): Promise<void> {
     return
   }
 
+  // The proxy fetch runs from the service worker, which needs host
+  // permission on the intake origin as well. Without it the widget mounts
+  // fine and every submission dies with an opaque "Failed to fetch". Refuse
+  // to inject and say why; the popup shows the same config as "pending"
+  // with a Grant button.
+  if (!(await hasOriginPermission(intakeOrigin))) {
+    injectedForTab.delete(tabId)
+    console.warn(
+      `[repro-extension] skip inject for ${match.origin}: host permission missing for intake ${intakeOrigin}. Open the popup and click Grant.`,
+    )
+    return
+  }
+
   try {
     // 0. Ask the page world what is already there. This makes the whole
     //    chain idempotent: a pushState navigation (tabs.onUpdated reports a

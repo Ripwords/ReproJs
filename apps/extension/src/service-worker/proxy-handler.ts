@@ -20,6 +20,7 @@
 // serializes messages as JSON in MV3, and ArrayBuffer round-trips through
 // JSON as {} without this wrapping.
 
+import { hasOriginPermission } from "../lib/permissions"
 import { listConfigs } from "../lib/storage"
 
 type SerializedBody =
@@ -200,6 +201,12 @@ export function registerProxyHandler(): void {
         }
         if (targetUrl.origin !== intakeOrigin) {
           reject(sendResponse, "proxy: target origin not allowed for this tab")
+          return
+        }
+        // Permission can be revoked in chrome://extensions after injection.
+        // Name the cause instead of letting fetch surface "Failed to fetch".
+        if (!(await hasOriginPermission(intakeOrigin))) {
+          reject(sendResponse, "proxy: intake host permission missing")
           return
         }
         // Further bound the path to the intake API. Anything else on the
