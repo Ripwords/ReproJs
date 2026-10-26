@@ -286,3 +286,37 @@ test("a plain network failure (offline) stays retryable", async () => {
   expect(await q.all()).toHaveLength(1)
   flusher.stop()
 })
+
+// `flush()` returned early while another flush was running, so a report
+// enqueued during that window was not sent until an unrelated trigger: the
+// next foreground, a connectivity flip, or a retry timer that only exists when
+// something had failed. On a healthy connection that could be "never".
+test("a flush requested mid-flush runs one more pass when the current one ends", async () => {
+  memory.clear()
+  const q = createQueueStorage({ maxReports: 10, maxBytes: 1024 })
+  await q.enqueue(fakeItem("slow"))
+  let release: (() => void) | undefined
+  const uploading = new Promise<void>((r) => {
+    release = r
+  })
+  const submitted: string[] = []
+  const client: IntakeClient = {
+    submit: async ({ idempotencyKey }) => {
+      submitted.push(idempotencyKey)
+      if (idempotencyKey === "slow") await uploading
+      return { id: "server-" + idempotencyKey }
+    },
+  }
+  // A long backoff: if anything is sent it must be the rerun, not a timer.
+  const flusher = createQueueFlusher({ queue: q, client, backoffMs: [60_000] })
+  const first = flusher.flush()
+  // The user submits while "slow" is still uploading.
+  await q.enqueue(fakeItem("fresh"))
+  const second = flusher.flush()
+  release?.()
+  await Promise.all([first, second])
+  expect(submitted).toEqual(["slow", "fresh"])
+  expect(await q.all()).toEqual([])
+  expect(flusher.status().pending).toBe(0)
+  flusher.stop()
+})
