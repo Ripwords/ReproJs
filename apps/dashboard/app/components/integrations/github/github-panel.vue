@@ -2,6 +2,7 @@
 import { describeApiError } from "~/utils/api-error"
 import type { GithubAppStatusDTO, GithubConfigDTO, ProjectDTO } from "@reprojs/shared"
 import { hasProjectRole } from "~/utils/project-role"
+import AppLoadingSkeleton from "~/components/common/app-loading-skeleton.vue"
 import RepoPicker from "./repo-picker.vue"
 import SyncStatus from "./sync-status.vue"
 import UnlinkDialog from "./unlink-dialog.vue"
@@ -13,7 +14,7 @@ const props = defineProps<Props>()
 
 const toast = useToast()
 
-const { data, refresh } = useApi<GithubConfigDTO>(
+const { data, refresh, pending } = useApi<GithubConfigDTO>(
   `/api/projects/${props.projectId}/integrations/github`,
 )
 
@@ -166,8 +167,13 @@ async function saveRepo() {
       </div>
     </template>
 
+    <!-- First load: the config decides which of the states below renders -->
+    <div v-if="pending && !data" aria-busy="true" aria-label="Loading GitHub integration">
+      <AppLoadingSkeleton variant="form" :rows="2" />
+    </div>
+
     <!-- Instance has no GitHub App: nothing to install yet -->
-    <div v-if="!isInstalled && appNotConfigured" class="space-y-4">
+    <div v-else-if="!isInstalled && appNotConfigured" class="space-y-4">
       <UAlert
         color="warning"
         variant="soft"

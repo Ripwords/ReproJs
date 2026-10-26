@@ -3,6 +3,7 @@ import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 import type { ProjectDTO } from "@reprojs/shared"
 import AppEmptyState from "~/components/common/app-empty-state.vue"
+import AppLoadingSkeleton from "~/components/common/app-loading-skeleton.vue"
 
 useHead({ title: "Projects" })
 
@@ -92,8 +93,18 @@ async function createProject() {
       </template>
     </PageHeader>
 
+    <div
+      v-if="pending && list.length === 0"
+      class="grid gap-4"
+      style="grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr))"
+      aria-busy="true"
+      aria-label="Loading projects"
+    >
+      <AppLoadingSkeleton v-for="n in 3" :key="n" variant="card" />
+    </div>
+
     <AppEmptyState
-      v-if="!pending && list.length === 0"
+      v-else-if="list.length === 0"
       variant="gradient"
       icon="i-heroicons-squares-plus"
       title="Create your first project"

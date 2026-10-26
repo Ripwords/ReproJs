@@ -2,6 +2,7 @@
 import PageHeader from "~/components/common/page-header.vue"
 import type { ProjectDTO, ProjectOverviewDTO, ReportSummaryDTO } from "@reprojs/shared"
 import InstallSnippet from "~/components/common/install-snippet.vue"
+import AppLoadingSkeleton from "~/components/common/app-loading-skeleton.vue"
 import { priorityColor, priorityLabel } from "~/composables/use-report-format"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { installLinkFor } from "~/utils/install-link"
@@ -11,15 +12,24 @@ const projectId = computed(() => String(route.params.id))
 const { isAdmin } = useSession()
 const installLink = computed(() => installLinkFor(isAdmin.value, projectId.value))
 
-const { data: project } = await useApi<ProjectDTO>(`/api/projects/${projectId.value}`)
+const { data: project, pending: projectPending } = await useApi<ProjectDTO>(
+  `/api/projects/${projectId.value}`,
+)
 
 useHead({ title: () => project.value?.name ?? "Project" })
-const { data: overview } = await useApi<ProjectOverviewDTO>(
+const { data: overview, pending: overviewPending } = await useApi<ProjectOverviewDTO>(
   `/api/projects/${projectId.value}/overview`,
 )
-const { data: recentReportsResp } = await useApi<{ items: ReportSummaryDTO[] }>(
-  `/api/projects/${projectId.value}/reports`,
-  { query: { limit: 5, sort: "newest" } },
+const { data: recentReportsResp, pending: recentPending } = await useApi<{
+  items: ReportSummaryDTO[]
+}>(`/api/projects/${projectId.value}/reports`, { query: { limit: 5, sort: "newest" } })
+
+// First load only — a background refresh keeps the rendered page.
+const loading = computed(
+  () =>
+    (projectPending.value && !project.value) ||
+    (overviewPending.value && !overview.value) ||
+    (recentPending.value && !recentReportsResp.value),
 )
 
 const metrics = computed(() => {
@@ -107,7 +117,17 @@ function describeEvent(e: ProjectOverviewDTO["recentEvents"][number]): string {
 </script>
 
 <template>
-  <div class="space-y-8">
+  <div v-if="loading" class="space-y-6" aria-busy="true" aria-label="Loading project overview">
+    <div class="h-16 w-1/3 rounded-lg shimmer" />
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <AppLoadingSkeleton v-for="n in 4" :key="n" variant="card" />
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <AppLoadingSkeleton variant="table" :rows="4" />
+      <AppLoadingSkeleton variant="table" :rows="4" />
+    </div>
+  </div>
+  <div v-else class="space-y-8">
     <!-- Page header -->
     <PageHeader
       eyebrow="Project"

@@ -4,7 +4,14 @@ import PageHeader from "~/components/common/page-header.vue"
 import { describeApiError } from "~/utils/api-error"
 import { h, resolveComponent } from "vue"
 import type { TableColumn } from "@nuxt/ui"
-import type { ReportListDTO, ReportPriority, ReportStatus, ReportSummaryDTO } from "@reprojs/shared"
+import type {
+  BulkUpdateInput,
+  ReportListDTO,
+  ReportPriority,
+  ReportStatus,
+  ReportSummaryDTO,
+} from "@reprojs/shared"
+import { inverseBulkChange, type BulkChange, type BulkUndoSnapshot } from "~/utils/bulk-undo"
 import StatusTabs from "~/components/inbox/status-tabs.vue"
 import FacetSidebar from "~/components/inbox/facet-sidebar.vue"
 import SearchSort from "~/components/inbox/search-sort.vue"
@@ -116,21 +123,62 @@ watch(
   { immediate: true },
 )
 
-async function bulkStatus(status: ReportStatus) {
-  submittingBulk.value = true
-  const n = checkedIds.value.length
+// One path for every bulk action. Before posting, snapshot the selected
+// rows so the success toast can offer Undo: the inverse is one request per
+// previous value (see utils/bulk-undo), posted through the same endpoint.
+async function postBulk(body: BulkUpdateInput) {
+  await $fetch(`/api/projects/${projectId.value}/reports/bulk-update`, {
+    method: "POST",
+    body,
+    credentials: "include",
+  })
+}
+
+async function undoBulk(inverse: BulkUpdateInput[]) {
   try {
-    await $fetch(`/api/projects/${projectId.value}/reports/bulk-update`, {
-      method: "POST",
-      body: { reportIds: checkedIds.value, status },
-      credentials: "include",
+    // Sequential on purpose: each group is one request and the server
+    // enqueues GitHub syncs per batch; parallel posts gain nothing here.
+    for (const body of inverse) await postBulk(body) // oxlint-disable-line no-await-in-loop
+    await refresh()
+    toast.add({ title: "Change undone", color: "success", icon: "i-heroicons-arrow-uturn-left" })
+  } catch (err) {
+    toast.add({
+      title: "Could not undo",
+      description: describeApiError(err),
+      color: "error",
+      icon: "i-heroicons-exclamation-triangle",
     })
+  }
+}
+
+async function runBulk(change: BulkChange) {
+  submittingBulk.value = true
+  const ids = checkedIds.value
+  const n = ids.length
+  const before: BulkUndoSnapshot[] = reports.value
+    .filter((r) => ids.includes(r.id))
+    .map((r) => ({ id: r.id, status: r.status, assignees: r.assignees.map((a) => a.login) }))
+  try {
+    await postBulk({ reportIds: ids, ...change })
     clearSelection()
     await refresh()
+    const inverse = inverseBulkChange(before, change)
     toast.add({
       title: `${n} report${n === 1 ? "" : "s"} updated`,
       color: "success",
       icon: "i-heroicons-check-circle",
+      actions:
+        inverse.length > 0
+          ? [
+              {
+                label: "Undo",
+                icon: "i-heroicons-arrow-uturn-left",
+                color: "neutral",
+                variant: "outline",
+                onClick: () => void undoBulk(inverse),
+              },
+            ]
+          : undefined,
     })
   } catch (err) {
     toast.add({
@@ -143,33 +191,8 @@ async function bulkStatus(status: ReportStatus) {
     submittingBulk.value = false
   }
 }
-async function bulkAssign(login: string | null) {
-  submittingBulk.value = true
-  const n = checkedIds.value.length
-  try {
-    await $fetch(`/api/projects/${projectId.value}/reports/bulk-update`, {
-      method: "POST",
-      body: { reportIds: checkedIds.value, assignees: login ? [login] : [] },
-      credentials: "include",
-    })
-    clearSelection()
-    await refresh()
-    toast.add({
-      title: `${n} report${n === 1 ? "" : "s"} updated`,
-      color: "success",
-      icon: "i-heroicons-check-circle",
-    })
-  } catch (err) {
-    toast.add({
-      title: "Could not update reports",
-      description: describeApiError(err),
-      color: "error",
-      icon: "i-heroicons-exclamation-triangle",
-    })
-  } finally {
-    submittingBulk.value = false
-  }
-}
+const bulkStatus = (status: ReportStatus) => runBulk({ status })
+const bulkAssign = (login: string | null) => runBulk({ assignees: login ? [login] : [] })
 
 // Row click / keyboard activation navigates to the dedicated report page.
 // Replaces the previous drawer integration — dedicated page gives full width,

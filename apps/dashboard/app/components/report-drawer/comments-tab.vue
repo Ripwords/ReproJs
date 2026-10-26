@@ -8,6 +8,7 @@
      a standalone tab — the parent's scroll container handles overflow. -->
 <script setup lang="ts">
 import RelativeTime from "~/components/common/relative-time.vue"
+import { describeApiError } from "~/utils/api-error"
 import type { CommentDTO } from "@reprojs/shared"
 
 interface Props {
@@ -93,9 +94,8 @@ async function submitComment() {
     composerBody.value = ""
     pendingAttachments.value = []
     await refresh()
-  } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
-    composerError.value = err.statusMessage ?? err.message ?? "Failed to post comment"
+  } catch (err) {
+    composerError.value = describeApiError(err, "Failed to post comment")
   } finally {
     composerLoading.value = false
   }
@@ -116,9 +116,8 @@ async function uploadFile(file: File): Promise<{ url: string; contentType: strin
       `/api/projects/${props.projectId}/reports/${props.reportId}/comments/upload-image`,
       { method: "POST", credentials: "include", body: form },
     )
-  } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
-    composerError.value = err.statusMessage ?? err.message ?? "Image upload failed"
+  } catch (err) {
+    composerError.value = describeApiError(err, "Image upload failed")
     return null
   }
 }
@@ -217,9 +216,8 @@ async function submitEdit(commentId: string) {
     )
     cancelEdit()
     await refresh()
-  } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
-    editError.value = err.statusMessage ?? err.message ?? "Failed to update comment"
+  } catch (err) {
+    editError.value = describeApiError(err, "Failed to update comment")
   } finally {
     editLoading.value = false
   }
@@ -248,11 +246,10 @@ async function deleteComment(comment: CommentDTO) {
       { method: "DELETE", credentials: "include" },
     )
     await refresh()
-  } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
+  } catch (err) {
     toast.add({
       title: "Could not delete comment",
-      description: err.statusMessage ?? err.message,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
