@@ -6,7 +6,7 @@ import { apiFetch, createUser, truncateDomain } from "../helpers"
 
 setDefaultTimeout(30000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 
 // Mail gateways (Microsoft 365 Safe Links, Proofpoint, antivirus scanners)
 // GET every link in an incoming email before the person sees it. The magic

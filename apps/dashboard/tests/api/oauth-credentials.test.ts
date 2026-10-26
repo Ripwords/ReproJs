@@ -65,10 +65,9 @@ describe("GET /api/integrations/github/oauth-credentials", () => {
     const cookie = await signIn("admin@example.com")
     // Raw `fetch` instead of `apiFetch` here because we need to inspect the
     // `Cache-Control` response header, which the shared helper discards.
-    const res = await fetch(
-      `${process.env.TEST_BASE_URL ?? `${BASE_URL}`}/api/integrations/github/oauth-credentials`,
-      { headers: { cookie } },
-    )
+    const res = await fetch(`${BASE_URL}/api/integrations/github/oauth-credentials`, {
+      headers: { cookie },
+    })
     expect(res.status).toBe(200)
     expect(res.headers.get("cache-control")).toContain("no-store")
 

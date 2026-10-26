@@ -7,7 +7,7 @@ import { apiFetch, createUser, signIn, truncateDomain } from "../helpers"
 
 setDefaultTimeout(30000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 
 async function findLatestToken(email: string): Promise<string | null> {
   const rows = await db

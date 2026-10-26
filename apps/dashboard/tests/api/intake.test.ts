@@ -12,7 +12,7 @@ import { projects, reports, reportAttachments } from "../../server/db/schema"
 await setup({ server: true, port: 3000, host: "localhost" })
 setDefaultTimeout(15000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 const PK = "rp_pk_ABCDEF1234567890abcdef12"
 const BAD_PK = "rp_pk_ZZZZZZZZZZZZZZZZZZZZZZZZ"
 const ORIGIN = "http://localhost:4000"

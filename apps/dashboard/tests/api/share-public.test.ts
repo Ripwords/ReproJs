@@ -9,7 +9,7 @@ import { createUser, seedProject, truncateDomain, truncateSharedMedia } from "..
 await setup({ server: true, port: 3000, host: "localhost" })
 setDefaultTimeout(15000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 const PK = "rp_pk_SHAREPUBLIC1234567890123"
 
 // Known 32-byte buffer: byte i has value i, so slicing is trivially verifiable.

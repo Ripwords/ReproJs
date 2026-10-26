@@ -23,7 +23,7 @@ await setup({ server: true, port: 3000, host: "localhost" })
 
 setDefaultTimeout(60000)
 
-const BASE_URL = process.env.TEST_BASE_URL ?? `${BASE_URL}`
+const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 const PK = "rp_pk_COMMENTS0000000000000000"
 const ORIGIN = "http://localhost:4000"
 

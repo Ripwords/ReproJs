@@ -2,8 +2,6 @@ import { beforeAll, expect, setDefaultTimeout, test } from "bun:test"
 import net from "node:net"
 import { seedProject, truncateDomain, truncateReports } from "../helpers"
 
-const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
-
 setDefaultTimeout(30_000)
 
 // Regression test for field bug: a report with a video attachment inside the
@@ -14,7 +12,7 @@ setDefaultTimeout(30_000)
 // The server must accept anything the SDK's own validation allows.
 const PK = "rp_pk_sizelimits000000000000001".slice(0, 30)
 const ORIGIN = "https://example.com"
-const BASE = process.env.TEST_BASE_URL ?? `${BASE_URL}`
+const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 
 beforeAll(async () => {
   await truncateDomain()

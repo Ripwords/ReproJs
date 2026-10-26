@@ -6,9 +6,7 @@ import { db } from "../../server/db"
 import { projects, projectMembers } from "../../server/db/schema"
 import { apiFetch, createUser, signIn, truncateDomain } from "../helpers"
 
-const BASE_URL = process.env.TEST_BASE_URL ?? "http://localhost:3000"
-
-const BASE = process.env.TEST_BASE_URL ?? `${BASE_URL}`
+const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000"
 
 beforeAll(() => {
   if (process.env.MCP_ENABLED !== "true") {
