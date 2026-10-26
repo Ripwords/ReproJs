@@ -12,7 +12,7 @@
 # ─────────────────────────────────────────────────────────────────
 # Stage 1: deps — resolve workspace deps; cached unless manifests change
 # ─────────────────────────────────────────────────────────────────
-FROM oven/bun:1.3 AS deps
+FROM oven/bun:1.4.4 AS deps
 WORKDIR /repo
 
 COPY package.json bun.lock ./
@@ -52,7 +52,7 @@ RUN bun --filter dashboard build \
 # ─────────────────────────────────────────────────────────────────
 # Stage 3: runtime — slim image with Nuxt output + migration tooling
 # ─────────────────────────────────────────────────────────────────
-FROM oven/bun:1.3-slim AS runtime
+FROM oven/bun:1.4.4-slim AS runtime
 WORKDIR /app
 
 # Non-root runtime user
