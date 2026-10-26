@@ -44,3 +44,20 @@ export function bootRepro(): void {
     console.debug("[repro-extension] Repro.init skipped:", err)
   }
 }
+
+export type BootState = "booted" | "sdk-loaded" | "fresh"
+
+// Answers "what is already in this page world?" so the service worker can
+// skip the steps that would clobber a live SDK. Re-evaluating repro.iife.js
+// over an initialised instance replaces window.Repro with a fresh module
+// whose `_config` is null — the launcher stays on screen but Repro.open()
+// then throws "called before init". That happens whenever tryInject runs a
+// second time against the same document: pushState navigations (tabs.
+// onUpdated reports a URL change and clears the dedupe slot), bfcache
+// restores, or a service worker revival that lost its in-memory Map.
+export function probeBootState(): BootState {
+  const g = globalThis as unknown as { __REPRO_BOOTED__?: boolean; Repro?: unknown }
+  if (g.__REPRO_BOOTED__ || document.getElementById("repro-host")) return "booted"
+  if (g.Repro) return "sdk-loaded"
+  return "fresh"
+}

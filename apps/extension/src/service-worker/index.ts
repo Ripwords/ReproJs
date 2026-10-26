@@ -1,5 +1,5 @@
 import { installBridge } from "../bootstrap/bridge"
-import { bootRepro, injectConfig } from "../bootstrap/set-config"
+import { bootRepro, injectConfig, probeBootState, type BootState } from "../bootstrap/set-config"
 import { installFetchProxy } from "../bootstrap/proxy-fetch"
 import { findConfigForUrl, toOrigin } from "../lib/origin"
 import { hasOriginPermission } from "../lib/permissions"
@@ -62,6 +62,24 @@ async function tryInject(tabId: number, url: string): Promise<void> {
   }
 
   try {
+    // 0. Ask the page world what is already there. This makes the whole
+    //    chain idempotent: a pushState navigation (tabs.onUpdated reports a
+    //    URL change and clears the dedupe slot), a bfcache restore, or a
+    //    revived service worker that lost its Map all re-run tryInject
+    //    against a live document. Re-evaluating the IIFE there would swap
+    //    window.Repro for a fresh module whose config is null, so the
+    //    launcher stays visible but Repro.open() throws "called before
+    //    init". Keep the dedupe slot: the page IS injected.
+    const [probe] = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [0] },
+      world: "MAIN",
+      func: probeBootState,
+    })
+    const state = probe?.result as BootState | undefined
+    if (state === "booted") {
+      console.debug("[repro-extension] SDK already booted in tab, skipping", tabId)
+      return
+    }
     // 1. Write __REPRO_CONFIG__ into the page world.
     await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
@@ -85,12 +103,16 @@ async function tryInject(tabId: number, url: string): Promise<void> {
       world: "ISOLATED",
       func: installBridge,
     })
-    // 4. Load the bundled SDK IIFE in the page world.
-    await chrome.scripting.executeScript({
-      target: { tabId, frameIds: [0] },
-      world: "MAIN",
-      files: ["repro.iife.js"],
-    })
+    // 4. Load the bundled SDK IIFE in the page world — skipped when the
+    //    probe above found one already evaluated (boot failed half-way or
+    //    the host page embeds the SDK itself); bootRepro then only inits.
+    if (state !== "sdk-loaded") {
+      await chrome.scripting.executeScript({
+        target: { tabId, frameIds: [0] },
+        world: "MAIN",
+        files: ["repro.iife.js"],
+      })
+    }
     // 5. Call Repro.init(). Guarded against double-init inside bootRepro.
     await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
