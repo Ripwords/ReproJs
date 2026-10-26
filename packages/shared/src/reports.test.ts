@@ -133,6 +133,8 @@ test("ReportSummaryDTO requires source and allows nullable devicePlatform", () =
     tags: [],
     githubIssueNumber: null,
     githubIssueUrl: null,
+    githubLinkKind: null,
+    reporterIssueHint: null,
     assignees: [],
     milestoneNumber: null,
     milestoneTitle: null,

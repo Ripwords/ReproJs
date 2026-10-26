@@ -2,16 +2,22 @@
 // option. They run in the page's MAIN world, so they must be self-contained
 // — no closures over module-scope values.
 
-export function injectConfig(projectKey: string, endpoint: string): void {
+export function injectConfig(projectKey: string, endpoint: string, relatedIssue: boolean): void {
   const g = globalThis as unknown as { __REPRO_CONFIG__?: unknown }
-  g.__REPRO_CONFIG__ = { projectKey, endpoint, source: "extension" }
+  g.__REPRO_CONFIG__ = { projectKey, endpoint, relatedIssue, source: "extension" }
 }
 
 export function bootRepro(sdkVersion: string): void {
   const g = globalThis as unknown as {
-    __REPRO_CONFIG__?: { projectKey: string; endpoint: string }
+    __REPRO_CONFIG__?: { projectKey: string; endpoint: string; relatedIssue?: boolean }
     __REPRO_BOOTED__?: boolean
-    Repro?: { init: (opts: { projectKey: string; endpoint: string }) => void }
+    Repro?: {
+      init: (opts: {
+        projectKey: string
+        endpoint: string
+        fields?: { relatedIssue?: boolean }
+      }) => void
+    }
   }
   // Two-layer guard. The IIFE's shadow-DOM host is keyed in a module-scoped
   // WeakMap, so a second IIFE load gets a fresh empty WeakMap and tries to
@@ -32,7 +38,11 @@ export function bootRepro(sdkVersion: string): void {
   if (!cfg || !g.Repro) return
   g.__REPRO_BOOTED__ = true
   try {
-    g.Repro.init({ projectKey: cfg.projectKey, endpoint: cfg.endpoint })
+    g.Repro.init({
+      projectKey: cfg.projectKey,
+      endpoint: cfg.endpoint,
+      fields: { relatedIssue: cfg.relatedIssue === true },
+    })
     console.info(`[repro-extension] Repro SDK v${sdkVersion} booted`)
   } catch (err) {
     // Belt-and-suspenders: if we somehow slipped past both guards (racing

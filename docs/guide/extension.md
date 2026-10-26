@@ -58,11 +58,14 @@ Need to test a dev build before it ships to the store, or don't want to run the 
    - **Origin** — the site you want to test on, as scheme + host + port (no path). Example: `https://staging.acme.com` or `http://localhost:3000`.
    - **Project key** — from your dashboard's project settings. Format: `rp_pk_` + 24 characters.
    - **Intake endpoint** — your dashboard's URL, e.g. `https://feedback.example.com` (the SDK appends `/api/intake/reports` itself).
+   - **Show 'Related GitHub issue' field** — on by default. Adds an optional input to the report form where a tester re-testing a known bug can type the issue it belongs to (`#42`, `owner/repo#42` or the issue URL). The text is sent as a hint only; the widget never reads from or writes to GitHub, and a manager confirms the link in the dashboard. Untick it for origins where testers should not see the field.
 4. Click **Add origin**.
 5. Chrome shows a native two-origin permission prompt asking for access to the site AND the intake endpoint host. Accept both.
 6. Open a new tab at the configured origin — the Repro launcher appears bottom-right.
 
 The extension remembers the last intake endpoint you used and pre-fills it on the next Add, so adding several test sites that point at the same dashboard doesn't require retyping.
+
+Each configured origin's card has the same **Show 'Related GitHub issue' field** checkbox, so you can flip it later without re-adding the origin. The change applies on the next page load of that origin. Origins added by an older build of the extension have the field on.
 
 ### Dashboard-side: allow the origin
 
@@ -82,7 +85,7 @@ Other permissions:
 
 | Permission | What it's for |
 | --- | --- |
-| `storage` | Stores the tester's local list of `{ label, origin, project key, intake endpoint }` entries. Never transmitted. |
+| `storage` | Stores the tester's local list of `{ label, origin, project key, intake endpoint, related-issue field on/off }` entries. Never transmitted. |
 | `scripting` | Injects the bundled SDK into pages whose origin the tester has configured + granted permission for. |
 | `activeTab` | Ensures the SDK can run on the current tab when the user interacts with the extension. |
 | `tabs` | Lets the service worker observe `tabs.onUpdated` as a fallback injection trigger once a page reports `complete`. Only the URL is read; tab titles, favicons, and content are not accessed. |

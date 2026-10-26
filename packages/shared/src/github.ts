@@ -50,9 +50,34 @@ export const CreateGithubLabelInput = z.object({
 })
 export type CreateGithubLabelInput = z.infer<typeof CreateGithubLabelInput>
 
+/** See ReportSummaryDTO.githubLinkKind for the semantics of each value. */
+export const GithubLinkKind = z.enum(["created", "attached"])
+export type GithubLinkKind = z.infer<typeof GithubLinkKind>
+
+// POST /api/projects/:id/reports/:reportId/github-link — attach a report to
+// an issue that already exists in the project's configured repository. The
+// server verifies the issue through the App installation before linking.
+export const LinkGithubIssueBody = z.object({
+  issueNumber: z.number().int().min(1).max(10_000_000),
+})
+export type LinkGithubIssueBody = z.infer<typeof LinkGithubIssueBody>
+
 // Response shapes for the dashboard's GitHub read endpoints. The server
 // handlers annotate their return types with these, so the dashboard UI and
 // the handlers share one definition.
+
+/** One issue as shown in the attach dialog (search results and URL preview). */
+export const GithubIssueSummaryDTO = z.object({
+  number: z.number().int(),
+  title: z.string(),
+  state: z.enum(["open", "closed"]),
+  url: z.string(),
+  labels: z.array(z.string()),
+  updatedAt: z.string(),
+})
+export type GithubIssueSummaryDTO = z.infer<typeof GithubIssueSummaryDTO>
+export const GithubIssueListDTO = z.object({ items: z.array(GithubIssueSummaryDTO) })
+export type GithubIssueListDTO = z.infer<typeof GithubIssueListDTO>
 
 export const GithubAppStatusDTO = z.discriminatedUnion("configured", [
   z.object({ configured: z.literal(false) }),

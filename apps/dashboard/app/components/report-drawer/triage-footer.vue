@@ -20,6 +20,7 @@ import LabelsPicker from "./pickers/labels-picker.vue"
 import AssigneesPicker from "./pickers/assignees-picker.vue"
 import MilestonePicker from "./pickers/milestone-picker.vue"
 import UnlinkDialog from "~/components/integrations/github/unlink-dialog.vue"
+import LinkIssueDialog from "~/components/integrations/github/link-issue-dialog.vue"
 import { safeHref } from "~/composables/use-safe-href"
 import {
   REPORT_PRIORITIES,
@@ -64,6 +65,21 @@ const isReportLinked = computed(
 const tagDraft = ref("")
 const unlinkOpen = ref(false)
 const ghSubmitting = ref(false)
+
+// "Attach to existing issue" dialog. `linkInitial` pre-fills the paste tab
+// when opened from the reporter-hint banner; null opens on the search tab.
+const linkOpen = ref(false)
+const linkInitial = ref<number | null>(null)
+function openLinkDialog(issueNumber: number | null = null) {
+  linkInitial.value = issueNumber
+  linkOpen.value = true
+}
+const isAttached = computed(() => props.report.githubLinkKind === "attached")
+// The reporter typed an issue number into the widget. Stored as plain data:
+// nothing is posted to GitHub until someone confirms in the dialog.
+const reporterHint = computed(() =>
+  props.report.githubIssueNumber === null ? props.report.reporterIssueHint : null,
+)
 
 // GitHub sync is async (in-process worker); poll the report until the issue
 // link lands, ~12s ceiling (12 attempts × 1s).
@@ -235,9 +251,12 @@ const labelsSummary = computed(() => {
 const githubSummary = computed(() => {
   if (syncFailed.value) return "Sync failed"
   if (props.report.githubIssueNumber && props.report.githubIssueUrl) {
-    return `#${props.report.githubIssueNumber}`
+    return isAttached.value
+      ? `#${props.report.githubIssueNumber} · Attached`
+      : `#${props.report.githubIssueNumber}`
   }
   if (syncInFlight.value) return "Syncing…"
+  if (reporterHint.value !== null && githubReady.value) return `Referenced #${reporterHint.value}`
   return githubReady.value ? "Not linked" : "Not configured"
 })
 
@@ -485,6 +504,12 @@ const priorityDotClass = computed<string>(() => {
                 #{{ report.githubIssueNumber }}
               </span>
             </span>
+            <UTooltip
+              v-if="isAttached"
+              text="This report follows the issue; Repro only adds comments to it."
+            >
+              <UBadge color="neutral" variant="subtle" size="xs" class="shrink-0">Attached</UBadge>
+            </UTooltip>
             <UIcon
               name="i-heroicons-arrow-top-right-on-square"
               class="size-4 shrink-0 text-muted group-hover:text-primary transition-colors"
@@ -510,18 +535,62 @@ const priorityDotClass = computed<string>(() => {
           <span>Creating the GitHub issue…</span>
         </div>
 
-        <UButton
-          v-else-if="githubReady"
-          size="md"
-          color="neutral"
-          variant="outline"
-          icon="i-simple-icons-github"
-          :loading="ghSubmitting"
-          :label="ghSubmitting ? 'Creating…' : 'Create GitHub issue'"
-          block
-          :disabled="!canEdit"
-          @click="createIssue"
-        />
+        <template v-else-if="githubReady">
+          <!-- Reporter hint: shown only while unlinked. Nothing has been
+               posted to GitHub; Attach opens the dialog pre-filled so the
+               manager sees the live issue title before confirming. -->
+          <div
+            v-if="reporterHint !== null"
+            class="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3"
+            role="status"
+          >
+            <div class="flex items-start gap-2">
+              <UIcon name="i-heroicons-link" class="size-4 text-primary shrink-0 mt-0.5" />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-default">
+                  Reporter referenced
+                  <span class="font-mono">#{{ reporterHint }}</span>
+                </p>
+                <p class="mt-0.5 text-sm text-muted leading-relaxed">
+                  Not attached yet. Nothing has been posted to GitHub; review the issue before
+                  attaching.
+                </p>
+              </div>
+            </div>
+            <UButton
+              v-if="canEdit"
+              :label="`Attach to #${reporterHint}`"
+              icon="i-heroicons-paper-clip"
+              size="sm"
+              color="primary"
+              variant="soft"
+              block
+              @click="openLinkDialog(reporterHint)"
+            />
+          </div>
+
+          <UButton
+            size="md"
+            color="neutral"
+            variant="outline"
+            icon="i-simple-icons-github"
+            :loading="ghSubmitting"
+            :label="ghSubmitting ? 'Creating…' : 'Create GitHub issue'"
+            block
+            :disabled="!canEdit"
+            @click="createIssue"
+          />
+          <UButton
+            size="md"
+            color="neutral"
+            variant="ghost"
+            icon="i-heroicons-paper-clip"
+            label="Attach to existing issue…"
+            block
+            :disabled="!canEdit || ghSubmitting"
+            @click="openLinkDialog()"
+          />
+        </template>
 
         <div
           v-else-if="canEdit"
@@ -555,9 +624,17 @@ const priorityDotClass = computed<string>(() => {
       v-if="report.githubIssueNumber && report.githubIssueUrl"
       :issue-number="report.githubIssueNumber"
       :repo-full-name="ghRepoFullName(report.githubIssueUrl)"
+      :link-kind="report.githubLinkKind"
       :open="unlinkOpen"
       @cancel="unlinkOpen = false"
       @confirm="unlink"
+    />
+    <LinkIssueDialog
+      v-model:open="linkOpen"
+      :project-id="projectId"
+      :report-id="report.id"
+      :initial-issue-number="linkInitial"
+      @attached="emit('patched')"
     />
   </div>
 </template>

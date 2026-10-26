@@ -315,6 +315,13 @@ export default String.raw`:host,
   outline: none;
   border-color: var(--ft-color-primary);
 }
+.ft-field input[aria-invalid="true"] {
+  border-color: var(--ft-color-danger);
+}
+.ft-field-error {
+  font-size: 12px;
+  color: var(--ft-color-danger);
+}
 
 /* === Review summary card === */
 .ft-summary {

@@ -34,6 +34,8 @@ const fakeConfig: ResolvedConfig = {
   metadata: undefined,
   replay: undefined,
   screenshot: undefined,
+  hotkey: undefined,
+  fields: { relatedIssue: false },
 }
 
 const fakeContext: IntakeInput["context"] = {

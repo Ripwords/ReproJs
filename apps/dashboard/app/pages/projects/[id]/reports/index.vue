@@ -39,6 +39,7 @@ import { activeQuickView, quickViewPatch, type QuickViewId } from "~/utils/inbox
 const UCheckbox = resolveComponent("UCheckbox")
 const UBadge = resolveComponent("UBadge")
 const UIcon = resolveComponent("UIcon")
+const UTooltip = resolveComponent("UTooltip")
 
 const route = useRoute()
 const toast = useToast()
@@ -418,7 +419,31 @@ const columns = computed<TableColumn<ReportSummaryDTO>[]>(() => [
     cell: ({ row }) => {
       const n = row.original.githubIssueNumber
       const url = row.original.githubIssueUrl
-      if (n == null || !url) return h("span", { class: "text-muted text-sm" }, "—")
+      if (n == null || !url) {
+        // Reporter typed an issue number into the widget but nobody has
+        // attached the report yet. Subtle chip; the tooltip says it's a hint.
+        const hint = row.original.reporterIssueHint
+        if (hint == null) return h("span", { class: "text-muted text-sm" }, "—")
+        return h(
+          UTooltip,
+          {
+            text: `Reporter referenced issue #${hint}. Not attached yet — nothing has been posted to GitHub.`,
+          },
+          () =>
+            h(
+              "span",
+              {
+                class:
+                  "inline-flex items-center gap-0.5 text-xs text-dimmed tabular-nums rounded-full px-1.5 py-0.5 ring-1 ring-inset ring-default/60",
+                "aria-label": `Reporter referenced issue #${hint}, not attached`,
+              },
+              [
+                h(UIcon, { name: "i-heroicons-arrow-up-right", class: "size-3" }),
+                h("span", {}, `#${hint}?`),
+              ],
+            ),
+        )
+      }
       return h(
         "a",
         {

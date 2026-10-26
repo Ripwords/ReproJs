@@ -123,6 +123,28 @@ Who can change the project's GitHub connection:
 
 Everyone on the project can see the panel. Controls your role can't use are shown disabled with a note saying which role they need.
 
+### Attaching reports to an existing issue
+
+Not every report deserves a new issue. When QA re-tests a known bug, the report can be **attached** to the issue that already tracks it instead. A report is linked to GitHub in one of two ways, and the dashboard shows which:
+
+| Link kind | How it happens | What Repro pushes to GitHub |
+| --- | --- | --- |
+| **Created** | Repro opened the issue (**Create issue**, or auto-create on intake). | Title, labels, state, assignees, milestone, comments — the report is the source of truth. |
+| **Attached** | A manager attached the report to an issue that already existed. | **Comments only.** The report *follows* the issue: status, labels, assignees, milestone and title are pulled in from GitHub and never written back. |
+
+**The flow**
+
+1. *(Optional)* The reporter types the issue they think they are hitting into the widget's **Related GitHub issue** field (`#42`, `42`, `owner/repo#42`, or the issue URL). Only the number is kept and stored on the report as a **hint**. Nothing is checked against GitHub at this point, and the reporter gets no feedback about whether the number exists, so guessing reveals nothing. A report that carries a hint is **never auto-created** as a new issue, even when the auto-create switch is on — a wrong guess cannot produce a stray issue.
+2. In the dashboard the report shows **Reporter referenced #42**. A manager (or above) clicks **Attach to existing issue**, or opens the dialog from the report's GitHub actions and searches the repo's open issues or pastes a number/URL. The dialog fetches the issue's title and state through the App installation first, so a wrong number shows an obviously wrong title and the manager declines. Only a signed-in dashboard user can list or preview issues; the widget and the Chrome extension never receive issue data.
+3. On **Attach**, Repro verifies the issue exists in the project's configured repository (pull requests and unknown numbers are rejected with *Issue not found*), links the report as **Attached**, and posts the full report — title, description, screenshot, page, environment, console/network logs and a link back to the dashboard — **once** as a comment on the issue. A retried sync never posts a second copy.
+4. From then on, closing or reopening the issue, relabelling it, assigning it, setting its milestone or editing its title updates the report. Dashboard comments on the report still mirror to the issue as comments, and issue comments mirror back.
+
+**Several reports on one issue.** Any number of reports can be attached to the same issue (alongside the one Repro may have created for it). Issue changes apply to every linked report. Inbound issue *comments* are mirrored to exactly one report, because a GitHub comment can only be stored once: the report Repro **created** the issue for when there is one, otherwise the **oldest attached** report. Comments written on the other attached reports still go out to the issue.
+
+**Unlinking** an attached report clears the link on the Repro side only; the comment Repro posted stays on GitHub.
+
+The MCP tool `repro_link_github_issue` performs the same attach (see [MCP](../guide/mcp)). Reports from the Expo SDK can be attached from the dashboard like any other, but the mobile widget has no related-issue field yet.
+
 ### Troubleshooting
 
 **Issues appear in Repro but never in GitHub** — check `docker compose logs dashboard | grep -i "github"`. Usually an invalid private key (key was not generated for this App) or a wrong `GITHUB_APP_ID`.

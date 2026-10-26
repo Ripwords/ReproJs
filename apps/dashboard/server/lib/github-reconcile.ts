@@ -49,7 +49,7 @@ import {
 import { recordWriteLock } from "./github-write-locks"
 import { withBotFooter, stripBotFooter } from "./comment-serializer"
 import { resolveGithubUser } from "./github-identities"
-import type { GithubIntegration } from "../db/schema"
+import type { GithubIntegration, Report } from "../db/schema"
 
 export class ReconcileSkipped extends Error {}
 
@@ -545,6 +545,62 @@ async function backfillGithubComments(
     .where(eq(reports.id, reportId))
 }
 
+// --- Attached reports: one-time body comment ---
+
+/**
+ * Post the report body (same renderer as a new issue, marker included) as a
+ * comment on the issue the report was attached to. Idempotent: the comment
+ * id is stored on the report and re-read under a per-report advisory lock,
+ * so a retry or a concurrent worker never posts a second copy. The write-lock
+ * makes the inbound `issue_comment.created` echo drop exactly like a
+ * mirrored dashboard comment.
+ */
+async function postAttachComment(
+  report: Report,
+  issueNumber: number,
+  body: string,
+  octokit: Octokit,
+  gi: GithubIntegration,
+): Promise<void> {
+  if (report.githubAttachCommentId !== null) return
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${report.id}))`)
+    const [fresh] = await tx
+      .select({
+        githubAttachCommentId: reports.githubAttachCommentId,
+        githubIssueNumber: reports.githubIssueNumber,
+      })
+      .from(reports)
+      .where(eq(reports.id, report.id))
+      .limit(1)
+    // Another worker posted it, or the report was unlinked meanwhile.
+    if (!fresh || fresh.githubAttachCommentId !== null || fresh.githubIssueNumber !== issueNumber) {
+      return
+    }
+    // A new issue carries the report title as its own title; a comment has
+    // no title, so lead with it — the issue may collect several reports.
+    const commentBody = `### ${report.title}\n\n${body}`
+    const created = await createIssueComment(
+      octokit,
+      gi.repoOwner,
+      gi.repoName,
+      issueNumber,
+      commentBody,
+    )
+    // Recorded outside the transaction so the lock is visible the moment
+    // GitHub's echo webhook arrives, not only after this tx commits.
+    await recordWriteLock(db, {
+      reportId: report.id,
+      kind: "comment_upsert",
+      signature: signCommentUpsert(created.id, commentBody),
+    })
+    await tx
+      .update(reports)
+      .set({ githubAttachCommentId: created.id })
+      .where(eq(reports.id, report.id))
+  })
+}
+
 // --- Main reconciler ---
 
 export async function reconcileReport(reportId: string): Promise<void> {
@@ -685,6 +741,7 @@ export async function reconcileReport(reportId: string): Promise<void> {
           githubIssueNumber: ref.number,
           githubIssueNodeId: ref.nodeId,
           githubIssueUrl: ref.url,
+          githubLinkKind: "created",
           githubSyncedAt: new Date(),
         })
         .where(eq(reports.id, report.id))
@@ -764,6 +821,16 @@ export async function reconcileReport(reportId: string): Promise<void> {
     // Production path: build raw Octokit, get full live issue state.
     octokit = await getRawOctokit(gi.installationId)
     live = await loadCurrentGithubIssue(octokit, gi.repoOwner, gi.repoName, issueNumber)
+  }
+
+  if (report.githubLinkKind === "attached") {
+    // The report was attached to an issue someone else opened. It follows
+    // that issue: the webhook pulls state/labels/assignees/milestone/title
+    // in, nothing is pushed out except comments. The only outbound write is
+    // the one-time comment carrying the report body.
+    await postAttachComment(report, issueNumber, body, octokit, gi)
+    await db.update(reports).set({ githubSyncedAt: new Date() }).where(eq(reports.id, report.id))
+    return
   }
 
   const desiredAssigneeLogins = await loadDesiredAssigneeLogins(report.id)

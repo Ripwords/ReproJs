@@ -8,11 +8,8 @@ import { requireProjectRoleByUser } from "../../lib/permissions"
 import { mcpError } from "../errors"
 import { applyTicketTriagePatch, applyTicketTriagePatchSideEffects } from "../../lib/triage"
 import { addReportComment, addReportCommentSideEffects } from "../../lib/comments-service"
-import {
-  linkReportToGithubIssue,
-  linkReportToGithubIssueSideEffects,
-  unlinkReportFromGithubIssue,
-} from "../../lib/github-link"
+import { unlinkReportFromGithubIssue } from "../../lib/github-link"
+import { attachReportToGithubIssue, requireConnectedRepo } from "../../lib/github-attach"
 import type { McpRequestContext } from "../context"
 
 async function loadReportProjectId(ticketId: string): Promise<string> {
@@ -146,7 +143,7 @@ export const linkGithubIssueTool = {
   name: "repro_link_github_issue",
   config: {
     description:
-      "Link a Repro ticket to an existing GitHub issue. The link is asynchronous — the next sync tick pulls the issue's labels/assignees/status from GitHub. The project must have a connected GitHub integration. Permission: manager+.",
+      "Attach a Repro ticket to an existing GitHub issue in the project's configured repository. The issue is verified first (NOT_FOUND if it does not exist or is a pull request). The ticket then FOLLOWS the issue: status, labels, assignees and milestone are pulled from GitHub and never pushed; Repro posts the ticket's report (screenshot, environment, logs) once as a comment on the issue, and later dashboard comments mirror as issue comments. repoOwner/repoName must match the project's configured repo. Permission: manager+.",
     inputSchema: z.object({
       ticketId: z.string().uuid(),
       repoOwner: z.string().min(1).max(80),
@@ -166,23 +163,26 @@ export const linkGithubIssueTool = {
     const projectId = await loadReportProjectId(input.ticketId)
     await requireProjectRoleByUser(ctx.userId, projectId, "manager")
 
-    const result = await db.transaction(async (tx) =>
-      linkReportToGithubIssue(tx, {
-        projectId,
-        reportId: input.ticketId,
-        actorId: ctx.userId,
-        actorClientId: ctx.clientId,
-        repoOwner: input.repoOwner,
-        repoName: input.repoName,
-        issueNumber: input.issueNumber,
-      }),
-    )
-    if (!result.alreadyLinked) {
-      await linkReportToGithubIssueSideEffects({
-        reportId: input.ticketId,
-        projectId,
-      })
+    // A report can only be attached to the project's own repo: the App
+    // installation client is scoped to it and the webhook routes by it.
+    const integration = await requireConnectedRepo(projectId)
+    if (
+      integration.repoOwner.toLowerCase() !== input.repoOwner.toLowerCase() ||
+      integration.repoName.toLowerCase() !== input.repoName.toLowerCase()
+    ) {
+      throw mcpError(
+        "INVALID_INPUT",
+        `project is linked to ${integration.repoOwner}/${integration.repoName}, not ${input.repoOwner}/${input.repoName}`,
+      )
     }
+
+    const result = await attachReportToGithubIssue({
+      projectId,
+      reportId: input.ticketId,
+      actorId: ctx.userId,
+      actorClientId: ctx.clientId,
+      issueNumber: input.issueNumber,
+    })
 
     return {
       content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],

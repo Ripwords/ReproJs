@@ -12,6 +12,7 @@ const cfg = (
   origin,
   projectKey: "rp_pk_aaaaaaaaaaaaaaaaaaaaaaaa",
   intakeEndpoint,
+  relatedIssueField: true,
   createdAt: 0,
 })
 

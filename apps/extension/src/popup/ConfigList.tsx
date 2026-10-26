@@ -5,9 +5,10 @@ type Props = {
   configs: readonly ConfigWithStatus[]
   onRemove: (id: string) => void
   onRegrant: (id: string) => void
+  onToggleRelatedIssue: (id: string, enabled: boolean) => void
 }
 
-export function ConfigList({ configs, onRemove, onRegrant }: Props) {
+export function ConfigList({ configs, onRemove, onRegrant, onToggleRelatedIssue }: Props) {
   if (configs.length === 0) {
     return (
       <div class="list-empty">
@@ -19,7 +20,13 @@ export function ConfigList({ configs, onRemove, onRegrant }: Props) {
   return (
     <div class="list">
       {configs.map((c) => (
-        <ConfigItem key={c.id} config={c} onRemove={onRemove} onRegrant={onRegrant} />
+        <ConfigItem
+          key={c.id}
+          config={c}
+          onRemove={onRemove}
+          onRegrant={onRegrant}
+          onToggleRelatedIssue={onToggleRelatedIssue}
+        />
       ))}
     </div>
   )
@@ -29,9 +36,10 @@ type ItemProps = {
   config: ConfigWithStatus
   onRemove: (id: string) => void
   onRegrant: (id: string) => void
+  onToggleRelatedIssue: (id: string, enabled: boolean) => void
 }
 
-function ConfigItem({ config, onRemove, onRegrant }: ItemProps) {
+function ConfigItem({ config, onRemove, onRegrant, onToggleRelatedIssue }: ItemProps) {
   const destHost = useMemo(() => {
     try {
       return new URL(config.intakeEndpoint).host
@@ -51,6 +59,16 @@ function ConfigItem({ config, onRemove, onRegrant }: ItemProps) {
         <div class="cfg-dest" title={config.intakeEndpoint}>
           {destHost}
         </div>
+        <label class="check check-inline">
+          <input
+            type="checkbox"
+            checked={config.relatedIssueField}
+            onChange={(e) =>
+              onToggleRelatedIssue(config.id, (e.target as HTMLInputElement).checked)
+            }
+          />
+          <span>Show 'Related GitHub issue' field</span>
+        </label>
       </div>
       <div class="cfg-actions">
         <button

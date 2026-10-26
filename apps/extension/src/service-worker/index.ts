@@ -111,7 +111,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
       target: { tabId, frameIds: [0] },
       world: "MAIN",
       func: injectConfig,
-      args: [match.projectKey, match.intakeEndpoint],
+      args: [match.projectKey, match.intakeEndpoint, match.relatedIssueField],
     })
     // 2. Install the fetch proxy BEFORE the SDK loads so the SDK's intake
     //    POST is routed through the service worker instead of hitting the

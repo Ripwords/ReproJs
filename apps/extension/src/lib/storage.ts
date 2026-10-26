@@ -3,10 +3,20 @@ import type { Config, ConfigInput } from "../types"
 const KEY = "configs"
 const LAST_INTAKE_KEY = "lastIntakeEndpoint"
 
+// What older extension builds wrote: every current key except the ones
+// added later, which are optional here and normalised on read.
+type StoredConfig = Omit<Config, "relatedIssueField"> & { relatedIssueField?: boolean }
+
+// The single place a stored config becomes a Config. Testers are the
+// audience, so a config that predates the related-issue toggle gets it on.
+function normalise(stored: StoredConfig): Config {
+  return { ...stored, relatedIssueField: stored.relatedIssueField ?? true }
+}
+
 async function readAll(): Promise<Config[]> {
   const result = await chrome.storage.local.get([KEY])
-  const value = (result as { configs?: Config[] }).configs
-  return value ?? []
+  const value = (result as { configs?: StoredConfig[] }).configs
+  return (value ?? []).map(normalise)
 }
 
 async function writeAll(configs: Config[]): Promise<void> {

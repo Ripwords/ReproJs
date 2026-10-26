@@ -2,6 +2,7 @@
 export { mount, open, close, unmount, openMenu, openCapture, openRecord, openGallery } from "./mount"
 export type {
   MountOptions,
+  ReporterFields,
   WidgetMode,
   PendingShareInput,
   RecordingResultLike,

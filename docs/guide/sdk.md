@@ -275,10 +275,34 @@ interface InitOptions {
     blockSelectors?: string[]
     maxBytes?: number
   }
+  fields?: {
+    relatedIssue?: boolean // show the "Related GitHub issue" input, default false
+  }
 }
 ```
 
 Returns a `FeedbackHandle` with `pauseReplay()` / `resumeReplay()` methods.
+
+#### `fields.relatedIssue`
+
+Off by default. When on, the report form gets an optional single-line input, **Related GitHub issue**, under the description. It is meant for testers who re-test a known bug and already know which issue it belongs to.
+
+```ts
+init({
+  projectKey: "rp_pk_…",
+  endpoint: "https://feedback.example.com",
+  fields: { relatedIssue: true },
+})
+```
+
+Accepted formats: `42`, `#42`, `owner/repo#42`, `GH-42`, or the issue URL (`https://github.com/owner/repo/issues/42`). Pull-request links are rejected. Text that is not an issue reference blocks **Continue** with an inline hint until it is fixed or cleared.
+
+The value is sent with the report as a plain-text **hint** (`relatedIssue`) and nothing more:
+
+- The widget never fetches or lists issues and never writes to GitHub — it is anonymous and public, so it is not told whether the number exists.
+- The dashboard shows the hint as "Reporter referenced #42" and a manager confirms the link there. Reports carrying a hint are also skipped by auto-create, so a wrong number can never open a stray issue.
+
+The [Tester extension](/guide/extension) turns this field on per origin by default.
 
 ### `open()` / `close()`
 
