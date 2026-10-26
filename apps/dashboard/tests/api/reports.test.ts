@@ -387,7 +387,7 @@ describe("attachment GET", () => {
     expect(res.headers.get("cache-control")).toBe("private, max-age=3600")
   })
 
-  test("token-authenticated GET is served immutable so GitHub's image proxy can cache it", async () => {
+  test("token-authenticated GET is publicly cacheable for a day so GitHub's image proxy can cache it", async () => {
     const admin = await createUser("admin@example.com", "admin")
     const projectId = await seedProject({
       name: "Demo",
@@ -413,14 +413,14 @@ describe("attachment GET", () => {
     )
     expect(res.status).toBe(200)
     expect(res.headers.get("content-type")).toBe("image/png")
-    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable")
+    expect(res.headers.get("cache-control")).toBe("public, max-age=86400")
 
     // A bad token must not get the cacheable response (or any bytes).
     const bad = await fetch(
       `${BASE_URL}/api/projects/${projectId}/reports/${reportId}/attachment?kind=screenshot&token=${"0".repeat(64)}&expires=${expiresAt}`,
     )
     expect(bad.status).toBe(401)
-    expect(bad.headers.get("cache-control")).not.toContain("immutable")
+    expect(bad.headers.get("cache-control")).not.toContain("public")
   })
 
   test("cross-project attachment access returns 404", async () => {

@@ -152,13 +152,11 @@ export default defineEventHandler(async (event) => {
   setHeader(event, "X-Content-Type-Options", "nosniff")
   setHeader(event, "Content-Security-Policy", "default-src 'none'; img-src 'self' data:; sandbox")
   // Token links are embedded in GitHub issues and fetched by GitHub's image
-  // proxy; the bytes behind a (report, kind) never change, so let caches keep
-  // them. Session responses stay private.
-  setHeader(
-    event,
-    "Cache-Control",
-    usedToken ? "public, max-age=31536000, immutable" : "private, max-age=3600",
-  )
+  // proxy. Let shared caches keep them for a day: long enough that the proxy
+  // rarely re-fetches, short enough that deleting a report or rotating the
+  // signing secret stops serving the image within 24h. Session responses stay
+  // private.
+  setHeader(event, "Cache-Control", usedToken ? "public, max-age=86400" : "private, max-age=3600")
   setResponseStatus(event, 200)
   // Mark `contentType` intentionally unused — we allowlist the served type.
   void contentType
