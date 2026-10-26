@@ -190,23 +190,36 @@ export async function recoverStuckJobs(): Promise<void> {
 }
 
 /**
- * Drain the queue: pick up to `limit` pending rows ready to run, claim
- * each, and process in parallel. Called by the cron on each tick.
+ * Drain the queue: keep claiming batches of `batch` runnable rows and
+ * processing each batch in parallel until nothing is left or `max` jobs
+ * have run this tick. Called by the cron on each tick. A single batch per
+ * tick meant a backlog after a restart drained at 10 jobs/minute.
  */
-export async function drainPendingJobs(limit = 10): Promise<{ processed: number }> {
-  const batch = await db
-    .select({
-      reportId: reportSyncJobs.reportId,
-      signature: reportSyncJobs.signature,
-    })
-    .from(reportSyncJobs)
-    .where(and(eq(reportSyncJobs.state, "pending"), lte(reportSyncJobs.nextAttemptAt, new Date())))
-    .orderBy(reportSyncJobs.nextAttemptAt)
-    .limit(limit)
-
-  if (batch.length === 0) return { processed: 0 }
-  await Promise.all(batch.map((r) => runSyncJob(r.reportId, r.signature)))
-  return { processed: batch.length }
+export async function drainPendingJobs(
+  opts: { batch?: number; max?: number } = {},
+): Promise<{ processed: number }> {
+  const batchSize = opts.batch ?? 10
+  const max = opts.max ?? 500
+  let processed = 0
+  while (processed < max) {
+    // eslint-disable-next-line no-await-in-loop -- each batch must finish before the next claim so a failed job (now pending with backoff) isn't re-selected
+    const batch = await db
+      .select({
+        reportId: reportSyncJobs.reportId,
+        signature: reportSyncJobs.signature,
+      })
+      .from(reportSyncJobs)
+      .where(
+        and(eq(reportSyncJobs.state, "pending"), lte(reportSyncJobs.nextAttemptAt, new Date())),
+      )
+      .orderBy(reportSyncJobs.nextAttemptAt)
+      .limit(Math.min(batchSize, max - processed))
+    if (batch.length === 0) break
+    // eslint-disable-next-line no-await-in-loop -- see above
+    await Promise.all(batch.map((r) => runSyncJob(r.reportId, r.signature)))
+    processed += batch.length
+  }
+  return { processed }
 }
 
 // Re-exported for tests that want to exercise only the process side
