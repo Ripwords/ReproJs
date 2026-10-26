@@ -13,6 +13,7 @@ import {
   getLastIntakeEndpoint,
   listConfigs,
   setLastIntakeEndpoint,
+  updateConfig,
 } from "../lib/storage"
 
 export type PermissionStatus = "granted" | "pending"
@@ -131,5 +132,22 @@ export function useConfigs() {
     [items],
   )
 
-  return { items, loading, lastIntakeEndpoint, refresh, add, remove, regrant }
+  const setRelatedIssueField = useCallback(
+    async (id: string, enabled: boolean): Promise<void> => {
+      await updateConfig(id, { relatedIssueField: enabled })
+      await refresh()
+    },
+    [refresh],
+  )
+
+  return {
+    items,
+    loading,
+    lastIntakeEndpoint,
+    refresh,
+    add,
+    remove,
+    regrant,
+    setRelatedIssueField,
+  }
 }

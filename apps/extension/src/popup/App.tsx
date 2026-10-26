@@ -9,7 +9,7 @@ import { useConfigs } from "./useConfigs"
 type Mode = "list" | "add"
 
 export function App() {
-  const { items, add, remove, regrant, lastIntakeEndpoint } = useConfigs()
+  const { items, add, remove, regrant, setRelatedIssueField, lastIntakeEndpoint } = useConfigs()
   const activeTabOrigin = useActiveTabOrigin()
   const [mode, setMode] = useState<Mode>("list")
 
@@ -48,7 +48,12 @@ export function App() {
               + New origin
             </button>
           </div>
-          <ConfigList configs={items} onRemove={remove} onRegrant={regrant} />
+          <ConfigList
+            configs={items}
+            onRemove={remove}
+            onRegrant={regrant}
+            onToggleRelatedIssue={setRelatedIssueField}
+          />
         </>
       ) : (
         <>

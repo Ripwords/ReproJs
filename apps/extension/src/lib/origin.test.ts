@@ -8,6 +8,7 @@ const cfg = (origin: string, id = "1"): Config => ({
   origin,
   projectKey: "rp_pk_aaaaaaaaaaaaaaaaaaaaaaaa",
   intakeEndpoint: "https://repro.example.com",
+  relatedIssueField: true,
   createdAt: 0,
 })
 

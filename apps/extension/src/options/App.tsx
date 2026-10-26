@@ -7,7 +7,8 @@ import "./styles.css"
 import { useConfigs } from "../popup/useConfigs"
 
 export function App() {
-  const { items, add, remove, regrant, lastIntakeEndpoint, loading } = useConfigs()
+  const { items, add, remove, regrant, setRelatedIssueField, lastIntakeEndpoint, loading } =
+    useConfigs()
 
   return (
     <div class="opt-shell">
@@ -24,7 +25,12 @@ export function App() {
               {items.length > 0 && <strong>{items.length}</strong>}
             </span>
           </div>
-          <ConfigList configs={items} onRemove={remove} onRegrant={regrant} />
+          <ConfigList
+            configs={items}
+            onRemove={remove}
+            onRegrant={regrant}
+            onToggleRelatedIssue={setRelatedIssueField}
+          />
         </section>
 
         <section class="opt-section">
