@@ -74,6 +74,24 @@ test("redacts denylisted request headers", async () => {
   c.stop()
 })
 
+// Sentry, Datadog, polyfills: anything that wraps fetch after Repro started
+// would be ripped out by stop() restoring the pre-Repro fetch wholesale, with
+// Repro's own wrapper still inside the other library's chain.
+test("stop leaves a wrapper that another library installed after start in place", () => {
+  const c = createNetworkCollector({
+    max: 10,
+    captureBodies: false,
+    redact: { headerDenylist: [], bodyRedactKeys: [] },
+  })
+  c.start()
+  const reproWrapper = globalThis.fetch
+  const otherLibrary = ((...args: Parameters<typeof fetch>) =>
+    reproWrapper(...args)) as typeof fetch
+  globalThis.fetch = otherLibrary
+  c.stop()
+  expect(globalThis.fetch).toBe(otherLibrary)
+})
+
 test("stop restores the original fetch", () => {
   const original = globalThis.fetch
   const c = createNetworkCollector({
