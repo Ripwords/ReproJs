@@ -64,6 +64,48 @@ describe("init — SSR safety", () => {
     expect(registerCalls).toBe(0)
   })
 
+  test("init() before <body> exists defers mount + collectors to DOMContentLoaded", async () => {
+    // `<script async onload="Repro.init()">` in <head> with a cached bundle
+    // fires before the body is parsed. Simulate that with a bare document
+    // whose body is still null and capture the deferred listener.
+    const listeners: Record<string, Array<() => void>> = {}
+    const fakeDocument = {
+      body: null as unknown,
+      addEventListener: (type: string, cb: () => void) => {
+        ;(listeners[type] ??= []).push(cb)
+      },
+      removeEventListener: (type: string, cb: () => void) => {
+        listeners[type] = (listeners[type] ?? []).filter((l) => l !== cb)
+      },
+    }
+    const g = globalThis as unknown as Record<string, unknown>
+    g.window = {}
+    g.document = fakeDocument
+    const mountsBefore = mountCalls
+    const registersBefore = registerCalls
+    try {
+      const { init, _unmount } = await import("./index")
+      const handle = init({
+        projectKey: "rp_pk_ABCDEF1234567890abcdef12",
+        endpoint: "https://dash.example.com",
+      })
+      // Nothing touched the DOM yet, and the handle is already usable.
+      expect(mountCalls).toBe(mountsBefore)
+      expect(registerCalls).toBe(registersBefore)
+      expect(() => handle.pauseReplay()).not.toThrow()
+      expect(listeners.DOMContentLoaded?.length).toBe(1)
+
+      fakeDocument.body = {}
+      for (const cb of listeners.DOMContentLoaded ?? []) cb()
+      expect(mountCalls).toBe(mountsBefore + 1)
+      expect(registerCalls).toBe(registersBefore + 1)
+      _unmount()
+    } finally {
+      delete g.window
+      delete g.document
+    }
+  })
+
   test("public functions are safe to call server-side", async () => {
     const { identify, log, pauseReplay, resumeReplay, close } = await import("./index")
 
