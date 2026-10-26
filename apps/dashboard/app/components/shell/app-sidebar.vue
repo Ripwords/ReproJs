@@ -176,21 +176,23 @@ function isActive(item: NavItem): boolean {
          current location before anywhere else. -->
     <nav class="flex-1 overflow-y-auto py-3">
       <!-- Root: always-visible "All projects" entry -->
-      <div :class="['px-2', collapsed ? '' : '']">
-        <NuxtLink
-          to="/"
-          :aria-label="collapsed ? 'All projects' : undefined"
-          :class="[
-            'flex items-center rounded-lg transition-colors',
-            collapsed ? 'justify-center size-10' : 'gap-3 px-3 py-2.5',
-            route.path === '/'
-              ? 'bg-elevated text-default font-semibold'
-              : 'text-muted hover:text-default hover:bg-elevated/60 font-medium',
-          ]"
-        >
-          <UIcon name="i-heroicons-squares-2x2" class="size-4 shrink-0" />
-          <span v-if="!collapsed" class="text-sm truncate">All projects</span>
-        </NuxtLink>
+      <div class="px-2">
+        <UTooltip text="All projects" :disabled="!collapsed" :content="{ side: 'right' }">
+          <NuxtLink
+            to="/"
+            :aria-label="collapsed ? 'All projects' : undefined"
+            :class="[
+              'flex items-center rounded-lg transition-colors',
+              collapsed ? 'justify-center size-10' : 'gap-3 px-3 py-2.5',
+              route.path === '/'
+                ? 'bg-elevated text-default font-semibold'
+                : 'text-muted hover:text-default hover:bg-elevated/60 font-medium',
+            ]"
+          >
+            <UIcon name="i-heroicons-squares-2x2" class="size-4 shrink-0" />
+            <span v-if="!collapsed" class="text-sm truncate">All projects</span>
+          </NuxtLink>
+        </UTooltip>
       </div>
 
       <!-- Invitations: only rendered when the user has pending invites.
@@ -198,36 +200,42 @@ function isActive(item: NavItem): boolean {
            sidebar doesn't carry a permanent slot for something most
            users won't see. -->
       <div v-if="pendingInviteCount > 0" class="mt-1 px-2">
-        <NuxtLink
-          to="/invitations"
-          :aria-label="
-            collapsed
-              ? `${pendingInviteCount} pending invitation${pendingInviteCount === 1 ? '' : 's'}`
-              : undefined
-          "
-          :class="[
-            'flex items-center rounded-lg transition-colors',
-            collapsed ? 'justify-center size-10' : 'gap-3 px-3 py-2.5',
-            route.path === '/invitations'
-              ? 'bg-elevated text-default font-semibold'
-              : 'text-muted hover:text-default hover:bg-elevated/60 font-medium',
-          ]"
+        <UTooltip
+          :text="`${pendingInviteCount} pending invitation${pendingInviteCount === 1 ? '' : 's'}`"
+          :disabled="!collapsed"
+          :content="{ side: 'right' }"
         >
-          <UIcon name="i-heroicons-envelope" class="size-4 shrink-0" />
-          <span v-if="!collapsed" class="text-sm truncate flex-1">Invitations</span>
-          <span
-            v-if="!collapsed"
-            class="text-sm font-semibold px-1.5 py-0.5 rounded bg-primary-500 text-white"
+          <NuxtLink
+            to="/invitations"
+            :aria-label="
+              collapsed
+                ? `${pendingInviteCount} pending invitation${pendingInviteCount === 1 ? '' : 's'}`
+                : undefined
+            "
+            :class="[
+              'flex items-center rounded-lg transition-colors',
+              collapsed ? 'justify-center size-10' : 'gap-3 px-3 py-2.5',
+              route.path === '/invitations'
+                ? 'bg-elevated text-default font-semibold'
+                : 'text-muted hover:text-default hover:bg-elevated/60 font-medium',
+            ]"
           >
-            {{ pendingInviteCount }}
-          </span>
-          <span
-            v-else
-            class="absolute ml-5 mt-[-18px] text-sm font-semibold px-1 py-0 rounded-full bg-primary-500 text-white"
-          >
-            {{ pendingInviteCount }}
-          </span>
-        </NuxtLink>
+            <UIcon name="i-heroicons-envelope" class="size-4 shrink-0" />
+            <span v-if="!collapsed" class="text-sm truncate flex-1">Invitations</span>
+            <span
+              v-if="!collapsed"
+              class="text-sm font-semibold px-1.5 py-0.5 rounded bg-primary-500 text-white"
+            >
+              {{ pendingInviteCount }}
+            </span>
+            <span
+              v-else
+              class="absolute ml-5 mt-[-18px] text-sm font-semibold px-1 py-0 rounded-full bg-primary-500 text-white"
+            >
+              {{ pendingInviteCount }}
+            </span>
+          </NuxtLink>
+        </UTooltip>
       </div>
 
       <!-- Project scope: eyebrow with current project name + nav items -->
@@ -241,22 +249,28 @@ function isActive(item: NavItem): boolean {
         </div>
         <div v-else-if="collapsed" class="mx-2 my-3 border-t border-default" />
         <div class="space-y-0.5">
-          <NuxtLink
+          <UTooltip
             v-for="item in projectItems"
             :key="item.to"
-            :to="item.to"
-            :aria-label="collapsed ? item.label : undefined"
-            :class="[
-              'flex items-center rounded-lg transition-colors',
-              collapsed ? 'justify-center size-10' : 'gap-3 px-3 py-2.5',
-              isActive(item)
-                ? 'bg-elevated text-default font-semibold'
-                : 'text-muted hover:text-default hover:bg-elevated/60 font-medium',
-            ]"
+            :text="item.label"
+            :disabled="!collapsed"
+            :content="{ side: 'right' }"
           >
-            <UIcon :name="item.icon" class="size-4 shrink-0" />
-            <span v-if="!collapsed" class="text-sm truncate">{{ item.label }}</span>
-          </NuxtLink>
+            <NuxtLink
+              :to="item.to"
+              :aria-label="collapsed ? item.label : undefined"
+              :class="[
+                'flex items-center rounded-lg transition-colors',
+                collapsed ? 'justify-center size-10' : 'gap-3 px-3 py-2.5',
+                isActive(item)
+                  ? 'bg-elevated text-default font-semibold'
+                  : 'text-muted hover:text-default hover:bg-elevated/60 font-medium',
+              ]"
+            >
+              <UIcon :name="item.icon" class="size-4 shrink-0" />
+              <span v-if="!collapsed" class="text-sm truncate">{{ item.label }}</span>
+            </NuxtLink>
+          </UTooltip>
         </div>
       </div>
 
@@ -277,22 +291,28 @@ function isActive(item: NavItem): boolean {
         </div>
         <div v-else class="mx-2 my-3 border-t border-default" />
         <div class="space-y-0.5">
-          <NuxtLink
+          <UTooltip
             v-for="item in adminItems"
             :key="item.to"
-            :to="item.to"
-            :aria-label="collapsed ? item.label : undefined"
-            :class="[
-              'flex items-center rounded-lg transition-colors',
-              collapsed ? 'justify-center size-10' : 'gap-3 px-3 py-2.5',
-              isActive(item)
-                ? 'bg-elevated text-default font-semibold'
-                : 'text-muted hover:text-default hover:bg-elevated/60 font-medium',
-            ]"
+            :text="item.label"
+            :disabled="!collapsed"
+            :content="{ side: 'right' }"
           >
-            <UIcon :name="item.icon" class="size-4 shrink-0" />
-            <span v-if="!collapsed" class="text-sm truncate">{{ item.label }}</span>
-          </NuxtLink>
+            <NuxtLink
+              :to="item.to"
+              :aria-label="collapsed ? item.label : undefined"
+              :class="[
+                'flex items-center rounded-lg transition-colors',
+                collapsed ? 'justify-center size-10' : 'gap-3 px-3 py-2.5',
+                isActive(item)
+                  ? 'bg-elevated text-default font-semibold'
+                  : 'text-muted hover:text-default hover:bg-elevated/60 font-medium',
+              ]"
+            >
+              <UIcon :name="item.icon" class="size-4 shrink-0" />
+              <span v-if="!collapsed" class="text-sm truncate">{{ item.label }}</span>
+            </NuxtLink>
+          </UTooltip>
         </div>
       </div>
     </nav>

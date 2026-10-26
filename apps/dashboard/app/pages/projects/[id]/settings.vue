@@ -5,17 +5,13 @@ import { describeApiError } from "~/utils/api-error"
 import { ref, computed, watch } from "vue"
 import type { ProjectDTO, SharedMediaDTO } from "@reprojs/shared"
 import ConfirmDeleteDialog from "~/components/common/confirm-delete-dialog.vue"
+import InstallSnippet from "~/components/common/install-snippet.vue"
 import { hasProjectRole } from "~/utils/project-role"
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const { confirm } = useConfirm()
-// Dashboard origin for the embed-snippet display. `useRequestURL()` resolves
-// at request time: SSR reads the external Host header (via the reverse
-// proxy), client reads `window.location.origin` — so the snippet shown to
-// operators always matches the URL they're actually viewing.
-const dashboardUrl = useRequestURL().origin
 const projectId = computed(() => String(route.params.id))
 
 const { data: project, refresh } = await useApi<ProjectDTO>(`/api/projects/${projectId.value}`)
@@ -347,6 +343,10 @@ async function confirmDelete() {
           <h2 class="text-base font-semibold text-default">Project</h2>
         </template>
         <div class="space-y-4">
+          <p v-if="project && !isOwner" class="text-sm text-muted">
+            Only project owners can change the name, allowed origins, and daily report cap. Ask an
+            owner if something here needs updating.
+          </p>
           <UFormField label="Name">
             <UInput v-model="generalForm.name" :disabled="!isOwner" class="w-full" />
           </UFormField>
@@ -551,15 +551,7 @@ async function confirmDelete() {
         <template #header>
           <h2 class="text-base font-semibold text-default">Embed snippet</h2>
         </template>
-        <pre
-          class="text-sm bg-elevated rounded p-3 overflow-x-auto"
-        ><code>&lt;script src=&quot;{{ dashboardUrl }}/sdk/repro.iife.js&quot;&gt;&lt;/script&gt;
-&lt;script&gt;
-  Repro.init({
-    projectKey: &quot;{{ project?.publicKey ?? 'rp_pk_...' }}&quot;,
-    endpoint: &quot;{{ dashboardUrl }}&quot;
-  })
-&lt;/script&gt;</code></pre>
+        <InstallSnippet :project-key="project?.publicKey ?? null" />
       </UCard>
     </div>
 

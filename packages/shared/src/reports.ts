@@ -316,8 +316,23 @@ export const ReportListDTO = z.object({
 })
 export type ReportListDTO = z.infer<typeof ReportListDTO>
 
+/**
+ * State of the report's GitHub "reconcile" sync job (the job that creates
+ * or updates the linked issue). Lets the report page show a failed sync and
+ * offer a retry without going to the Integrations page.
+ */
+export const ReportSyncJobDTO = z.object({
+  state: z.enum(["pending", "syncing", "failed"]),
+  attempts: z.number().int().nonnegative(),
+  lastError: z.string().nullable(),
+  updatedAt: z.string(),
+})
+export type ReportSyncJobDTO = z.infer<typeof ReportSyncJobDTO>
+
 export const ReportDetailDTO = ReportSummaryDTO.extend({
   attachments: z.array(AttachmentDTO),
+  /** Null when no reconcile job exists for this report. Optional for older producers. */
+  githubSync: ReportSyncJobDTO.nullable().optional(),
 })
 export type ReportDetailDTO = z.infer<typeof ReportDetailDTO>
 

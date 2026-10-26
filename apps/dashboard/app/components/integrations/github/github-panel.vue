@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { describeApiError } from "~/utils/api-error"
-import type { GithubConfigDTO, ProjectDTO } from "@reprojs/shared"
+import type { GithubAppStatusDTO, GithubConfigDTO, ProjectDTO } from "@reprojs/shared"
 import { hasProjectRole } from "~/utils/project-role"
+import AppLoadingSkeleton from "~/components/common/app-loading-skeleton.vue"
 import RepoPicker from "./repo-picker.vue"
 import SyncStatus from "./sync-status.vue"
 import UnlinkDialog from "./unlink-dialog.vue"
@@ -13,7 +14,7 @@ const props = defineProps<Props>()
 
 const toast = useToast()
 
-const { data, refresh } = useApi<GithubConfigDTO>(
+const { data, refresh, pending } = useApi<GithubConfigDTO>(
   `/api/projects/${props.projectId}/integrations/github`,
 )
 
@@ -49,6 +50,25 @@ watch(
 
 const isInstalled = computed(() => Boolean(data.value?.installed))
 const isConnected = computed(() => data.value?.status === "connected")
+
+// Whether this instance has a GitHub App at all. Without one the install
+// redirect can only fail (503), so instead of a dead "Install on GitHub"
+// button we point at Admin → GitHub. The status endpoint is admin-only;
+// for everyone else it 403s and we fall back to the install button, whose
+// failure toast still carries the server's explanation.
+const { isAdmin } = useSession()
+const { data: appStatus, execute: loadAppStatus } = useApi<GithubAppStatusDTO>(
+  "/api/integrations/github/app-status",
+  {
+    immediate: isAdmin.value,
+    default: () => null as GithubAppStatusDTO | null,
+  },
+)
+// The session can resolve after setup on the client; fetch once it does.
+watch(isAdmin, (admin) => {
+  if (admin && appStatus.value === null) void loadAppStatus()
+})
+const appNotConfigured = computed(() => appStatus.value?.configured === false)
 
 const statusLabel = computed(() => {
   if (!data.value?.installed) return "Not connected"
@@ -147,8 +167,33 @@ async function saveRepo() {
       </div>
     </template>
 
+    <!-- First load: the config decides which of the states below renders -->
+    <div v-if="pending && !data" aria-busy="true" aria-label="Loading GitHub integration">
+      <AppLoadingSkeleton variant="form" :rows="2" />
+    </div>
+
+    <!-- Instance has no GitHub App: nothing to install yet -->
+    <div v-else-if="!isInstalled && appNotConfigured" class="space-y-4">
+      <UAlert
+        color="warning"
+        variant="soft"
+        icon="i-heroicons-exclamation-triangle"
+        title="GitHub App not set up on this instance"
+        description="Each self-hosted Repro instance creates its own GitHub App once, under Admin → GitHub. After that, project owners can install it on their repositories here."
+      />
+      <UButton
+        to="/settings/github"
+        label="Set up the GitHub App"
+        icon="i-simple-icons-github"
+        trailing-icon="i-heroicons-arrow-right"
+        color="neutral"
+        variant="solid"
+        size="md"
+      />
+    </div>
+
     <!-- Not installed yet -->
-    <div v-if="!isInstalled" class="space-y-4">
+    <div v-else-if="!isInstalled" class="space-y-4">
       <p class="text-sm text-muted leading-relaxed">
         Install the GitHub App on a repository to start syncing reports as issues.
       </p>

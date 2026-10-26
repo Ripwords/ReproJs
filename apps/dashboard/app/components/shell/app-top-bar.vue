@@ -15,6 +15,11 @@ const userItems = computed(() => [
       to: "/settings/account",
     },
     {
+      label: "Linked accounts",
+      icon: "i-simple-icons-github",
+      to: "/settings/identities",
+    },
+    {
       label: "AI assistants (MCP)",
       icon: "i-heroicons-cpu-chip",
       to: "/settings/mcp",

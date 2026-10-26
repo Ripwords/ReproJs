@@ -27,10 +27,10 @@ const oauthQuery = computed(() => {
 const scopeBullets = computed(() =>
   scope.value.includes("mcp:full")
     ? [
-        "Read your tickets, reports, screenshots, console + network logs, and replay transcripts",
-        "Change ticket status, priority, severity, assignee, and labels",
-        "Post comments on your tickets",
-        "Link or unlink GitHub issues from your tickets",
+        "Read your reports, screenshots, console + network logs, and replay transcripts",
+        "Change report status, priority, severity, assignee, and labels",
+        "Post comments on your reports",
+        "Link or unlink GitHub issues from your reports",
       ]
     : scope.value
         .split(" ")

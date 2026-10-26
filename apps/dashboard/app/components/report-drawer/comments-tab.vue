@@ -8,6 +8,7 @@
      a standalone tab — the parent's scroll container handles overflow. -->
 <script setup lang="ts">
 import RelativeTime from "~/components/common/relative-time.vue"
+import { describeApiError } from "~/utils/api-error"
 import type { CommentDTO } from "@reprojs/shared"
 
 interface Props {
@@ -93,13 +94,25 @@ async function submitComment() {
     composerBody.value = ""
     pendingAttachments.value = []
     await refresh()
-  } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
-    composerError.value = err.statusMessage ?? err.message ?? "Failed to post comment"
+  } catch (err) {
+    composerError.value = describeApiError(err, "Failed to post comment")
   } finally {
     composerLoading.value = false
   }
 }
+
+// The submit hint matches the modifier the handler below accepts on this
+// OS. Resolved after mount (navigator is client-only) so SSR and the first
+// client paint agree; until then no hint is shown rather than a wrong one.
+const submitHint = ref<string | null>(null)
+onMounted(() => {
+  const platform =
+    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+    navigator.platform ??
+    ""
+  const isApple = /mac|iphone|ipad|ipod/i.test(platform)
+  submitHint.value = isApple ? "⌘+Enter" : "Ctrl+Enter"
+})
 
 function onComposerKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -116,9 +129,8 @@ async function uploadFile(file: File): Promise<{ url: string; contentType: strin
       `/api/projects/${props.projectId}/reports/${props.reportId}/comments/upload-image`,
       { method: "POST", credentials: "include", body: form },
     )
-  } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
-    composerError.value = err.statusMessage ?? err.message ?? "Image upload failed"
+  } catch (err) {
+    composerError.value = describeApiError(err, "Image upload failed")
     return null
   }
 }
@@ -217,9 +229,8 @@ async function submitEdit(commentId: string) {
     )
     cancelEdit()
     await refresh()
-  } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
-    editError.value = err.statusMessage ?? err.message ?? "Failed to update comment"
+  } catch (err) {
+    editError.value = describeApiError(err, "Failed to update comment")
   } finally {
     editLoading.value = false
   }
@@ -248,11 +259,10 @@ async function deleteComment(comment: CommentDTO) {
       { method: "DELETE", credentials: "include" },
     )
     await refresh()
-  } catch (e: unknown) {
-    const err = e as { statusMessage?: string; message?: string }
+  } catch (err) {
     toast.add({
       title: "Could not delete comment",
-      description: err.statusMessage ?? err.message,
+      description: describeApiError(err),
       color: "error",
       icon: "i-heroicons-exclamation-triangle",
     })
@@ -467,8 +477,10 @@ function authorColor(comment: CommentDTO): string {
           <UIcon name="i-heroicons-arrow-path" class="size-3.5 animate-spin" />
           Uploading…
         </span>
-        <span v-else class="text-sm text-muted/70 hidden sm:inline shrink-0 tabular-nums"
-          >⌘+Enter</span
+        <span
+          v-else-if="submitHint"
+          class="text-sm text-muted/70 hidden sm:inline shrink-0 tabular-nums"
+          >{{ submitHint }}</span
         >
         <button
           type="button"

@@ -4,12 +4,11 @@
      `bg-primary/8` header strip and `text-primary` label.
 
      Layout:
-       Top row:    Screenshot (col-span-7) | Description + Report details (col-span-5)
-       Bottom row: Conversation (chat-style comments, full width)
+       Screenshot + "Play replay" CTA (col-span-7) | Description + Report details (col-span-5)
 
      Diagnostic content (Session env / System info / Raw context) lives
-     in the dedicated System and Raw tabs — the overview is for the
-     "what / who / when" + the conversation around the bug. -->
+     in the dedicated System and Raw tabs, and the conversation lives in
+     the Comments tab — the overview is for the "what / who / when". -->
 <script setup lang="ts">
 import RelativeTime from "~/components/common/relative-time.vue"
 import type { ReportDetailDTO } from "@reprojs/shared"
@@ -21,9 +20,8 @@ import {
   statusColor,
   statusLabel,
 } from "~/composables/use-report-format"
-import CommentsTab from "./comments-tab.vue"
 
-const props = defineProps<{ projectId: string; report: ReportDetailDTO; canComment: boolean }>()
+const props = defineProps<{ projectId: string; report: ReportDetailDTO }>()
 const emit = defineEmits<{
   "select-tab": [tab: "console" | "network" | "replay" | "attachments"]
 }>()
@@ -91,33 +89,63 @@ const descriptionHtml = computed(() =>
            letterboxed frame so portrait + landscape both look intentional.
            Fullscreen toggle in the corner opens a lightbox so reviewers can
            inspect detail without leaving the page. -->
-      <div
-        v-if="report.thumbnailUrl"
-        class="lg:col-span-7 group relative overflow-hidden rounded-xl ring-1 ring-default bg-elevated"
-      >
-        <button
-          type="button"
-          aria-label="View screenshot full screen"
-          class="flex items-center justify-center bg-neutral-900 dark:bg-neutral-950 max-h-[60vh] p-6 w-full cursor-zoom-in"
-          @click="openLightbox"
+      <div class="lg:col-span-7 flex flex-col gap-3">
+        <div
+          v-if="report.thumbnailUrl"
+          class="group relative overflow-hidden rounded-xl ring-1 ring-default bg-elevated"
         >
-          <img
-            :src="report.thumbnailUrl"
-            alt="Report screenshot"
-            class="max-h-[52vh] max-w-full object-contain block rounded-lg"
+          <button
+            type="button"
+            aria-label="View screenshot full screen"
+            class="flex items-center justify-center bg-neutral-900 dark:bg-neutral-950 max-h-[60vh] p-6 w-full cursor-zoom-in"
+            @click="openLightbox"
+          >
+            <img
+              :src="report.thumbnailUrl"
+              alt="Report screenshot"
+              class="max-h-[52vh] max-w-full object-contain block rounded-lg"
+            />
+          </button>
+          <button
+            type="button"
+            aria-label="View screenshot full screen"
+            title="Fullscreen (click image)"
+            class="absolute top-3 right-3 inline-flex items-center justify-center size-9 rounded-lg bg-neutral-950/70 text-white ring-1 ring-white/10 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-neutral-950/90 transition-opacity"
+            @click="openLightbox"
+          >
+            <UIcon name="i-heroicons-arrows-pointing-out" class="size-4" />
+          </button>
+        </div>
+
+        <!-- Session replay is the headline evidence for a bug report, so
+             it gets a CTA next to the screenshot instead of only a tab. -->
+        <div
+          v-if="report.hasReplay"
+          class="flex items-center justify-between gap-3 rounded-xl ring-1 ring-default bg-default px-4 py-3"
+        >
+          <div class="flex items-center gap-3 min-w-0">
+            <div
+              class="flex items-center justify-center size-9 rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15 shrink-0"
+            >
+              <UIcon name="i-heroicons-film" class="size-4" />
+            </div>
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-default">Session replay available</div>
+              <div class="text-sm text-muted truncate">
+                The last 30 seconds before the report, as the reporter saw it.
+              </div>
+            </div>
+          </div>
+          <UButton
+            label="Play replay"
+            icon="i-heroicons-play"
+            color="primary"
+            size="md"
+            class="shrink-0"
+            @click="emit('select-tab', 'replay')"
           />
-        </button>
-        <button
-          type="button"
-          aria-label="View screenshot full screen"
-          title="Fullscreen (click image)"
-          class="absolute top-3 right-3 inline-flex items-center justify-center size-9 rounded-lg bg-neutral-950/70 text-white ring-1 ring-white/10 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-neutral-950/90 transition-opacity"
-          @click="openLightbox"
-        >
-          <UIcon name="i-heroicons-arrows-pointing-out" class="size-4" />
-        </button>
+        </div>
       </div>
-      <div v-else class="lg:col-span-7"></div>
 
       <!-- Right rail: stacked description + report details -->
       <div class="lg:col-span-5 flex flex-col gap-4">
@@ -215,18 +243,6 @@ const descriptionHtml = computed(() =>
         </section>
       </div>
     </div>
-
-    <!-- CONVERSATION — chat-style thread, GitHub-synced. The Comments tab
-         renders the same component standalone; embedded here so the
-         overview reads as "context above, discussion below" without a
-         tab switch. -->
-    <section class="overflow-hidden rounded-xl ring-1 ring-default bg-default">
-      <header class="px-5 py-3 bg-primary/[0.08] border-b border-default flex items-center gap-2">
-        <UIcon name="i-heroicons-chat-bubble-left-right" class="size-4 text-primary" />
-        <h3 class="text-sm font-medium text-primary tracking-tight">Comments</h3>
-      </header>
-      <CommentsTab :project-id="projectId" :report-id="report.id" :can-comment="canComment" />
-    </section>
 
     <!-- Lightbox — full-resolution screenshot. Click the backdrop or press
          Escape to close. Renders into a fixed overlay above the page so

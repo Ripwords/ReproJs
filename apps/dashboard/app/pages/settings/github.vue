@@ -170,7 +170,7 @@ async function disconnect() {
     <PageHeader
       eyebrow="Admin"
       title="GitHub integration"
-      description="Connect this instance to GitHub so ticket triage can mirror to issues. A GitHub App is installed on your organization or personal account — each self-hosted Repro instance creates its own app with its own credentials."
+      description="Connect this instance to GitHub so report triage can mirror to issues. A GitHub App is installed on your organization or personal account — each self-hosted Repro instance creates its own app with its own credentials."
     />
 
     <UAlert
@@ -276,7 +276,7 @@ async function disconnect() {
       </template>
       <div class="space-y-3 text-sm">
         <p class="text-muted">
-          Webhooks power two-way sync (GitHub issue closed → Repro ticket closed). GitHub requires
+          Webhooks power two-way sync (GitHub issue closed → Repro report closed). GitHub requires
           the webhook URL to be publicly reachable before an app is created, so Repro creates the
           app with webhooks <strong>disabled</strong>. Enable them yourself in one step:
         </p>

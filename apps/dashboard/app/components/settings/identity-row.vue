@@ -13,6 +13,7 @@ const props = defineProps<{
   icon: string
   item: IdentityItem | null
   connecting: boolean
+  disconnecting?: boolean
 }>()
 const emit = defineEmits<{
   connect: []
@@ -34,7 +35,15 @@ const emit = defineEmits<{
     </div>
     <div>
       <UButton v-if="!item" :loading="connecting" @click="emit('connect')">Connect</UButton>
-      <UButton v-else variant="ghost" color="error" @click="emit('disconnect')">Disconnect</UButton>
+      <UButton
+        v-else
+        variant="ghost"
+        color="error"
+        :loading="disconnecting"
+        @click="emit('disconnect')"
+      >
+        Disconnect
+      </UButton>
     </div>
   </div>
 </template>

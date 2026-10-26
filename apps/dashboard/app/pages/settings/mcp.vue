@@ -96,7 +96,7 @@ async function copy(text: string): Promise<void> {
     <PageHeader
       eyebrow="Account"
       title="MCP / AI assistants"
-      description="Connect an AI assistant (Claude Desktop, Cursor, ChatGPT, …) to triage your Repro tickets through the Model Context Protocol."
+      description="Connect an AI assistant (Claude Desktop, Cursor, ChatGPT, …) to triage your Repro reports through the Model Context Protocol."
     />
 
     <!-- ── Connect section ─────────────────────────────────────────────── -->
