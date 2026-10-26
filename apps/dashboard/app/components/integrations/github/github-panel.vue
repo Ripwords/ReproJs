@@ -57,11 +57,11 @@ const isConnected = computed(() => data.value?.status === "connected")
 // for everyone else it 403s and we fall back to the install button, whose
 // failure toast still carries the server's explanation.
 const { isAdmin } = useSession()
-const { data: appStatus, execute: loadAppStatus } = useApi<GithubAppStatusDTO>(
+const { data: appStatus, execute: loadAppStatus } = useApi<GithubAppStatusDTO | null>(
   "/api/integrations/github/app-status",
   {
     immediate: isAdmin.value,
-    default: () => null as GithubAppStatusDTO | null,
+    default: () => null,
   },
 )
 // The session can resolve after setup on the client; fetch once it does.

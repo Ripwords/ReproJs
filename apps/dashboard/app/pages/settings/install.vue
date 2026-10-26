@@ -23,15 +23,15 @@ const lastProjectId = useCookie<string | null>("last-project-id", { default: () 
 const projectOptions = computed(() =>
   (projects.value ?? []).map((p) => ({ label: p.name, value: p.id })),
 )
-function pickInitialProject(): string | null {
+function pickInitialProject(): string | undefined {
   const list = projects.value ?? []
-  const fromQuery = typeof route.query.project === "string" ? route.query.project : null
+  const fromQuery = typeof route.query.project === "string" ? route.query.project : undefined
   for (const candidate of [fromQuery, lastProjectId.value]) {
     if (candidate && list.some((p) => p.id === candidate)) return candidate
   }
-  return list[0]?.id ?? null
+  return list[0]?.id
 }
-const selectedProjectId = ref<string | null>(pickInitialProject())
+const selectedProjectId = ref<string | undefined>(pickInitialProject())
 const selectedProject = computed(
   () => (projects.value ?? []).find((p) => p.id === selectedProjectId.value) ?? null,
 )
