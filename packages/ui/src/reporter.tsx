@@ -217,15 +217,28 @@ export function Reporter({
     setSubmitting(true)
     setSubmitError(null)
     const media = mediaItems.filter((item) => selectedMediaIds.includes(item.id))
-    const res = await onSubmit({
-      title: title.trim(),
-      description: description.trim(),
-      media,
-      attachments,
-      dwellMs: Math.max(0, Math.round(performance.now() - openedAt)),
-      honeypot: hpRef.current?.value ?? "",
-    })
-    setSubmitting(false)
+    // onSubmit wraps snapshotting, gzip and the network round-trip. Any of
+    // those can throw (missing browser API, serialization error) — if that
+    // escaped, `submitting` would never reset and the spinner would hang
+    // with Back disabled. Fail into the error card instead.
+    let res: ReporterSubmitResult
+    try {
+      res = await onSubmit({
+        title: title.trim(),
+        description: description.trim(),
+        media,
+        attachments,
+        dwellMs: Math.max(0, Math.round(performance.now() - openedAt)),
+        honeypot: hpRef.current?.value ?? "",
+      })
+    } catch (err) {
+      res = {
+        ok: false,
+        message: err instanceof Error && err.message ? err.message : "Something went wrong.",
+      }
+    } finally {
+      setSubmitting(false)
+    }
     if (res.ok) {
       setSuccess(true)
       setTimeout(onClose, 1500)
