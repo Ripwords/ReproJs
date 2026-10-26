@@ -101,6 +101,19 @@ async function submitComment() {
   }
 }
 
+// The submit hint matches the modifier the handler below accepts on this
+// OS. Resolved after mount (navigator is client-only) so SSR and the first
+// client paint agree; until then no hint is shown rather than a wrong one.
+const submitHint = ref<string | null>(null)
+onMounted(() => {
+  const platform =
+    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+    navigator.platform ??
+    ""
+  const isApple = /mac|iphone|ipad|ipod/i.test(platform)
+  submitHint.value = isApple ? "⌘+Enter" : "Ctrl+Enter"
+})
+
 function onComposerKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
     e.preventDefault()
@@ -464,8 +477,10 @@ function authorColor(comment: CommentDTO): string {
           <UIcon name="i-heroicons-arrow-path" class="size-3.5 animate-spin" />
           Uploading…
         </span>
-        <span v-else class="text-sm text-muted/70 hidden sm:inline shrink-0 tabular-nums"
-          >⌘+Enter</span
+        <span
+          v-else-if="submitHint"
+          class="text-sm text-muted/70 hidden sm:inline shrink-0 tabular-nums"
+          >{{ submitHint }}</span
         >
         <button
           type="button"

@@ -343,6 +343,10 @@ async function confirmDelete() {
           <h2 class="text-base font-semibold text-default">Project</h2>
         </template>
         <div class="space-y-4">
+          <p v-if="project && !isOwner" class="text-sm text-muted">
+            Only project owners can change the name, allowed origins, and daily report cap. Ask an
+            owner if something here needs updating.
+          </p>
           <UFormField label="Name">
             <UInput v-model="generalForm.name" :disabled="!isOwner" class="w-full" />
           </UFormField>
