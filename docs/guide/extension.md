@@ -121,6 +121,8 @@ The page origin isn't in the project's allowed-origins list. Add it in the dashb
 
 - **Permission revoked.** Open the popup. If the config card shows an amber stripe with "Permission required", click **Grant** and accept the Chrome prompt. This covers both the site origin and the intake endpoint host — the extension refuses to inject when either is missing and logs `host permission missing for intake …` in the service worker console, because a widget that mounts but cannot submit is worse than no widget.
 - **Service worker stale.** Open `chrome://extensions`, find Repro Tester, click the blue "service worker" link, Inspect. If there are errors there, a hard-reload of the extension (click the reload icon on its card) usually fixes it.
+- **Wrong SDK build.** On every successful boot the page console prints `[repro-extension] Repro SDK vX.Y.Z booted`. If that version is older than you expect, the extension was built from a stale `packages/core/dist` — rerun `bun run sdk:build` before `bun run ext:build`.
+- **Extension was reloaded while the page was open.** The injected bridge loses its connection to the service worker. Submissions then go through the page's own `fetch` (logged as `bridge: … sending through the page's own fetch instead`), which a strict `connect-src` may block. Reload the page to re-inject.
 - **Config not saved.** Chrome closes the popup when its native permission prompt takes focus. The extension saves the config BEFORE requesting permission so this doesn't lose your work — if you denied the prompt, the config will still be in the list with a "Grant" button. Click it and try again.
 
 ### "Failed to execute 'attachShadow'"

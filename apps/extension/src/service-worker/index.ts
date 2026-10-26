@@ -22,6 +22,18 @@ registerProxyHandler()
 // that case — page-world state survives worker revivals.
 const injectedForTab = new Map<number, string>()
 
+// Written by scripts/sync-sdk.ts next to the copied IIFE. Read once per
+// worker lifetime; "unknown" keeps the boot log line useful if the file is
+// somehow missing rather than failing the inject.
+let sdkVersionPromise: Promise<string> | null = null
+function bundledSdkVersion(): Promise<string> {
+  sdkVersionPromise ??= fetch(chrome.runtime.getURL("sdk-version.json"))
+    .then((res) => res.json() as Promise<{ version?: string }>)
+    .then((json) => json.version ?? "unknown")
+    .catch(() => "unknown")
+  return sdkVersionPromise
+}
+
 async function tryInject(tabId: number, url: string): Promise<void> {
   const origin = toOrigin(url)
   if (origin === null) return
@@ -132,6 +144,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
       target: { tabId, frameIds: [0] },
       world: "MAIN",
       func: bootRepro,
+      args: [await bundledSdkVersion()],
     })
   } catch (err) {
     // Permission denied / tab closed mid-inject / page navigated away.

@@ -6,9 +6,16 @@ test("injects the SDK on a configured origin", async () => {
   try {
     await h.configure()
     const page = await h.context.newPage()
+    const bootLog = page.waitForEvent("console", {
+      predicate: (msg) => /\[repro-extension\] Repro SDK v\d+\.\d+\.\d+ booted/.test(msg.text()),
+      timeout: 10_000,
+    })
     await page.goto(h.testOrigin)
     const host = page.locator("#repro-host")
     await expect(host).toBeAttached({ timeout: 10_000 })
+    // The bundled SDK version is recorded by scripts/sync-sdk.ts and must
+    // reach the page console, so a tester can tell which build they run.
+    expect((await bootLog).text()).not.toContain("unknown")
   } finally {
     await h.close()
   }

@@ -7,7 +7,7 @@ export function injectConfig(projectKey: string, endpoint: string): void {
   g.__REPRO_CONFIG__ = { projectKey, endpoint, source: "extension" }
 }
 
-export function bootRepro(): void {
+export function bootRepro(sdkVersion: string): void {
   const g = globalThis as unknown as {
     __REPRO_CONFIG__?: { projectKey: string; endpoint: string }
     __REPRO_BOOTED__?: boolean
@@ -33,6 +33,7 @@ export function bootRepro(): void {
   g.__REPRO_BOOTED__ = true
   try {
     g.Repro.init({ projectKey: cfg.projectKey, endpoint: cfg.endpoint })
+    console.info(`[repro-extension] Repro SDK v${sdkVersion} booted`)
   } catch (err) {
     // Belt-and-suspenders: if we somehow slipped past both guards (racing
     // injections, host element created between the check and this line,
