@@ -12,9 +12,9 @@ registerProxyHandler()
 // the same tab (common on framework dev servers that emit multiple complete
 // events per navigation) would otherwise both pass the "have I injected?"
 // check and race through the executeScript chain, with the second IIFE load
-// colliding with the first on attachShadow. Set the Map BEFORE the awaited
-// work so the second tryInject sees the entry and bails. Clear on throw or
-// explicit URL change.
+// colliding with the first on attachShadow. Set the Map BEFORE any awaited
+// work so the second tryInject sees the entry and bails. Clear on every
+// early return, on throw, and when a new document is committed.
 //
 // The Map is lost when the service worker is torn down (~30s idle in MV3).
 // The bootRepro DOM-existence check in set-config.ts is the backstop for
@@ -27,19 +27,30 @@ async function tryInject(tabId: number, url: string): Promise<void> {
 
   if (injectedForTab.get(tabId) === origin) return
 
+  // Reserve the slot synchronously, before the first await. Two triggers
+  // for the same navigation (onDOMContentLoaded + tabs complete, or the
+  // double `complete` that Vite/Next dev servers emit) arrive microseconds
+  // apart; anything awaited between the check and the set lets both pass
+  // and evaluates the IIFE twice, leaving window.Repro as a second,
+  // never-initialised instance. Every early return below MUST release the
+  // slot so the fallback trigger can retry.
+  injectedForTab.set(tabId, origin)
+
   const configs = await listConfigs()
   const match = findConfigForUrl(url, configs)
-  if (!match) return
+  if (!match) {
+    injectedForTab.delete(tabId)
+    return
+  }
 
   // Permission may have been revoked in chrome://extensions between tab load
   // and here. Check first so we emit a clear log line instead of a noisy
   // scripting error.
-  if (!(await hasOriginPermission(match.origin))) return
-
-  // Reserve the slot BEFORE awaiting so the next concurrent tryInject for
-  // this tab sees the entry and bails. Clear on error so a genuine
-  // permission/navigation failure can retry on the next onUpdated cycle.
-  injectedForTab.set(tabId, origin)
+  if (!(await hasOriginPermission(match.origin))) {
+    injectedForTab.delete(tabId)
+    console.debug("[repro-extension] skip inject: page origin permission missing", match.origin)
+    return
+  }
 
   let intakeOrigin: string
   try {
