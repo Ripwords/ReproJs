@@ -74,6 +74,12 @@ export async function scanBytes(bytes: Uint8Array): Promise<ScanResult> {
   try {
     const { isInfected, viruses } = await client.scanStream(stream)
     const duration = Date.now() - start
+    // clamscan reports `null` when it could not get a verdict (stream cut,
+    // clamd timeout, size limit) — that is a failed scan, not a clean file.
+    // Falling through would let unscanned bytes in as "clean".
+    if (isInfected === null) {
+      throw new Error("scanner returned no verdict (isInfected=null)")
+    }
     if (isInfected) {
       const reason = viruses?.[0] ?? "infected"
       console.warn(`[clamav] scan verdict=infected:${reason} duration=${duration}ms`)
