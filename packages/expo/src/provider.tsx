@@ -103,7 +103,7 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
   const breadcrumbsRef = useRef(createBreadcrumbsCollector({}))
   // Resolved once per provider. `expo-file-system` is a dynamic import so a
   // host that has not installed it still gets a working (if non-durable) queue.
-  const [attachmentStore] = useState(() =>
+  const [attachmentFs] = useState(() =>
     loadAttachmentFs().then((fs) => {
       if (!fs) {
         console.warn(
@@ -111,9 +111,10 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
             "storage and may be lost if the app restarts before the report is sent.",
         )
       }
-      return createAttachmentStore(fs)
+      return fs
     }),
   )
+  const [attachmentStore] = useState(() => attachmentFs.then(createAttachmentStore))
   const queueRef = useRef(
     createQueueStorage({
       maxReports: config.queue.maxReports,
@@ -125,6 +126,12 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     createIntakeClient({
       intakeUrl: config.intakeUrl,
       timeoutMs: config.queue.submitTimeoutMs,
+      // Without expo-file-system there is nothing to probe with; report the
+      // file as present and let the upload decide, as before.
+      fileExists: async (uri) => {
+        const fs = await attachmentFs
+        return fs ? fs.exists(uri) : true
+      },
     }),
   )
   // Bumped after every flush so `useRepro().queue` re-renders with the real
@@ -304,21 +311,29 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     // Copy out of tmp/ and the cache dir before the report is persisted, so a
     // queued report survives an app restart or update. Also fills in the real
     // screenshot size, which the queue's maxBytes cap depends on.
-    const attachments = await (
-      await attachmentStore
-    ).persist(id, [...screenshotEntries, ...userFileEntries])
-    const { evictedIds } = await queueRef.current.enqueue({
-      id,
-      createdAt: now,
-      payload: {
-        input,
-        attachments,
-        logs: logsJson,
-      },
-      attempts: 0,
-      lastErrorAt: null,
-      lastError: null,
-    })
+    const store = await attachmentStore
+    const attachments = await store.persist(id, [...screenshotEntries, ...userFileEntries])
+    let evictedIds: string[]
+    try {
+      ;({ evictedIds } = await queueRef.current.enqueue({
+        id,
+        createdAt: now,
+        payload: {
+          input,
+          attachments,
+          logs: logsJson,
+        },
+        attempts: 0,
+        lastErrorAt: null,
+        lastError: null,
+      }))
+    } catch (err) {
+      // The report was never queued (too large for `queue.maxBytes`, or the
+      // storage write failed). Drop the copies made for it and let the error
+      // reach the wizard, which shows the message and keeps the form open.
+      await store.discard(id)
+      throw err
+    }
     if (evictedIds.length > 0) {
       // Eviction is data loss, same as a drop: the oldest unsent reports were
       // discarded to make room. Say so, with ids, instead of vanishing them.

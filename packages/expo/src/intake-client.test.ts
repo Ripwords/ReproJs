@@ -315,3 +315,66 @@ test("an unreadable attachment is skipped with a warning, the report is still se
   expect(warnings).toHaveLength(1)
   expect(String(warnings[0]?.[0])).toContain("gone.png")
 })
+
+// The skip above only existed on the Blob path. React Native's own fetch
+// streams `{ uri, name, type }` from disk inside the native layer, so a purged
+// file failed the whole request there with no status, which the flusher
+// retried until the report was dropped. The RN path must check the file
+// exists before appending it and leave it out the same way.
+test("RN fetch path: a missing attachment is left out with a warning, the report is still sent", async () => {
+  const parts: Array<[string, unknown]> = []
+  const client = createIntakeClient({
+    intakeUrl: "https://ex.com/api/intake",
+    // Not tagged with Symbol.for("expo.builtin"): React Native's fetch.
+    fetchImpl: collectParts(parts),
+    fileExists: async (uri) => !uri.endsWith("gone.png"),
+  })
+  const warnings: unknown[][] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args)
+  }
+  let out: { id: string }
+  try {
+    out = await client.submit({
+      idempotencyKey: "i",
+      input: {} as never,
+      attachments: [
+        { kind: "screenshot", uri: "file:///tmp/gone.png", bytes: 3, contentType: "image/png" },
+        {
+          kind: "user-file",
+          uri: "file:///docs/ok.png",
+          bytes: 1,
+          contentType: "image/png",
+          filename: "ok.png",
+        },
+      ],
+    })
+  } finally {
+    console.warn = originalWarn
+  }
+  expect(out.id).toBe("x")
+  expect(parts.find(([k]) => k === "screenshot")).toBeUndefined()
+  expect(parts.find(([k]) => k === "attachment[0]")).toBeDefined()
+  expect(warnings).toHaveLength(1)
+  expect(String(warnings[0]?.[0])).toContain("gone.png")
+})
+
+test("RN fetch path: a failing existence check does not block the attachment", async () => {
+  const parts: Array<[string, unknown]> = []
+  const client = createIntakeClient({
+    intakeUrl: "https://ex.com/api/intake",
+    fetchImpl: collectParts(parts),
+    fileExists: async () => {
+      throw new Error("fs unavailable")
+    },
+  })
+  await client.submit({
+    idempotencyKey: "i",
+    input: {} as never,
+    attachments: [
+      { kind: "screenshot", uri: "file:///tmp/shot.png", bytes: 3, contentType: "image/png" },
+    ],
+  })
+  expect(parts.find(([k]) => k === "screenshot")).toBeDefined()
+})

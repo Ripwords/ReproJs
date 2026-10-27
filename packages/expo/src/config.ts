@@ -1,6 +1,14 @@
 import type { ReporterIdentity } from "@reprojs/shared"
 import { DEFAULT_SUBMIT_TIMEOUT_MS } from "./intake-client"
 
+/**
+ * Byte cap across all queued attachments. Must stay above
+ * `DEFAULT_ATTACHMENT_LIMITS.maxTotalBytes` (25 MiB, the most the wizard lets
+ * a reporter attach) plus room for the screenshot, otherwise a report that
+ * passed every form check is refused at submit time as too large.
+ */
+export const DEFAULT_QUEUE_MAX_BYTES = 32 * 1024 * 1024
+
 const DEFAULT_HEADER_DENYLIST = ["authorization", "cookie", "x-api-key"]
 const DEFAULT_BODY_REDACT_KEYS = ["password", "token", "secret"]
 const PROJECT_KEY_PATTERN = /^rp_pk_[A-Za-z0-9]{24}$/
@@ -103,7 +111,7 @@ export function normalizeConfig(input: ReproConfigInput): ReproConfig | null {
     },
     queue: {
       maxReports: input.queue?.maxReports ?? 5,
-      maxBytes: input.queue?.maxBytes ?? 10 * 1024 * 1024,
+      maxBytes: input.queue?.maxBytes ?? DEFAULT_QUEUE_MAX_BYTES,
       backoffMs: input.queue?.backoffMs ?? [1000, 5000, 30000, 120000],
       maxAttempts: input.queue?.maxAttempts ?? 10,
       submitTimeoutMs: input.queue?.submitTimeoutMs ?? DEFAULT_SUBMIT_TIMEOUT_MS,

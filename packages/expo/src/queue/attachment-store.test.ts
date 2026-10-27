@@ -26,6 +26,9 @@ function memoryFs(seed: Record<string, number>) {
     async size(uri) {
       return files.get(uri) ?? null
     },
+    async exists(uri) {
+      return files.has(uri)
+    },
   }
   return { fs, files, dirs }
 }

@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test"
+import { DEFAULT_ATTACHMENT_LIMITS } from "@reprojs/sdk-utils"
 import { normalizeConfig } from "./config"
 
 const VALID_KEY = "rp_pk_" + "a".repeat(24)
@@ -11,7 +12,11 @@ test("normalizeConfig fills sensible defaults", () => {
   expect(cfg.collectors.console).toBe(true)
   expect(cfg.collectors.network.enabled).toBe(true)
   expect(cfg.queue.maxReports).toBe(5)
-  expect(cfg.queue.maxBytes).toBe(10 * 1024 * 1024)
+  // The wizard lets a reporter attach up to `maxTotalBytes` of files, and the
+  // queue adds the screenshot on top. A default cap below that made a report
+  // that passed every form check fail at submit time as "too large".
+  expect(cfg.queue.maxBytes).toBe(32 * 1024 * 1024)
+  expect(cfg.queue.maxBytes).toBeGreaterThan(DEFAULT_ATTACHMENT_LIMITS.maxTotalBytes)
   expect(cfg.queue.backoffMs).toEqual([1000, 5000, 30000, 120000])
   expect(cfg.queue.submitTimeoutMs).toBe(60_000)
   expect(cfg.redact.headerDenylist).toContain("authorization")
@@ -31,7 +36,7 @@ test("normalizeConfig respects overrides", () => {
   expect(cfg).not.toBeNull()
   if (!cfg) return
   expect(cfg.queue.maxReports).toBe(3)
-  expect(cfg.queue.maxBytes).toBe(10 * 1024 * 1024)
+  expect(cfg.queue.maxBytes).toBe(32 * 1024 * 1024)
   expect(cfg.collectors.network.enabled).toBe(false)
 })
 

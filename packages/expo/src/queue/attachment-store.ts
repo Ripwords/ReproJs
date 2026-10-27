@@ -16,6 +16,8 @@ export interface AttachmentFs {
   remove: (path: string) => Promise<void>
   /** Byte size of a file, or null when it cannot be determined. */
   size: (uri: string) => Promise<number | null>
+  /** Whether a file is still present. */
+  exists: (uri: string) => Promise<boolean>
 }
 
 export interface AttachmentStore {
@@ -111,16 +113,34 @@ export function createAttachmentStore(fs: AttachmentFs | null): AttachmentStore 
  */
 export type ExpoFileSystemModule = typeof import("expo-file-system")
 
+/**
+ * Import `expo-file-system`, or resolve null when the host has not installed
+ * it. The `import()` call must sit lexically inside the `try` block: that is
+ * the shape Metro recognises as an optional dependency
+ * (`transformer.allowOptionalDependencies`). Hoisted into an arrow function or
+ * a default parameter the same call is a hard dependency, and a host without
+ * the package fails to bundle instead of getting the non-durable queue the
+ * README promises.
+ */
+async function importExpoFileSystem(): Promise<ExpoFileSystemModule | null> {
+  try {
+    return await import("expo-file-system")
+  } catch {
+    return null
+  }
+}
+
 export async function loadAttachmentFs(
   /** Injectable for tests, which hand in a module shaped like one SDK generation. */
-  load: () => Promise<ExpoFileSystemModule> = () => import("expo-file-system"),
+  load: () => Promise<ExpoFileSystemModule | null> = importExpoFileSystem,
 ): Promise<AttachmentFs | null> {
-  let mod: ExpoFileSystemModule
+  let mod: ExpoFileSystemModule | null
   try {
     mod = await load()
   } catch {
     return null
   }
+  if (!mod) return null
 
   if (mod.File && mod.Directory && mod.Paths?.document) {
     const { File, Directory, Paths } = mod
@@ -141,6 +161,7 @@ export async function loadAttachmentFs(
         const file = new File(uri)
         return file.exists ? file.size : null
       },
+      exists: async (uri) => new File(uri).exists,
     }
   }
 
@@ -156,6 +177,7 @@ export async function loadAttachmentFs(
         const info = await legacy.getInfoAsync(uri, { size: true })
         return info.exists && typeof info.size === "number" ? info.size : null
       },
+      exists: async (uri) => (await legacy.getInfoAsync(uri)).exists,
     }
   }
 
