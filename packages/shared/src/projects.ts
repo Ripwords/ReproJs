@@ -113,3 +113,24 @@ export const ProjectOverviewDTO = z.object({
   ),
 })
 export type ProjectOverviewDTO = z.infer<typeof ProjectOverviewDTO>
+
+/**
+ * Per-project at-a-glance numbers for the projects grid. One row per project
+ * the caller can see (same visibility rule as GET /api/projects). Projects
+ * with no reports yet still appear with zero counts and a null `lastReportAt`.
+ */
+export const ProjectStatsDTO = z.object({
+  projectId: z.uuid(),
+  openCount: z.number().int(),
+  inProgressCount: z.number().int(),
+  newLast7Count: z.number().int(),
+  totalCount: z.number().int(),
+  lastReportAt: z.string().nullable(),
+  github: z
+    .object({
+      repoOwner: z.string(),
+      repoName: z.string(),
+    })
+    .nullable(),
+})
+export type ProjectStatsDTO = z.infer<typeof ProjectStatsDTO>
