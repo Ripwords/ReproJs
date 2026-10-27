@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.7
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.6...v0.7.7)
+
+### 🚀 Enhancements
+
+- **api:** Thread endpoint for reports sharing a GitHub issue ([cd536b6](https://github.com/Ripwords/ReproJs/commit/cd536b6))
+- **dashboard:** Thread card for linked reports on the report page ([c3f94a1](https://github.com/Ripwords/ReproJs/commit/c3f94a1))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## v0.7.6
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.5...v0.7.6)
