@@ -65,10 +65,10 @@ test("keeps the initialised SDK across a pushState navigation", async () => {
     await expect(page.locator("#repro-host")).toBeAttached({ timeout: 10_000 })
     expect(await openThrows(page)).toBeNull()
 
-    // SPA route change: same document, new URL. tabs.onUpdated reports the
-    // URL change, the service worker clears its dedupe slot and runs the
-    // inject chain again. Re-evaluating the IIFE here would replace
-    // window.Repro with an uninitialised module.
+    // SPA route change: same document, new URL. The service worker must
+    // leave the already-booted SDK alone — no new document was committed.
+    // Re-evaluating the IIFE here would replace window.Repro with an
+    // uninitialised module.
     await page.evaluate(() => history.pushState({}, "", "/settings/profile"))
     await page.waitForTimeout(2000)
 

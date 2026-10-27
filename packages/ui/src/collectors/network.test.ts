@@ -12,6 +12,10 @@ beforeAll(async () => {
   })
 })
 
+// Response bodies are read detached from the host's fetch promise, so give
+// the background reader a moment before asserting on them.
+const settle = () => new Promise((r) => setTimeout(r, 100))
+
 describe("network collector — fetch", () => {
   const created: Array<ReturnType<typeof createNetworkCollector>> = []
   afterEach(() => {
@@ -83,6 +87,7 @@ describe("network collector — fetch", () => {
     created.push(c)
     c.start({ requestBody: true, responseBody: true, maxBodyBytes: 1024 })
     await fetch("http://example.com/x", { method: "POST", body: "hi" })
+    await settle()
     const entry = c.snapshot()[0]
     expect(entry?.requestBody).toBe("hi")
     expect(entry?.responseBody).toBe("hello body")
@@ -174,6 +179,94 @@ describe("network collector — fetch", () => {
     expect(entry?.size).toBe(250)
     expect(entry?.responseBody).toBeUndefined()
     globalThis.fetch = originalFetch
+  })
+
+  // Streaming guard. readResponseBody runs detached, so a response that never
+  // closes (SSE, long-poll) used to buffer in memory for the life of the page.
+
+  test("skips the body of a text/event-stream response without touching the stream", async () => {
+    const originalFetch = globalThis.fetch
+    let pulls = 0
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        pulls += 1
+        await new Promise((r) => setTimeout(r, 1))
+        controller.enqueue(new TextEncoder().encode("data: tick\n\n"))
+      },
+    })
+    globalThis.fetch = async () =>
+      new Response(stream, { headers: { "content-type": "text/event-stream" } })
+    const c = createNetworkCollector({})
+    created.push(c)
+    c.start({ responseBody: true, maxBodyBytes: 1024 })
+    await fetch("http://example.com/events")
+    // Bun's Response constructor primes the stream with one eager pull; the
+    // collector itself must add none.
+    const pullsAfterFetch = pulls
+    await settle()
+    const entry = c.snapshot()[0]
+    expect(entry?.status).toBe(200)
+    expect(entry?.responseBody).toBeUndefined()
+    expect(pulls).toBe(pullsAfterFetch)
+    globalThis.fetch = originalFetch
+  })
+
+  test("skips the body when Content-Length is above maxBodyBytes", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async () =>
+      new Response("a".repeat(100), { headers: { "content-length": "100" } })
+    const c = createNetworkCollector({})
+    created.push(c)
+    c.start({ responseBody: true, maxBodyBytes: 50 })
+    await fetch("http://example.com/big")
+    await settle()
+    const entry = c.snapshot()[0]
+    expect(entry?.size).toBe(100)
+    expect(entry?.responseBody).toBeUndefined()
+    globalThis.fetch = originalFetch
+  })
+
+  test("truncates an endless body at maxBodyBytes and cancels the reader", async () => {
+    const originalFetch = globalThis.fetch
+    let pulls = 0
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        pulls += 1
+        await new Promise((r) => setTimeout(r, 1))
+        controller.enqueue(new TextEncoder().encode("a".repeat(10)))
+      },
+    })
+    // The collector reads a clone, i.e. one branch of a tee. Cancelling one
+    // branch does not reach the underlying source's cancel() while the host
+    // still holds the other branch, so observe the reader itself.
+    const originalCancel = ReadableStreamDefaultReader.prototype.cancel
+    let readerCancelled = false
+    ReadableStreamDefaultReader.prototype.cancel = function (this: ReadableStreamDefaultReader) {
+      readerCancelled = true
+      return Promise.resolve()
+    }
+    try {
+      globalThis.fetch = async () =>
+        new Response(stream, { headers: { "content-type": "text/plain" } })
+      const c = createNetworkCollector({})
+      created.push(c)
+      c.start({ responseBody: true, maxBodyBytes: 25 })
+      await fetch("http://example.com/stream")
+      await settle()
+      const entry = c.snapshot()[0]
+      expect(entry?.responseBody?.startsWith("a".repeat(25))).toBe(true)
+      expect(entry?.responseBody).toContain("truncated")
+      expect(entry?.responseBody?.length).toBeLessThan(60)
+      expect(readerCancelled).toBe(true)
+      // Reading stopped at the cap: the source is no longer being pulled.
+      const pullsAtCap = pulls
+      expect(pullsAtCap).toBeLessThan(10)
+      await settle()
+      expect(pulls).toBe(pullsAtCap)
+    } finally {
+      ReadableStreamDefaultReader.prototype.cancel = originalCancel
+      globalThis.fetch = originalFetch
+    }
   })
 
   test("reads headers from a Request object when init doesn't pass headers", async () => {
