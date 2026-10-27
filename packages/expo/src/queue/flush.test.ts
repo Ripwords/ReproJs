@@ -320,3 +320,45 @@ test("a flush requested mid-flush runs one more pass when the current one ends",
   expect(flusher.status().pending).toBe(0)
   flusher.stop()
 })
+
+// The rerun pass exists for the report enqueued mid-flight. It used to sweep
+// everything, so a report that had just failed in the first pass was sent
+// again immediately — skipping its backoff and burning one of its attempts.
+test("the rerun pass skips items whose backoff has not elapsed", async () => {
+  memory.clear()
+  const q = createQueueStorage({ maxReports: 10, maxBytes: 1024 })
+  await q.enqueue(fakeItem("bad"))
+  await q.enqueue(fakeItem("slow"))
+  let release: (() => void) | undefined
+  const uploading = new Promise<void>((r) => {
+    release = r
+  })
+  const submitted: string[] = []
+  const client: IntakeClient = {
+    submit: async ({ idempotencyKey }) => {
+      submitted.push(idempotencyKey)
+      if (idempotencyKey === "bad") {
+        const err = new Error("503") as Error & { status?: number; retryable?: boolean }
+        err.status = 503
+        err.retryable = true
+        throw err
+      }
+      if (idempotencyKey === "slow") await uploading
+      return { id: "server-" + idempotencyKey }
+    },
+  }
+  const flusher = createQueueFlusher({ queue: q, client, backoffMs: [60_000] })
+  const first = flusher.flush()
+  // "bad" has failed and "slow" is uploading when the user submits again.
+  await q.enqueue(fakeItem("fresh"))
+  const second = flusher.flush()
+  release?.()
+  await Promise.all([first, second])
+  // "fresh" went out on the rerun; "bad" was not retried inside its backoff.
+  expect(submitted).toEqual(["bad", "slow", "fresh"])
+  const remaining = await q.all()
+  expect(remaining.map((i) => [i.id, i.attempts])).toEqual([["bad", 1]])
+  // The skipped item still counts as pending with a retry owed to it.
+  expect(flusher.status().pending).toBe(1)
+  flusher.stop()
+})

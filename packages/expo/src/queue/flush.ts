@@ -58,9 +58,7 @@ export function createQueueFlusher(opts: {
    *  the whole queue — per-item timers would stampede the server on wake. */
   function scheduleRetry(attemptsOfPending: number[]) {
     if (stopped || attemptsOfPending.length === 0) return
-    const delay = Math.min(
-      ...attemptsOfPending.map((a) => ladder[Math.min(a, ladder.length - 1)] ?? ladder.at(-1) ?? 0),
-    )
+    const delay = Math.min(...attemptsOfPending.map(backoffFor))
     clearTimer()
     timer = setTimeout(() => {
       timer = null
@@ -76,13 +74,38 @@ export function createQueueFlusher(opts: {
     retryableAttempts: number[]
   }
 
-  /** One sweep over everything currently queued. */
-  async function flushOnce(): Promise<PassResult> {
+  function backoffFor(attempts: number): number {
+    return ladder[Math.min(attempts, ladder.length - 1)] ?? ladder.at(-1) ?? 0
+  }
+
+  /** True while an item that failed is still inside its backoff window. */
+  function inBackoff(item: { attempts: number; lastErrorAt: string | null }, now: number) {
+    if (item.lastErrorAt === null) return false
+    const failedAt = Date.parse(item.lastErrorAt)
+    if (Number.isNaN(failedAt)) return false
+    return failedAt + backoffFor(item.attempts) > now
+  }
+
+  /**
+   * One sweep over everything currently queued. With `respectBackoff` an item
+   * that failed recently is left alone until its backoff has elapsed; the
+   * rerun pass uses this, because it exists for the report enqueued mid-flight
+   * and must not re-send (and burn an attempt of) a report that just failed.
+   */
+  async function flushOnce(respectBackoff: boolean): Promise<PassResult> {
     let lastError: string | null = null
     const retryableAttempts: number[] = []
     const items = await opts.queue.all()
+    const now = Date.now()
     // eslint-disable-next-line no-await-in-loop
     for (const item of items) {
+      if (respectBackoff && inBackoff(item, now)) {
+        // Still pending, still owed a retry: keep it in the timer's input and
+        // keep its error visible in the status snapshot.
+        retryableAttempts.push(item.attempts)
+        lastError ??= item.lastError
+        continue
+      }
       try {
         // eslint-disable-next-line no-await-in-loop
         await opts.client.submit({
@@ -147,11 +170,13 @@ export function createQueueFlusher(opts: {
     clearTimer()
     let result: PassResult = { lastError: null, retryableAttempts: [] }
     try {
+      let rerun = false
       do {
         rerunRequested = false
         // eslint-disable-next-line no-await-in-loop -- passes are sequential by definition
-        result = await flushOnce()
+        result = await flushOnce(rerun)
         if (stopped) break
+        rerun = true
       } while (rerunRequested)
     } finally {
       // Always release the lock, even when a pass throws (storage failure):
