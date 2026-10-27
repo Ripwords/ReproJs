@@ -84,6 +84,7 @@ test("SDK 54 shape: persists through File/Directory and never calls the throwing
 
   expect(out).toEqual([{ kind: "screenshot", uri: COPY, bytes: 42 }])
   expect(calls).toEqual([`Directory.create ${DIR}`, `File.copy ${SHOT} -> ${COPY}`])
+  expect(await fs?.exists(COPY)).toBe(true)
 
   calls.length = 0
   await store.discard("r1")
@@ -105,6 +106,7 @@ test("SDK 52 shape: persists through the legacy *Async functions", async () => {
     `copyAsync ${SHOT} -> ${COPY}`,
     `getInfoAsync ${COPY}`,
   ])
+  expect(await fs?.exists(COPY)).toBe(true)
 
   calls.length = 0
   await store.discard("r1")

@@ -103,7 +103,7 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
   const breadcrumbsRef = useRef(createBreadcrumbsCollector({}))
   // Resolved once per provider. `expo-file-system` is a dynamic import so a
   // host that has not installed it still gets a working (if non-durable) queue.
-  const [attachmentStore] = useState(() =>
+  const [attachmentFs] = useState(() =>
     loadAttachmentFs().then((fs) => {
       if (!fs) {
         console.warn(
@@ -111,9 +111,10 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
             "storage and may be lost if the app restarts before the report is sent.",
         )
       }
-      return createAttachmentStore(fs)
+      return fs
     }),
   )
+  const [attachmentStore] = useState(() => attachmentFs.then(createAttachmentStore))
   const queueRef = useRef(
     createQueueStorage({
       maxReports: config.queue.maxReports,
@@ -125,6 +126,12 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     createIntakeClient({
       intakeUrl: config.intakeUrl,
       timeoutMs: config.queue.submitTimeoutMs,
+      // Without expo-file-system there is nothing to probe with; report the
+      // file as present and let the upload decide, as before.
+      fileExists: async (uri) => {
+        const fs = await attachmentFs
+        return fs ? fs.exists(uri) : true
+      },
     }),
   )
   // Bumped after every flush so `useRepro().queue` re-renders with the real

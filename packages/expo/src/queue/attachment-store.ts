@@ -16,6 +16,8 @@ export interface AttachmentFs {
   remove: (path: string) => Promise<void>
   /** Byte size of a file, or null when it cannot be determined. */
   size: (uri: string) => Promise<number | null>
+  /** Whether a file is still present. */
+  exists: (uri: string) => Promise<boolean>
 }
 
 export interface AttachmentStore {
@@ -141,6 +143,7 @@ export async function loadAttachmentFs(
         const file = new File(uri)
         return file.exists ? file.size : null
       },
+      exists: async (uri) => new File(uri).exists,
     }
   }
 
@@ -156,6 +159,7 @@ export async function loadAttachmentFs(
         const info = await legacy.getInfoAsync(uri, { size: true })
         return info.exists && typeof info.size === "number" ? info.size : null
       },
+      exists: async (uri) => (await legacy.getInfoAsync(uri)).exists,
     }
   }
 

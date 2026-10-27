@@ -78,17 +78,39 @@ function isExpoWinterFetch(f: unknown): boolean {
   }
 }
 
+/**
+ * The file is gone (iOS purged tmp/, the app was updated, the user cleared
+ * storage). That is a defect in this one part, not in the report: a title,
+ * description and logs with a missing screenshot beat a report that is
+ * silently deleted. Only reachable for attachments the queue failed to copy
+ * into its own directory.
+ */
+function warnUnreadable(filename: string, uri: string, reason: string) {
+  console.warn(
+    `[repro] attachment ${filename} (${uri}) is unreadable and will be left out of the report: ${reason}`,
+  )
+}
+
 export function createIntakeClient(opts: {
   intakeUrl: string
   fetchImpl?: typeof fetch
   /** Injectable for tests; defaults to an XHR read of the local file. */
   blobFromUri?: (uri: string) => Promise<Blob>
+  /**
+   * Whether a local `file://` uri still exists. Used on the React Native fetch
+   * path, where the native layer streams the file and a purged one fails the
+   * whole request. Omit it and the RN path appends every attachment as-is; a
+   * check that throws is treated as "exists" so the upload is never blocked
+   * by the probe itself.
+   */
+  fileExists?: (uri: string) => Promise<boolean>
   /** Abort a single POST after this long. Defaults to {@link DEFAULT_SUBMIT_TIMEOUT_MS}. */
   timeoutMs?: number
 }): IntakeClient {
   const f = opts.fetchImpl ?? fetch
   const readBlob = opts.blobFromUri ?? xhrBlobFromUri
   const timeoutMs = opts.timeoutMs ?? DEFAULT_SUBMIT_TIMEOUT_MS
+  const fileExists = opts.fileExists
 
   return {
     async submit({ idempotencyKey, input, attachments, logs }) {
@@ -121,15 +143,7 @@ export function createIntakeClient(opts: {
               // eslint-disable-next-line no-await-in-loop
               blob = await readBlob(a.uri)
             } catch (err) {
-              // The file is gone (iOS purged tmp/, the app was updated, the
-              // user cleared storage). That is a defect in this one part, not
-              // in the report: a title, description and logs with a missing
-              // screenshot beat a report that is silently deleted. Skip the
-              // part and keep going. This path is only reachable for
-              // attachments the queue failed to copy into its own directory.
-              console.warn(
-                `[repro] attachment ${filename} (${a.uri}) is unreadable and will be left out of the report: ${(err as Error).message}`,
-              )
+              warnUnreadable(filename, a.uri, (err as Error).message)
               continue
             }
             form.append(field, blob, filename)
@@ -137,7 +151,24 @@ export function createIntakeClient(opts: {
             // React Native's fetch: its native layer streams the file from the
             // uri. A Blob here would be spread via `{...value}` in
             // FormData.getParts(), losing the bytes and dropping the attachment
-            // silently while still returning 201.
+            // silently while still returning 201. The flip side is that a
+            // missing file fails the whole request natively, with no status,
+            // which the flusher retries until the report is dropped — so probe
+            // first and leave the part out, same as the Blob path.
+            if (fileExists) {
+              let exists = true
+              try {
+                // eslint-disable-next-line no-await-in-loop
+                exists = await fileExists(a.uri)
+              } catch {
+                // The probe failing says nothing about the file; let the
+                // upload decide.
+              }
+              if (!exists) {
+                warnUnreadable(filename, a.uri, "file not found")
+                continue
+              }
+            }
             const part = { uri: a.uri, name: filename, type: a.contentType }
             form.append(field, part as unknown as Blob)
           }
