@@ -115,10 +115,49 @@ function headersToObject(h: Headers | Record<string, string> | undefined): Recor
   return { ...h }
 }
 
+// Reads the cloned body in the background. This never awaits the whole
+// stream: a Server-Sent-Events or long-poll response never closes, so
+// `clone().text()` would pin an ever-growing buffer in memory for the life
+// of the page. SSE is skipped outright, a declared Content-Length above the
+// cap is skipped, and anything else is read chunk by chunk until the cap is
+// crossed, at which point the reader is cancelled so the clone's tee stops
+// buffering.
 async function readResponseBody(res: Response, entry: NetworkEntry, maxBytes: number) {
   try {
-    const text = await res.clone().text()
-    if (entry.size === null) entry.size = text.length
+    const contentType = res.headers.get("content-type") ?? ""
+    if (contentType.trim().toLowerCase().startsWith("text/event-stream")) return
+    const declared = res.headers.get("content-length")
+    if (declared !== null) {
+      const parsed = Number.parseInt(declared, 10)
+      if (Number.isFinite(parsed) && parsed > maxBytes) return
+    }
+
+    const body = res.clone().body
+    if (!body) {
+      if (entry.size === null) entry.size = 0
+      entry.responseBody = redactBody("", { maxBytes }) ?? undefined
+      return
+    }
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    let text = ""
+    let complete = false
+    try {
+      // Stop as soon as we hold more than the cap; redactBody appends the
+      // truncation marker from there.
+      while (text.length <= maxBytes) {
+        const { done, value } = await reader.read()
+        if (done) {
+          text += decoder.decode()
+          complete = true
+          break
+        }
+        text += decoder.decode(value, { stream: true })
+      }
+    } finally {
+      if (!complete) void reader.cancel().catch(() => {})
+    }
+    if (complete && entry.size === null) entry.size = text.length
     entry.responseBody = redactBody(text, { maxBytes }) ?? undefined
   } catch {
     // Body unreadable (opaque, already consumed, aborted) — keep the entry
