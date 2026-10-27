@@ -1,8 +1,9 @@
 import type { Ref } from "vue"
-import type { ReportDetailDTO } from "@reprojs/shared"
+import type { ReportDetailDTO, TriagePatchInput } from "@reprojs/shared"
 import { describeApiError } from "~/utils/api-error"
 
-export type ReportPatchBody = Record<string, unknown>
+/** Body of PATCH /api/projects/:id/reports/:reportId — the shared Zod contract. */
+export type ReportPatchBody = TriagePatchInput
 
 /**
  * One PATCH path for every triage control on the report page (header
@@ -25,13 +26,9 @@ export function useReportPatch(opts: {
     const before = opts.report.value
     if (before) {
       const optimistic: Partial<ReportDetailDTO> = {}
-      if (typeof body.status === "string") {
-        optimistic.status = body.status as ReportDetailDTO["status"]
-      }
-      if (typeof body.priority === "string") {
-        optimistic.priority = body.priority as ReportDetailDTO["priority"]
-      }
-      if (Array.isArray(body.tags)) optimistic.tags = body.tags as string[]
+      if (body.status !== undefined) optimistic.status = body.status
+      if (body.priority !== undefined) optimistic.priority = body.priority
+      if (body.tags !== undefined) optimistic.tags = body.tags
       if (Object.keys(optimistic).length > 0) {
         opts.report.value = { ...before, ...optimistic }
       }

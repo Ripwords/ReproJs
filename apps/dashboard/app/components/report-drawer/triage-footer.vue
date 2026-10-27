@@ -30,6 +30,7 @@ import {
 } from "~/composables/use-report-format"
 import { pollUntil } from "~/composables/use-poll-until"
 import { useGithubIntegration } from "~/composables/use-github-integration"
+import type { ReportPatchBody } from "~/composables/use-report-patch"
 
 interface Props {
   projectId: string
@@ -40,7 +41,7 @@ interface Props {
   /** The page's single PATCH path (see use-report-patch): optimistic local
    *  update, silent on success, toast on failure. Shared with the header
    *  controls so both surfaces behave identically. */
-  patch: (body: Record<string, unknown>) => Promise<boolean>
+  patch: (body: ReportPatchBody) => Promise<boolean>
   posting: boolean
 }
 const props = defineProps<Props>()
