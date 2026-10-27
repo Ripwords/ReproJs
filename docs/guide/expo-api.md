@@ -28,7 +28,7 @@ import { ReproProvider } from "@reprojs/expo"
 | `collectors.breadcrumbs` | `boolean` | `true` | Enable the `useRepro().log(event, data)` buffer. |
 | `collectors.systemInfo` | `boolean` | `true` | Attach device + env info at submit time. |
 | `queue.maxReports` | `number` | `5` | Max queued reports before oldest is evicted. |
-| `queue.maxBytes` | `number` | `10_485_760` (10 MB) | Byte cap across all queued attachments. |
+| `queue.maxBytes` | `number` | `33_554_432` (32 MB) | Byte cap across all queued attachments. Keep it above the 25 MB the form lets a reporter attach plus the screenshot; a single report that exceeds it is refused at submit time with a visible error, never queued and never dropped. |
 | `queue.backoffMs` | `number[]` | `[1000, 5000, 30000, 120000]` | Retry delays per attempt. |
 | `queue.maxAttempts` | `number` | `10` | Retries before a report is given up on. |
 | `queue.submitTimeoutMs` | `number` | `60_000` | Abort one upload attempt after this long; the report is retried on the next flush. |

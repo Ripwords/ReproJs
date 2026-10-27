@@ -194,7 +194,7 @@ Pass `position` as the initial corner before the user has dragged it; after the 
 
 ## Offline queue
 
-Reports that fail to POST (no network, 5xx, etc.) are persisted to AsyncStorage under `@reprojs/expo/queue/v1` (max 5 reports or 10 MB, whichever first). They retry with exponential backoff when:
+Reports that fail to POST (no network, 5xx, etc.) are persisted to AsyncStorage under `@reprojs/expo/queue/v1` (max 5 reports or 32 MB, whichever first; the oldest report is evicted to make room, and a single report larger than the byte cap is refused with a visible error instead of being queued). They retry with exponential backoff when:
 
 - `NetInfo` reports online after being offline
 - The app comes to foreground (`AppState` change)
