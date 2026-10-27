@@ -26,6 +26,14 @@ function flush(ms = 50): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+/** Polls until `predicate` holds; the caller's own `expect` reports the failure. */
+async function waitUntil(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+  const start = Date.now()
+  while (!predicate() && Date.now() - start < timeoutMs) {
+    await flush(10)
+  }
+}
+
 function walkForTag(node: Element, tag: string): Element | null {
   if (node.tagName?.toLowerCase() === tag) return node
   for (let i = 0; i < node.childNodes.length; i++) {
@@ -231,7 +239,8 @@ describe("Reporter", () => {
     })
     await flush()
     findButtonByText(root, "Choose from gallery\u2026").click()
-    await flush()
+    // The sheet lists the gallery asynchronously; a fixed delay was flaky.
+    await waitUntil(() => collectByClass(root, "ft-sheet-item").length > 0)
     expect(collectByClass(root, "ft-sheet-item").length).toBe(1)
   })
 
