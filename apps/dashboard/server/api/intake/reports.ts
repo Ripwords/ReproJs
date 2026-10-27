@@ -198,6 +198,38 @@ export default defineEventHandler(async (event) => {
     applyIntakePostCors(event, rawOrigin)
   }
 
+  const logsPart = parts.find((p) => p.name === "logs")
+  let parsedLogs: ReturnType<typeof LogsAttachment.parse> | null = null
+  // A malformed logs part must NOT discard the report. Logs are auto-collected
+  // decoration; the report is the reporter's actual work. Rejecting the whole
+  // submission over a bad sidecar is how an SDK serializer bug (a non-string
+  // console arg landing as `null`) silently swallowed every Expo/iOS report in
+  // production — the SDK saw a non-retryable 400 and deleted the queued
+  // report, while this branch logged nothing. Drop the logs, keep the report,
+  // and signal it back via `logsStored` (same success-with-signal shape as
+  // `replayStored`/`replayDisabled`).
+  //
+  // Parsed before the idempotency check below: a rejected logs part never
+  // becomes an attachment row, so it must not count towards the number of
+  // rows a complete prior submission is expected to have.
+  let logsRejected = false
+  if (logsPart?.data && logsPart.data.length > 0) {
+    try {
+      parsedLogs = LogsAttachment.parse(JSON.parse(logsPart.data.toString("utf8")))
+    } catch (err) {
+      logsRejected = true
+      parsedLogs = null
+      const issues =
+        err && typeof err === "object" && "issues" in err
+          ? (err as { issues: unknown }).issues
+          : String(err)
+      console.warn(
+        `[intake] dropping invalid logs part for project ${project.id} (source=${parsed.context.source})`,
+        JSON.stringify(issues, null, 2),
+      )
+    }
+  }
+
   // Idempotency short-circuit: if a client replays a request with the same
   // Idempotency-Key for this project, return the existing report id without
   // re-inserting. This runs BEFORE honeypot/dwell gates so legitimate mobile
@@ -211,10 +243,10 @@ export default defineEventHandler(async (event) => {
   if (idempotencyKey) {
     const existing = await findReportByIdempotencyKey(db, project.id, idempotencyKey)
     if (existing) {
-      const expected = countExpectedAttachments(
-        parts,
-        env.REPLAY_FEATURE_ENABLED && project.replayEnabled,
-      )
+      const expected = countExpectedAttachments(parts, {
+        replayAllowed: env.REPLAY_FEATURE_ENABLED && project.replayEnabled,
+        logsAllowed: !logsRejected,
+      })
       if (existing.attachmentCount >= expected) {
         event.node.res.statusCode = 200
         return { id: existing.id }
@@ -261,34 +293,6 @@ export default defineEventHandler(async (event) => {
       ? "Too many reports for this project"
       : "Too many reports from this IP"
     throw createError({ statusCode: 429, statusMessage: message })
-  }
-
-  const logsPart = parts.find((p) => p.name === "logs")
-  let parsedLogs: ReturnType<typeof LogsAttachment.parse> | null = null
-  // A malformed logs part must NOT discard the report. Logs are auto-collected
-  // decoration; the report is the reporter's actual work. Rejecting the whole
-  // submission over a bad sidecar is how an SDK serializer bug (a non-string
-  // console arg landing as `null`) silently swallowed every Expo/iOS report in
-  // production — the SDK saw a non-retryable 400 and deleted the queued
-  // report, while this branch logged nothing. Drop the logs, keep the report,
-  // and signal it back via `logsStored` (same success-with-signal shape as
-  // `replayStored`/`replayDisabled`).
-  let logsRejected = false
-  if (logsPart?.data && logsPart.data.length > 0) {
-    try {
-      parsedLogs = LogsAttachment.parse(JSON.parse(logsPart.data.toString("utf8")))
-    } catch (err) {
-      logsRejected = true
-      parsedLogs = null
-      const issues =
-        err && typeof err === "object" && "issues" in err
-          ? (err as { issues: unknown }).issues
-          : String(err)
-      console.warn(
-        `[intake] dropping invalid logs part for project ${project.id} (source=${parsed.context.source})`,
-        JSON.stringify(issues, null, 2),
-      )
-    }
   }
 
   const screenshotPart = parts.find((p) => p.name === "screenshot")
@@ -640,7 +644,21 @@ export default defineEventHandler(async (event) => {
   // leave a report that points at missing bytes. Keys only ever contain
   // report-scoped paths, so a rollback here cannot touch anyone else's data.
   const storage = await getStorage()
-  const plannedKeys = planned.map((p) => p.row.storageKey)
+  // In repair mode the planned keys collide with the blobs of attachment rows
+  // that DID commit on the earlier attempt (same report id, same key). The
+  // puts below overwrite those in place; a failure must not delete them, or
+  // the committed rows would point at nothing.
+  const preexistingKeys = new Set<string>(
+    repairTarget
+      ? (
+          await db
+            .select({ storageKey: reportAttachments.storageKey })
+            .from(reportAttachments)
+            .where(eq(reportAttachments.reportId, reportId))
+        ).map((r) => r.storageKey)
+      : [],
+  )
+  const rollbackKeys = planned.map((p) => p.row.storageKey).filter((k) => !preexistingKeys.has(k))
   const writtenKeys: string[] = []
   try {
     await Promise.all(
@@ -651,7 +669,10 @@ export default defineEventHandler(async (event) => {
     )
   } catch (err) {
     console.error("[intake] attachment storage write failed", err)
-    await rollbackPuts(storage, writtenKeys)
+    await rollbackPuts(
+      storage,
+      writtenKeys.filter((k) => !preexistingKeys.has(k)),
+    )
     throw createError({ statusCode: 500, statusMessage: "Attachment storage failed" })
   }
 
@@ -735,17 +756,17 @@ export default defineEventHandler(async (event) => {
       return current ? { kind: "repaired" } : { kind: "created" }
     })
   } catch (err) {
-    await rollbackPuts(storage, plannedKeys)
+    await rollbackPuts(storage, rollbackKeys)
     throw err
   }
 
   if (txResult.kind === "overCap") {
-    await rollbackPuts(storage, plannedKeys)
+    await rollbackPuts(storage, rollbackKeys)
     event.node.res.setHeader("Retry-After", "3600")
     throw createError({ statusCode: 429, statusMessage: "Daily report cap reached" })
   }
   if (txResult.kind === "duplicate") {
-    await rollbackPuts(storage, plannedKeys)
+    await rollbackPuts(storage, rollbackKeys)
     event.node.res.statusCode = 200
     return { id: txResult.id }
   }
@@ -822,17 +843,21 @@ async function findReportByIdempotencyKey(
  * multipart parts alone. Used by the idempotency short-circuit to tell a
  * complete prior submission (return 200) from a half-stored one (repair).
  * Deliberately a cheap upper bound: a part that later fails validation makes
- * us fall through to the full path, which is the safe direction.
+ * us fall through to the full path, which is the safe direction. The two
+ * exceptions are parts intake drops by design (replay when disabled, logs
+ * when rejected): those never become rows, so counting them would make every
+ * retry of an otherwise complete report take the repair path.
  */
 function countExpectedAttachments(
   parts: NonNullable<Awaited<ReturnType<typeof readMultipartFormData>>>,
-  replayAllowed: boolean,
+  allowed: { replayAllowed: boolean; logsAllowed: boolean },
 ): number {
   let n = 0
   for (const p of parts) {
     if (!p.data || p.data.length === 0 || !p.name) continue
-    if (p.name === "screenshot" || p.name === "logs") n++
-    else if (p.name === "replay" && replayAllowed) n++
+    if (p.name === "screenshot") n++
+    else if (p.name === "logs" && allowed.logsAllowed) n++
+    else if (p.name === "replay" && allowed.replayAllowed) n++
     else if (/^attachment\[\d+\]$/.test(p.name) || MEDIA_PART_RE.test(p.name)) n++
   }
   return n

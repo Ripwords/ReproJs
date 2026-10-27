@@ -1,5 +1,5 @@
 // apps/dashboard/server/lib/github-reconcile.ts
-import { and, eq, ne, sql } from "drizzle-orm"
+import { and, eq, isNull, ne, sql } from "drizzle-orm"
 import { type LogsAttachment, type ReportContext } from "@reprojs/shared"
 import { isUniqueViolation } from "./pg-errors"
 import {
@@ -548,6 +548,31 @@ async function backfillGithubComments(
 // --- Attached reports: one-time body comment ---
 
 /**
+ * Id of the comment on `issueNumber` that already carries this report's
+ * marker, or null. Best-effort like findIssueByMarker: a listing failure
+ * returns null and the caller falls back to posting.
+ */
+async function findAttachCommentOnIssue(
+  octokit: Octokit,
+  gi: GithubIntegration,
+  issueNumber: number,
+  reportId: string,
+): Promise<number | null> {
+  const marker = reportMarker(reportId)
+  try {
+    const comments = await listIssueComments(octokit, gi.repoOwner, gi.repoName, issueNumber)
+    return comments.find((c) => c.body.includes(marker))?.id ?? null
+  } catch (err) {
+    console.warn("[github] could not list issue comments before posting the attach comment", {
+      reportId,
+      issueNumber,
+      err: String(err),
+    })
+    return null
+  }
+}
+
+/**
  * Post the report body (same renderer as a new issue, marker included) as a
  * comment on the issue the report was attached to. Idempotent: the comment
  * id is stored on the report and re-read under a per-report advisory lock,
@@ -575,6 +600,17 @@ async function postAttachComment(
       .limit(1)
     // Another worker posted it, or the report was unlinked meanwhile.
     if (!fresh || fresh.githubAttachCommentId !== null || fresh.githubIssueNumber !== issueNumber) {
+      return
+    }
+    // Backstop for a previous attempt that posted the comment but failed
+    // before this transaction committed its id (same role findIssueByMarker
+    // plays for issue creation): adopt the comment already on the issue.
+    const existing = await findAttachCommentOnIssue(octokit, gi, issueNumber, report.id)
+    if (existing !== null) {
+      await tx
+        .update(reports)
+        .set({ githubAttachCommentId: existing })
+        .where(eq(reports.id, report.id))
       return
     }
     // A new issue carries the report title as its own title; a comment has
@@ -735,7 +771,10 @@ export async function reconcileReport(reportId: string): Promise<void> {
         }))
       // Persist the linkage immediately — before any label / assignee /
       // comment work — so a crash past this point can never lose the number.
-      await tx
+      // Conditional on the row still being unlinked: link/unlink take the
+      // same advisory lock, but a writer that bypassed it (or a future code
+      // path) must never have its link silently replaced by ours.
+      const updated = await tx
         .update(reports)
         .set({
           githubIssueNumber: ref.number,
@@ -744,9 +783,28 @@ export async function reconcileReport(reportId: string): Promise<void> {
           githubLinkKind: "created",
           githubSyncedAt: new Date(),
         })
-        .where(eq(reports.id, report.id))
+        .where(and(eq(reports.id, report.id), isNull(reports.githubIssueNumber)))
+        .returning({ id: reports.id })
+      if (updated.length === 0) {
+        return { lost: true as const, number: ref.number, existed: existing !== null }
+      }
       return { number: ref.number, linkedByUs: true as const, existed: existing !== null }
     })
+
+    if ("lost" in linked) {
+      // Someone linked the report while GitHub was answering createIssue.
+      // Keep their link; the issue we opened stays on GitHub as an orphan
+      // for a human to close rather than being wired up as a second link.
+      console.warn(
+        "[github] report was linked while creating its issue; keeping the existing link",
+        {
+          reportId: report.id,
+          createdIssueNumber: linked.number,
+          createdByUs: !linked.existed,
+        },
+      )
+      return
+    }
 
     if (linked.linkedByUs) {
       // Backfill existing GitHub comments on first link (only if issue existed before)

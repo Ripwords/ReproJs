@@ -28,6 +28,7 @@ import {
 } from "../../server/db/schema"
 import { __setClientOverride } from "../../server/lib/github"
 import { attachReportToGithubIssue } from "../../server/lib/github-attach"
+import { linkReportToGithubIssue } from "../../server/lib/github-link"
 import { signCommentUpsert } from "../../server/lib/github-diff"
 import { reportMarker } from "../../server/lib/github-helpers"
 import { reconcileReport, type LiveIssue } from "../../server/lib/github-reconcile"
@@ -52,6 +53,8 @@ const PK = "rp_pk_ATTACH1234567890abcdef12"
 const ORIGIN = "http://localhost:4000"
 const INSTALLATION_ID = 77
 const WEBHOOK_SECRET = "test-webhook-secret"
+/** Login GitHub gives the App seeded by seedGithubApp (slug "repro-test"). */
+const APP_BOT_LOGIN = "repro-test[bot]"
 
 // --- GitHub mock -----------------------------------------------------------
 
@@ -84,7 +87,14 @@ const LIVE_ISSUE: LiveIssue = {
   milestoneNumber: 7,
 }
 
-function makeMock(): { client: GitHubInstallationClient; calls: MockCalls } {
+interface MockOptions {
+  /** Replaces the default createIssue (which throws): lets a test run work mid-call. */
+  createIssue?: GitHubInstallationClient["createIssue"]
+  /** Comments already on the issue, returned by octokit.paginate(listComments). */
+  existingComments?: Array<{ id: number; body: string }>
+}
+
+function makeMock(opts: MockOptions = {}): { client: GitHubInstallationClient; calls: MockCalls } {
   const calls: MockCalls = {
     createComment: [],
     setLabels: [],
@@ -93,7 +103,20 @@ function makeMock(): { client: GitHubInstallationClient; calls: MockCalls } {
     removeAssignees: [],
   }
   let nextCommentId = 9001
+  const existing = (opts.existingComments ?? []).map((c) => ({
+    id: c.id,
+    body: c.body,
+    user: { id: 1, login: "repro[bot]", avatar_url: null },
+    created_at: "2026-10-21T10:00:00Z",
+    updated_at: "2026-10-21T10:00:00Z",
+  }))
   const octokit = {
+    paginate: {
+      iterator: () =>
+        (async function* () {
+          yield { data: existing }
+        })(),
+    },
     rest: {
       issues: {
         get: async () => ({ data: {} as never }),
@@ -130,9 +153,11 @@ function makeMock(): { client: GitHubInstallationClient; calls: MockCalls } {
   } as unknown as Octokit
 
   const client = {
-    createIssue: async () => {
-      throw new Error("createIssue must not be called for attached reports")
-    },
+    createIssue:
+      opts.createIssue ??
+      (async () => {
+        throw new Error("createIssue must not be called for attached reports")
+      }),
     getIssue: async () => ({ state: "open" as const, labels: LIVE_ISSUE.labels }),
     closeIssue: async () => {},
     reopenIssue: async () => {},
@@ -596,5 +621,206 @@ describe("attach → reconcile follows the issue", () => {
     expect(detail.status).toBe(200)
     expect(detail.body.githubLinkKind).toBe("attached")
     expect(detail.body.reporterIssueHint).toBeNull()
+  })
+})
+
+describe("attach comment echo", () => {
+  /** Link without the post-commit enqueue so no reconcile runs behind the test's back. */
+  async function linkOnly(pid: string, ownerId: string, reportId: string) {
+    await db.transaction((tx) =>
+      linkReportToGithubIssue(tx, {
+        projectId: pid,
+        reportId,
+        actorId: ownerId,
+        actorClientId: null,
+        repoOwner: "acme",
+        repoName: "frontend",
+        issueNumber: EXISTING_ISSUE.number,
+        issueNodeId: EXISTING_ISSUE.nodeId,
+        issueTitle: EXISTING_ISSUE.title,
+      }),
+    )
+  }
+
+  test("an echo that beats the write-lock is dropped and its id adopted as the attach comment", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ relatedIssue: "#42" }))
+    await linkOnly(pid, ownerId, reportId)
+    const { client, calls } = makeMock()
+    __setClientOverride(() => client)
+
+    // GitHub delivers our own body comment (authored by the App's bot, see
+    // seedGithubApp's slug) before postAttachComment has recorded the
+    // write-lock (createIssueComment has not even returned).
+    const echoBody = `### Checkout button does nothing (re-test)\n\n${reportMarker(reportId)}\n\nbody`
+    const echo = await sendWebhook("issue_comment", {
+      action: "created",
+      comment: {
+        id: 9001,
+        body: echoBody,
+        user: { id: 1, login: APP_BOT_LOGIN, avatar_url: "https://example.com/a.png", type: "Bot" },
+      },
+      issue: { number: 42 },
+      repository: REPO,
+      installation: { id: INSTALLATION_ID },
+    })
+    expect(echo.status).toBe(202)
+    expect((await echo.json()) as { echo?: boolean }).toMatchObject({ echo: true })
+
+    const mirrored = await db
+      .select()
+      .from(reportComments)
+      .where(eq(reportComments.reportId, reportId))
+    expect(mirrored.length).toBe(0)
+    const events = await db.select().from(reportEvents).where(eq(reportEvents.reportId, reportId))
+    expect(events.filter((e) => e.kind === "comment_added").length).toBe(0)
+    expect((await loadReport(reportId)).githubAttachCommentId).toBe(9001)
+
+    // The reconciler now sees the id and posts nothing.
+    await reconcileReport(reportId)
+    expect(calls.createComment.length).toBe(0)
+  })
+
+  test("a human pasting the marker is mirrored like any comment and cannot claim the attach comment id", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ relatedIssue: "#42" }))
+    await linkOnly(pid, ownerId, reportId)
+    const { client } = makeMock()
+    __setClientOverride(() => client)
+
+    const pasted = `quoting the bot: ${reportMarker(reportId)}`
+    // A user account using our bot's login, and a bot with a different login,
+    // must both fail the identity check.
+    for (const [id, user] of [
+      [
+        8801,
+        { id: 500, login: "maintainer", avatar_url: "https://example.com/m.png", type: "User" },
+      ],
+      [
+        8802,
+        { id: 501, login: APP_BOT_LOGIN, avatar_url: "https://example.com/m.png", type: "User" },
+      ],
+      [
+        8803,
+        { id: 502, login: "other-app[bot]", avatar_url: "https://example.com/m.png", type: "Bot" },
+      ],
+    ] as const) {
+      const res = await sendWebhook("issue_comment", {
+        action: "created",
+        comment: { id, body: pasted, user },
+        issue: { number: 42 },
+        repository: REPO,
+        installation: { id: INSTALLATION_ID },
+      })
+      expect(res.status).toBe(202)
+      expect((await res.json()) as { echo?: boolean }).not.toMatchObject({ echo: true })
+    }
+
+    const mirrored = await db
+      .select()
+      .from(reportComments)
+      .where(eq(reportComments.reportId, reportId))
+    expect(mirrored.map((c) => c.githubCommentId).toSorted()).toEqual([8801, 8802, 8803])
+    expect(mirrored.every((c) => c.source === "github")).toBe(true)
+    expect((await loadReport(reportId)).githubAttachCommentId).toBeNull()
+  })
+
+  test("reconcile adopts a marker comment already on the issue instead of posting a copy", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ relatedIssue: "#42" }))
+    await linkOnly(pid, ownerId, reportId)
+    // A previous attempt posted the comment but failed before storing its id.
+    const { client, calls } = makeMock({
+      existingComments: [
+        { id: 4242, body: "unrelated human comment" },
+        { id: 5555, body: `### old attempt\n\n${reportMarker(reportId)}` },
+      ],
+    })
+    __setClientOverride(() => client)
+
+    await reconcileReport(reportId)
+
+    expect(calls.createComment.length).toBe(0)
+    expect((await loadReport(reportId)).githubAttachCommentId).toBe(5555)
+  })
+})
+
+describe("attach vs. auto-create race", () => {
+  const CREATED = {
+    number: 101,
+    nodeId: "I_kwDOcreated101",
+    url: "https://github.com/acme/frontend/issues/101",
+  }
+
+  test("a link that lands between createIssue and the reconciler's UPDATE survives; the reconciler does not overwrite it", async () => {
+    await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ title: "Raced report" }))
+    let createCalls = 0
+    const { client } = makeMock({
+      createIssue: async () => {
+        createCalls++
+        // A writer that does not hold the reconciler's advisory lock attaches
+        // the report to #42 while GitHub is still answering createIssue.
+        await db
+          .update(reports)
+          .set({
+            githubIssueNumber: EXISTING_ISSUE.number,
+            githubIssueNodeId: EXISTING_ISSUE.nodeId,
+            githubIssueUrl: EXISTING_ISSUE.url,
+            githubLinkKind: "attached",
+          })
+          .where(eq(reports.id, reportId))
+        return CREATED
+      },
+    })
+    __setClientOverride(() => client)
+
+    await reconcileReport(reportId)
+
+    expect(createCalls).toBe(1)
+    const row = await loadReport(reportId)
+    expect(row.githubIssueNumber).toBe(42)
+    expect(row.githubIssueUrl).toBe(EXISTING_ISSUE.url)
+    expect(row.githubLinkKind).toBe("attached")
+  })
+
+  test("attach waits for the reconciler's lock, then sees the created issue and is refused", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ title: "Locked report" }))
+    let attachPromise: Promise<unknown> | null = null
+    let rowDuringCreate: Awaited<ReturnType<typeof loadReport>> | null = null
+    const { client } = makeMock({
+      createIssue: async () => {
+        attachPromise = attachReportToGithubIssue({
+          projectId: pid,
+          reportId,
+          actorId: ownerId,
+          actorClientId: null,
+          issueNumber: 42,
+        }).then(
+          () => null,
+          (e: unknown) => e as { statusCode?: number; statusMessage?: string },
+        )
+        // Give the attach time to reach its transaction: it must block on
+        // the per-report lock the reconciler holds, not write.
+        await new Promise((r) => setTimeout(r, 300))
+        rowDuringCreate = await loadReport(reportId)
+        return CREATED
+      },
+    })
+    __setClientOverride(() => client)
+
+    await reconcileReport(reportId)
+
+    expect(rowDuringCreate?.githubIssueNumber).toBeNull()
+    const row = await loadReport(reportId)
+    expect(row.githubIssueNumber).toBe(CREATED.number)
+    expect(row.githubLinkKind).toBe("created")
+
+    const err = (await attachPromise) as { statusCode?: number; statusMessage?: string } | null
+    expect(err?.statusCode).toBe(409)
+    expect(err?.statusMessage).toContain("#101")
+    const events = await db.select().from(reportEvents).where(eq(reportEvents.reportId, reportId))
+    expect(events.filter((e) => e.kind === "github_linked").length).toBe(0)
   })
 })

@@ -1,11 +1,23 @@
 // apps/dashboard/server/lib/github-link.ts
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { createError } from "h3"
 import type { DB } from "../db"
 import { githubIntegrations, reportEvents, reports, reportSyncJobs } from "../db/schema"
 import { enqueueSync } from "./enqueue-sync"
 
 type DbTransaction = Parameters<DB["transaction"]>[0] extends (tx: infer T) => unknown ? T : never
+
+/**
+ * The same per-report advisory lock the reconciler holds while it creates an
+ * issue (see github-reconcile.ts). Taking it here serializes link/unlink with
+ * an in-flight auto-create, so the two can never interleave between the
+ * reconciler's createIssue call and its UPDATE: a manager's attach either
+ * lands first (and the reconciler sees the issue number and skips creating)
+ * or waits and then sees the created issue.
+ */
+async function lockReport(tx: DbTransaction, reportId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${reportId}))`)
+}
 
 export interface LinkArgs {
   projectId: string
@@ -48,6 +60,7 @@ export async function linkReportToGithubIssue(
   tx: DbTransaction,
   args: LinkToIssueArgs,
 ): Promise<{ issueNumber: number; issueUrl: string; alreadyLinked: boolean }> {
+  await lockReport(tx, args.reportId)
   const [current] = await tx
     .select({
       id: reports.id,
@@ -141,6 +154,7 @@ export async function unlinkReportFromGithubIssue(
   tx: DbTransaction,
   args: LinkArgs,
 ): Promise<{ ok: true; unlinked: boolean }> {
+  await lockReport(tx, args.reportId)
   const [current] = await tx
     .select()
     .from(reports)
