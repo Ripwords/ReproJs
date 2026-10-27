@@ -350,6 +350,32 @@ export const ReportDetailDTO = ReportSummaryDTO.extend({
 })
 export type ReportDetailDTO = z.infer<typeof ReportDetailDTO>
 
+/** One report in a thread of reports linked to the same GitHub issue. */
+export const ReportThreadItemDTO = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  status: ReportStatus,
+  priority: ReportPriority,
+  reporterName: z.string().nullable(),
+  reporterEmail: z.string().nullable(),
+  receivedAt: z.string(),
+  githubLinkKind: GithubLinkKind.nullable(),
+})
+export type ReportThreadItemDTO = z.infer<typeof ReportThreadItemDTO>
+
+/**
+ * GET /api/projects/:id/reports/:reportId/thread. Every report in the project
+ * linked to the same GitHub issue, the requested one included. The report
+ * Repro created the issue for comes first, then the rest oldest first.
+ * `issueNumber` is null (and `items` empty) when the report is not linked.
+ */
+export const ReportThreadDTO = z.object({
+  issueNumber: z.number().int().nullable(),
+  issueUrl: z.string().nullable(),
+  items: z.array(ReportThreadItemDTO),
+})
+export type ReportThreadDTO = z.infer<typeof ReportThreadDTO>
+
 export const IntakeResponse = z.object({
   id: z.uuid(),
   /** True when the server silently dropped the replay part (per-project or per-deployment disable). */
