@@ -304,21 +304,29 @@ function ActiveProvider({ config, children }: { config: ReproConfig; children: R
     // Copy out of tmp/ and the cache dir before the report is persisted, so a
     // queued report survives an app restart or update. Also fills in the real
     // screenshot size, which the queue's maxBytes cap depends on.
-    const attachments = await (
-      await attachmentStore
-    ).persist(id, [...screenshotEntries, ...userFileEntries])
-    const { evictedIds } = await queueRef.current.enqueue({
-      id,
-      createdAt: now,
-      payload: {
-        input,
-        attachments,
-        logs: logsJson,
-      },
-      attempts: 0,
-      lastErrorAt: null,
-      lastError: null,
-    })
+    const store = await attachmentStore
+    const attachments = await store.persist(id, [...screenshotEntries, ...userFileEntries])
+    let evictedIds: string[]
+    try {
+      ;({ evictedIds } = await queueRef.current.enqueue({
+        id,
+        createdAt: now,
+        payload: {
+          input,
+          attachments,
+          logs: logsJson,
+        },
+        attempts: 0,
+        lastErrorAt: null,
+        lastError: null,
+      }))
+    } catch (err) {
+      // The report was never queued (too large for `queue.maxBytes`, or the
+      // storage write failed). Drop the copies made for it and let the error
+      // reach the wizard, which shows the message and keeps the form open.
+      await store.discard(id)
+      throw err
+    }
     if (evictedIds.length > 0) {
       // Eviction is data loss, same as a drop: the oldest unsent reports were
       // discarded to make room. Say so, with ids, instead of vanishing them.

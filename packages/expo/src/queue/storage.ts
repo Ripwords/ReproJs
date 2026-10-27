@@ -34,8 +34,36 @@ function itemBytes(i: QueueItem): number {
   return i.payload.attachments.reduce((sum, a) => sum + a.bytes, 0)
 }
 
+function megabytes(n: number): string {
+  return (n / (1024 * 1024)).toFixed(1)
+}
+
+/**
+ * Thrown by `enqueue` when the report on its own is larger than `maxBytes`.
+ * Nothing has been written or deleted when this is thrown; the caller still
+ * owns the attachment files and the user should see the message.
+ */
+export class ReportTooLargeError extends Error {
+  readonly bytes: number
+  readonly maxBytes: number
+  constructor(bytes: number, maxBytes: number) {
+    super(
+      `This report is too large to send (${megabytes(bytes)} MB of attachments; the limit is ${megabytes(maxBytes)} MB). Remove some attachments and try again.`,
+    )
+    this.name = "ReportTooLargeError"
+    this.bytes = bytes
+    this.maxBytes = maxBytes
+  }
+}
+
 export interface QueueStorage {
   all: () => Promise<QueueItem[]>
+  /**
+   * Append a report, evicting the oldest queued reports if the caps require
+   * it. The item being enqueued is never evicted: a report that alone exceeds
+   * `maxBytes` rejects with {@link ReportTooLargeError} before anything is
+   * written, so the failure reaches the user instead of the report vanishing.
+   */
   enqueue: (item: QueueItem) => Promise<{ evictedIds: string[] }>
   update: (id: string, patch: Partial<QueueItem>) => Promise<void>
   remove: (id: string) => Promise<void>
@@ -118,11 +146,20 @@ export function createQueueStorage(opts: {
     },
     enqueue(item) {
       return serialized(async () => {
+        const bytes = itemBytes(item)
+        if (bytes > opts.maxBytes) throw new ReportTooLargeError(bytes, opts.maxBytes)
         const f = await read()
         const evicted: QueueItem[] = []
         f.items.push(item)
-        f.sizeBytes += itemBytes(item)
-        while (f.items.length > opts.maxReports || f.sizeBytes > opts.maxBytes) {
+        f.sizeBytes += bytes
+        // Evict from the head (oldest first) but never past the item just
+        // pushed: shifting until the total fit used to evict the new report
+        // itself when it alone was over the cap, and the caller read its own
+        // id back as "discarded to make room".
+        while (
+          f.items.length > 1 &&
+          (f.items.length > opts.maxReports || f.sizeBytes > opts.maxBytes)
+        ) {
           const head = f.items.shift()
           if (!head) break
           evicted.push(head)

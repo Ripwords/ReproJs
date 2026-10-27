@@ -114,6 +114,42 @@ const queued = (id: string) => ({
   lastError: null,
 })
 
+// A single report larger than `maxBytes` used to evict *itself*: the eviction
+// loop shifted from the head until the total fit, and the head was the item
+// just pushed. Its files were deleted through onRemove, the caller got its own
+// id back in `evictedIds`, and the wizard closed as if the report had been sent.
+test("enqueue never evicts the item being enqueued: an oversized report is rejected, not lost", async () => {
+  memory.clear()
+  const removed: string[] = []
+  const q = createQueueStorage({
+    maxReports: 5,
+    maxBytes: 100,
+    onRemove: (item) => {
+      removed.push(item.id)
+    },
+  })
+  const huge = {
+    ...queued("huge"),
+    payload: {
+      input: { title: "huge" } as never,
+      attachments: [{ kind: "screenshot" as const, uri: "file://shot", bytes: 150 }],
+    },
+  }
+  await expect(q.enqueue(huge)).rejects.toThrow(/too large/)
+  // Nothing was written and nothing was cleaned up — the caller still owns the files.
+  expect(await q.all()).toEqual([])
+  expect(removed).toEqual([])
+})
+
+test("enqueue keeps the new item when older ones must go to make room for it", async () => {
+  memory.clear()
+  const q = createQueueStorage({ maxReports: 1, maxBytes: 1024 })
+  await q.enqueue(queued("old"))
+  const { evictedIds } = await q.enqueue(queued("new"))
+  expect(evictedIds).toEqual(["old"])
+  expect((await q.all()).map((i) => i.id)).toEqual(["new"])
+})
+
 test("onRemove receives every item that leaves the queue, including evictions", async () => {
   memory.clear()
   const removed: string[] = []
