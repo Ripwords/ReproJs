@@ -89,10 +89,10 @@ async function tryInject(tabId: number, url: string): Promise<void> {
 
   try {
     // 0. Ask the page world what is already there. This makes the whole
-    //    chain idempotent: a pushState navigation (tabs.onUpdated reports a
-    //    URL change and clears the dedupe slot), a bfcache restore, or a
-    //    revived service worker that lost its Map all re-run tryInject
-    //    against a live document. Re-evaluating the IIFE there would swap
+    //    chain idempotent: a bfcache restore, a `complete` that lands after
+    //    a failed DOMContentLoaded inject, or a revived service worker that
+    //    lost its Map all re-run tryInject against a live document.
+    //    Re-evaluating the IIFE there would swap
     //    window.Repro for a fresh module whose config is null, so the
     //    launcher stays visible but Repro.open() throws "called before
     //    init". Keep the dedupe slot: the page IS injected.
@@ -196,14 +196,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   void tryInject(tabId, tab.url)
 })
 
-// Belt-and-suspenders: URL change emits earlier than `status: "loading"`
-// in some Chrome edge cases (cross-origin redirects, history API). Keep
-// this as a secondary trigger so a URL change always wipes the dedupe.
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.url) {
-    injectedForTab.delete(tabId)
-  }
-})
+// Deliberately NO `changeInfo.url` listener. Real navigations already clear
+// the slot via webNavigation.onCommitted and `status: "loading"` above. The
+// only extra case a URL listener covered was pushState/replaceState, where
+// the document (and the booted SDK in it) survives — clearing the slot there
+// let a second tryInject race one still in flight and re-evaluate the IIFE,
+// replacing window.Repro with an un-inited module.
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   injectedForTab.delete(tabId)
