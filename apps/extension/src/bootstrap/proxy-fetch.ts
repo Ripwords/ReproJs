@@ -15,7 +15,16 @@
 
 // `maxRawBodyBytes` is computed by the service worker from lib/proxy-limits
 // and passed in as an argument, because this function cannot import it.
-export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: number): void {
+//
+// `timeoutBaseMs` is the proxy's own fallback deadline for callers that pass
+// no AbortSignal (the SDK always does). It mirrors the SDK's intake deadline
+// — 30 s + 10 s per MB of body, capped at 10 min — so the two never disagree
+// about when an upload is dead. Tests shrink it to exercise the path.
+export function installFetchProxy(
+  endpointOrigin: string,
+  maxRawBodyBytes: number,
+  timeoutBaseMs: number = 30_000,
+): void {
   const g = globalThis as unknown as {
     __REPRO_PROXY_INSTALLED__?: boolean
     __REPRO_PROXY_ORIGIN__?: string
@@ -84,6 +93,15 @@ export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: numbe
     return 0
   }
 
+  // Same shape as uploadTimeoutMs in packages/core/src/intake-client.ts.
+  // oxlint-disable-next-line eslint-plugin-unicorn/consistent-function-scoping
+  function proxyTimeoutMs(rawBytes: number): number {
+    const PER_MB_MS = 10_000
+    const MAX_MS = 600_000
+    const mb = Math.max(0, rawBytes) / 1_048_576
+    return Math.min(MAX_MS, Math.round(timeoutBaseMs + mb * PER_MB_MS))
+  }
+
   async function serializeBody(body: BodyInit | null | undefined): Promise<unknown> {
     if (body == null) return { kind: "none" }
     if (typeof body === "string") return { kind: "text", value: body }
@@ -130,10 +148,13 @@ export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: numbe
     }
     console.info("[repro-extension] proxying fetch →", targetUrl)
 
-    // The SDK passes AbortSignal.timeout(30_000). Without forwarding it the
-    // SDK's timeout only rejected the page-side promise while the service
-    // worker kept uploading, and the proxy's own 60 s timer was the only
-    // real bail-out.
+    // The SDK passes a timeout signal scaled to the payload (30 s + 10 s per
+    // MB). Forward it: without that the SDK's timeout only rejected the
+    // page-side promise while the service worker kept uploading, so a retry
+    // produced a duplicate report. When a signal is present it owns the
+    // deadline outright — the proxy adds no timer of its own, because a
+    // shorter fixed one would reject big uploads early with a different
+    // error while the service-worker request ran to completion anyway.
     const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
     if (signal?.aborted) {
       throw signal.reason instanceof Error
@@ -161,7 +182,7 @@ export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: numbe
     }
     // Chrome caps runtime.sendMessage payloads; a body that would blow past
     // it after base64 inflation dies inside the bridge with an unhelpful
-    // error and a 60 s hang. Hand it to the page's real fetch instead — on a
+    // error and a hang until the deadline. Hand it to the page's real fetch instead — on a
     // CSP-strict host that may be blocked too, but then the SDK sees a
     // normal, immediate network error rather than a silent stall.
     const rawBytes = rawBodyBytes(bodyInit)
@@ -207,17 +228,30 @@ export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: numbe
       error?: string
       fallback?: boolean
     }>((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      // Tell the service worker to cancel the in-flight fetch too; otherwise
+      // the upload keeps running after the page side gave up, lands on the
+      // server, and the user's retry files a duplicate report.
+      function abortServiceWorkerFetch(): void {
         pending.delete(id)
-        signal?.removeEventListener("abort", onAbort)
-        reject(new Error("repro proxy: timeout"))
-      }, 60_000)
-      function onAbort(): void {
-        clearTimeout(timeout)
-        pending.delete(id)
-        // Tell the service worker to cancel the in-flight fetch too;
-        // otherwise the upload keeps running after the SDK gave up.
         window.postMessage({ source: SOURCE, type: "abort", id }, window.location.origin)
+      }
+      // Only callers without a signal get the proxy's own deadline. A
+      // DOMException named TimeoutError is what AbortSignal.timeout() throws,
+      // so the SDK's isAbortError maps it to its friendly timeout copy.
+      const timeout: ReturnType<typeof setTimeout> | null = signal
+        ? null
+        : setTimeout(() => {
+            abortServiceWorkerFetch()
+            reject(
+              new DOMException(
+                "repro proxy: timed out waiting for the service worker",
+                "TimeoutError",
+              ),
+            )
+          }, proxyTimeoutMs(rawBytes))
+      function onAbort(): void {
+        if (timeout !== null) clearTimeout(timeout)
+        abortServiceWorkerFetch()
         reject(
           signal?.reason instanceof Error
             ? signal.reason
@@ -226,7 +260,7 @@ export function installFetchProxy(endpointOrigin: string, maxRawBodyBytes: numbe
       }
       signal?.addEventListener("abort", onAbort, { once: true })
       pending.set(id, (msg) => {
-        clearTimeout(timeout)
+        if (timeout !== null) clearTimeout(timeout)
         signal?.removeEventListener("abort", onAbort)
         resolve(
           msg as {

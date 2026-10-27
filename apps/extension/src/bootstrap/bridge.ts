@@ -44,7 +44,7 @@ export function installBridge(): void {
     // After the extension is reloaded or updated this content script keeps
     // running but its chrome.runtime is dead: sendMessage throws
     // synchronously ("Extension context invalidated"). Without the catch the
-    // page side waits out its full 60 s timeout on every submission. Answer
+    // page side waits out its full upload deadline on every submission. Answer
     // immediately with `fallback: true` so the proxy hands the request to
     // the page's own fetch.
     let sent: Promise<unknown>
