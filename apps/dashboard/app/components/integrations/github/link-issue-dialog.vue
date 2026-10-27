@@ -222,7 +222,12 @@ function stateColor(state: GithubIssueSummaryDTO["state"]): "success" | "neutral
 </script>
 
 <template>
-  <UModal :open="open" :ui="{ content: 'max-w-lg' }" @update:open="onOpenChange">
+  <UModal
+    :open="open"
+    :dismissible="!submitting"
+    :ui="{ content: 'max-w-lg' }"
+    @update:open="onOpenChange"
+  >
     <template #content>
       <div class="p-6 space-y-4">
         <div>
