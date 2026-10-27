@@ -330,12 +330,20 @@ useKeyboardShortcuts({
     moveSelection(-1)
   },
   enter: (e) => {
-    // Leave Enter alone on real controls outside the rows (pagination,
-    // dropdown triggers, links) — they have their own Enter behaviour.
+    // Enter opens the highlighted report only when focus sits on the row
+    // itself (UTable gives it role="button") or on a plain cell. A focused
+    // control inside the row — the selection checkbox, a link, a menu
+    // trigger — keeps its own Enter behaviour, as does anything outside the
+    // table (pagination, filters).
     const t = e.target as HTMLElement | null
-    const onControl = t?.closest('button, a, [role="menuitem"], [role="option"]')
-    const inRow = t?.closest('tbody tr[data-slot="tr"]')
-    if (onControl && !inRow) return
+    const row = t?.closest<HTMLElement>('tbody tr[data-slot="tr"]')
+    if (!t || !row) return
+    if (t !== row) {
+      const control = t.closest(
+        'button, a, input, select, [role="checkbox"], [role="menuitem"], [role="option"]',
+      )
+      if (control && control !== row) return
+    }
     e.preventDefault()
     openCurrent()
   },
