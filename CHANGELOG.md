@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.7.5
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.4...v0.7.5)
+
+### 🩹 Fixes
+
+- **dashboard:** Gate GitHub attach controls on a selected repository ([f42a477](https://github.com/Ripwords/ReproJs/commit/f42a477))
+- **dashboard:** Hide GitHub create/attach buttons from viewers ([29a80cb](https://github.com/Ripwords/ReproJs/commit/29a80cb))
+- **dashboard:** Let Enter activate controls inside inbox rows ([db54b43](https://github.com/Ripwords/ReproJs/commit/db54b43))
+- **dashboard:** Suppress page shortcuts while a dialog is open ([1f00750](https://github.com/Ripwords/ReproJs/commit/1f00750))
+- **dashboard:** Serialize GitHub link/unlink with auto-create and never overwrite an existing link ([79c5b90](https://github.com/Ripwords/ReproJs/commit/79c5b90))
+- **dashboard:** Emit attached right after the link-issue POST succeeds ([0b2ab4e](https://github.com/Ripwords/ReproJs/commit/0b2ab4e))
+- **dashboard:** Keep the link-issue dialog open while submitting ([7cc8172](https://github.com/Ripwords/ReproJs/commit/7cc8172))
+- **dashboard:** Give the link-issue and shortcuts dialogs accessible names ([c3704d7](https://github.com/Ripwords/ReproJs/commit/c3704d7))
+- **dashboard:** Treat a marker-bearing issue comment echo as ours even before the write-lock exists ([d256872](https://github.com/Ripwords/ReproJs/commit/d256872))
+- **dashboard:** Adopt an existing marker comment before posting the attach comment ([7112ab2](https://github.com/Ripwords/ReproJs/commit/7112ab2))
+- **ui:** Stop the network collector from buffering streaming response bodies ([172f40f](https://github.com/Ripwords/ReproJs/commit/172f40f))
+- **dashboard:** Only accept marker comment echoes authored by the App's own bot ([fd2fa70](https://github.com/Ripwords/ReproJs/commit/fd2fa70))
+- **dashboard:** Make idempotent intake retries skip repair for rejected logs and keep committed blobs ([49cf39c](https://github.com/Ripwords/ReproJs/commit/49cf39c))
+- **dashboard:** Only adopt a marker comment the App's own bot wrote before posting the attach comment ([fe72f05](https://github.com/Ripwords/ReproJs/commit/fe72f05))
+
+### 💅 Refactors
+
+- **dashboard:** Type the report PATCH body with the shared contract ([7e92166](https://github.com/Ripwords/ReproJs/commit/7e92166))
+
+### ✅ Tests
+
+- **ui:** Wait for the gallery sheet instead of a fixed delay ([704ead0](https://github.com/Ripwords/ReproJs/commit/704ead0))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## v0.7.4
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.3...v0.7.4)

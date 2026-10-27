@@ -1,5 +1,24 @@
 # Changelog
 
+## extension-v0.2.5
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/extension-v0.2.4...extension-v0.2.5)
+
+### 🩹 Fixes
+
+- **ui:** Stop the network collector from buffering streaming response bodies ([172f40f](https://github.com/Ripwords/ReproJs/commit/172f40f))
+- **extension:** Let the SDK own the proxy upload deadline and abort on timeout ([0cca0f4](https://github.com/Ripwords/ReproJs/commit/0cca0f4))
+- **extension:** Drop the changeInfo.url dedupe clear that raced in-flight injects ([fff3fea](https://github.com/Ripwords/ReproJs/commit/fff3fea))
+- **extension:** Bail out of tryInject once a navigation lands mid-inject ([b32369e](https://github.com/Ripwords/ReproJs/commit/b32369e))
+
+### ✅ Tests
+
+- **ui:** Wait for the gallery sheet instead of a fixed delay ([704ead0](https://github.com/Ripwords/ReproJs/commit/704ead0))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## extension-v0.2.4
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/extension-v0.2.3...extension-v0.2.4)

@@ -1,5 +1,21 @@
 # Changelog
 
+## expo-v0.3.8
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.7...expo-v0.3.8)
+
+### 🩹 Fixes
+
+- **expo:** Never let an oversized report evict itself from the offline queue ([5274aae](https://github.com/Ripwords/ReproJs/commit/5274aae))
+- **expo:** Raise the default queue.maxBytes above the form's attachment allowance ([591fa09](https://github.com/Ripwords/ReproJs/commit/591fa09))
+- **expo:** Skip a missing attachment on the React Native fetch path too ([a7aed60](https://github.com/Ripwords/ReproJs/commit/a7aed60))
+- **expo:** Make expo-file-system a Metro optional dependency for real ([a44ce80](https://github.com/Ripwords/ReproJs/commit/a44ce80))
+- **expo:** Keep the queue's mid-flight rerun pass from skipping backoff ([48663fe](https://github.com/Ripwords/ReproJs/commit/48663fe))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## expo-v0.3.7
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/expo-v0.3.6...expo-v0.3.7)

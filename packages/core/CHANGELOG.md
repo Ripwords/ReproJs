@@ -1,5 +1,21 @@
 # Changelog
 
+## sdk-v0.5.5
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.5.4...sdk-v0.5.5)
+
+### 🩹 Fixes
+
+- **ui:** Stop the network collector from buffering streaming response bodies ([172f40f](https://github.com/Ripwords/ReproJs/commit/172f40f))
+
+### ✅ Tests
+
+- **ui:** Wait for the gallery sheet instead of a fixed delay ([704ead0](https://github.com/Ripwords/ReproJs/commit/704ead0))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## sdk-v0.5.4
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/sdk-v0.5.3...sdk-v0.5.4)
