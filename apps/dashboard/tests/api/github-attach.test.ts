@@ -84,7 +84,14 @@ const LIVE_ISSUE: LiveIssue = {
   milestoneNumber: 7,
 }
 
-function makeMock(): { client: GitHubInstallationClient; calls: MockCalls } {
+interface MockOptions {
+  /** Replaces the default createIssue (which throws): lets a test run work mid-call. */
+  createIssue?: GitHubInstallationClient["createIssue"]
+  /** Comments already on the issue, returned by octokit.paginate(listComments). */
+  existingComments?: Array<{ id: number; body: string }>
+}
+
+function makeMock(opts: MockOptions = {}): { client: GitHubInstallationClient; calls: MockCalls } {
   const calls: MockCalls = {
     createComment: [],
     setLabels: [],
@@ -93,7 +100,20 @@ function makeMock(): { client: GitHubInstallationClient; calls: MockCalls } {
     removeAssignees: [],
   }
   let nextCommentId = 9001
+  const existing = (opts.existingComments ?? []).map((c) => ({
+    id: c.id,
+    body: c.body,
+    user: { id: 1, login: "repro[bot]", avatar_url: null },
+    created_at: "2026-10-21T10:00:00Z",
+    updated_at: "2026-10-21T10:00:00Z",
+  }))
   const octokit = {
+    paginate: {
+      iterator: () =>
+        (async function* () {
+          yield { data: existing }
+        })(),
+    },
     rest: {
       issues: {
         get: async () => ({ data: {} as never }),
@@ -130,9 +150,11 @@ function makeMock(): { client: GitHubInstallationClient; calls: MockCalls } {
   } as unknown as Octokit
 
   const client = {
-    createIssue: async () => {
-      throw new Error("createIssue must not be called for attached reports")
-    },
+    createIssue:
+      opts.createIssue ??
+      (async () => {
+        throw new Error("createIssue must not be called for attached reports")
+      }),
     getIssue: async () => ({ state: "open" as const, labels: LIVE_ISSUE.labels }),
     closeIssue: async () => {},
     reopenIssue: async () => {},
@@ -596,5 +618,85 @@ describe("attach → reconcile follows the issue", () => {
     expect(detail.status).toBe(200)
     expect(detail.body.githubLinkKind).toBe("attached")
     expect(detail.body.reporterIssueHint).toBeNull()
+  })
+})
+
+describe("attach vs. auto-create race", () => {
+  const CREATED = {
+    number: 101,
+    nodeId: "I_kwDOcreated101",
+    url: "https://github.com/acme/frontend/issues/101",
+  }
+
+  test("a link that lands between createIssue and the reconciler's UPDATE survives; the reconciler does not overwrite it", async () => {
+    await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ title: "Raced report" }))
+    let createCalls = 0
+    const { client } = makeMock({
+      createIssue: async () => {
+        createCalls++
+        // A writer that does not hold the reconciler's advisory lock attaches
+        // the report to #42 while GitHub is still answering createIssue.
+        await db
+          .update(reports)
+          .set({
+            githubIssueNumber: EXISTING_ISSUE.number,
+            githubIssueNodeId: EXISTING_ISSUE.nodeId,
+            githubIssueUrl: EXISTING_ISSUE.url,
+            githubLinkKind: "attached",
+          })
+          .where(eq(reports.id, reportId))
+        return CREATED
+      },
+    })
+    __setClientOverride(() => client)
+
+    await reconcileReport(reportId)
+
+    expect(createCalls).toBe(1)
+    const row = await loadReport(reportId)
+    expect(row.githubIssueNumber).toBe(42)
+    expect(row.githubIssueUrl).toBe(EXISTING_ISSUE.url)
+    expect(row.githubLinkKind).toBe("attached")
+  })
+
+  test("attach waits for the reconciler's lock, then sees the created issue and is refused", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ title: "Locked report" }))
+    let attachPromise: Promise<unknown> | null = null
+    let rowDuringCreate: Awaited<ReturnType<typeof loadReport>> | null = null
+    const { client } = makeMock({
+      createIssue: async () => {
+        attachPromise = attachReportToGithubIssue({
+          projectId: pid,
+          reportId,
+          actorId: ownerId,
+          actorClientId: null,
+          issueNumber: 42,
+        }).then(
+          () => null,
+          (e: unknown) => e as { statusCode?: number; statusMessage?: string },
+        )
+        // Give the attach time to reach its transaction: it must block on
+        // the per-report lock the reconciler holds, not write.
+        await new Promise((r) => setTimeout(r, 300))
+        rowDuringCreate = await loadReport(reportId)
+        return CREATED
+      },
+    })
+    __setClientOverride(() => client)
+
+    await reconcileReport(reportId)
+
+    expect(rowDuringCreate?.githubIssueNumber).toBeNull()
+    const row = await loadReport(reportId)
+    expect(row.githubIssueNumber).toBe(CREATED.number)
+    expect(row.githubLinkKind).toBe("created")
+
+    const err = (await attachPromise) as { statusCode?: number; statusMessage?: string } | null
+    expect(err?.statusCode).toBe(409)
+    expect(err?.statusMessage).toContain("#101")
+    const events = await db.select().from(reportEvents).where(eq(reportEvents.reportId, reportId))
+    expect(events.filter((e) => e.kind === "github_linked").length).toBe(0)
   })
 })
