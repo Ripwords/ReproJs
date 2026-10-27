@@ -222,9 +222,14 @@ function stateColor(state: GithubIssueSummaryDTO["state"]): "success" | "neutral
 </script>
 
 <template>
+  <!-- `title`/`description` give the dialog its accessible name; with the
+       #content slot Nuxt UI renders them visually hidden, so the visible
+       heading below stays the only thing sighted users see. -->
   <UModal
     :open="open"
     :dismissible="!submitting"
+    title="Attach to an existing GitHub issue"
+    description="Pick the issue this report belongs to. Nothing is posted until you confirm."
     :ui="{ content: 'max-w-lg' }"
     @update:open="onOpenChange"
   >
@@ -257,13 +262,14 @@ function stateColor(state: GithubIssueSummaryDTO["state"]): "success" | "neutral
             class="w-full"
             @update:model-value="onQueryInput"
           />
-          <div class="max-h-72 overflow-y-auto rounded-lg border border-default" role="listbox">
+          <!-- A plain list of toggle buttons (Tab moves between them), not a
+               listbox: that role would promise arrow-key navigation. -->
+          <div class="max-h-72 overflow-y-auto rounded-lg border border-default">
             <button
               v-for="issue in results"
               :key="issue.number"
               type="button"
-              role="option"
-              :aria-selected="selected?.number === issue.number"
+              :aria-pressed="selected?.number === issue.number"
               class="w-full flex items-start gap-2.5 px-3 py-2 text-left text-sm text-default hover:bg-elevated focus:bg-elevated focus:outline-none border-b border-default/60 last:border-b-0"
               :class="{ 'bg-elevated': selected?.number === issue.number }"
               @click="selected = issue"
