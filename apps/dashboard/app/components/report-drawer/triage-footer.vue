@@ -51,13 +51,18 @@ const toast = useToast()
 const { data: githubConfig } = useApi<GithubConfigDTO>(
   `/api/projects/${props.projectId}/integrations/github`,
 )
-const githubReady = computed(
+const githubConnected = computed(
   () => Boolean(githubConfig.value?.installed) && githubConfig.value?.status === "connected",
 )
 
 const projectIdRef = toRef(() => props.projectId)
 const { state: integrationState } = useGithubIntegration(projectIdRef)
+// Linked = App installed + connected + a repository picked. Between "Install
+// App" and "pick a repository" the row is connected with an empty repo, and
+// every GitHub write 409s — so attach/create controls key off this, not
+// `githubConnected`.
 const isProjectLinked = computed(() => integrationState.value.isLinked)
+const needsRepository = computed(() => githubConnected.value && !isProjectLinked.value)
 const isReportLinked = computed(
   () => isProjectLinked.value && props.report.githubIssueNumber !== null,
 )
@@ -256,8 +261,10 @@ const githubSummary = computed(() => {
       : `#${props.report.githubIssueNumber}`
   }
   if (syncInFlight.value) return "Syncing…"
-  if (reporterHint.value !== null && githubReady.value) return `Referenced #${reporterHint.value}`
-  return githubReady.value ? "Not linked" : "Not configured"
+  if (reporterHint.value !== null && isProjectLinked.value)
+    return `Referenced #${reporterHint.value}`
+  if (isProjectLinked.value) return "Not linked"
+  return needsRepository.value ? "No repository" : "Not configured"
 })
 
 const open = reactive({ properties: true, labels: true, github: true })
@@ -482,7 +489,7 @@ const priorityDotClass = computed<string>(() => {
             variant="outline"
             block
             :loading="retrying"
-            :disabled="!githubReady"
+            :disabled="!isProjectLinked"
             @click="retrySync"
           />
           <p v-else class="text-sm text-muted">A project manager or higher can retry the sync.</p>
@@ -527,7 +534,7 @@ const priorityDotClass = computed<string>(() => {
         </template>
 
         <div
-          v-else-if="githubReady && syncInFlight && !syncFailed"
+          v-else-if="isProjectLinked && syncInFlight && !syncFailed"
           class="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-default bg-elevated/40 text-sm text-muted"
           role="status"
         >
@@ -535,7 +542,7 @@ const priorityDotClass = computed<string>(() => {
           <span>Creating the GitHub issue…</span>
         </div>
 
-        <template v-else-if="githubReady">
+        <template v-else-if="isProjectLinked">
           <!-- Reporter hint: shown only while unlinked. Nothing has been
                posted to GitHub; Attach opens the dialog pre-filled so the
                manager sees the live issue title before confirming. -->
@@ -591,6 +598,35 @@ const priorityDotClass = computed<string>(() => {
             @click="openLinkDialog()"
           />
         </template>
+
+        <div
+          v-else-if="needsRepository && canEdit"
+          class="flex flex-col gap-2.5 p-3 rounded-lg border border-dashed border-default bg-elevated/40"
+        >
+          <div class="flex items-start gap-2">
+            <UIcon
+              name="i-heroicons-information-circle"
+              class="size-4 text-muted shrink-0 mt-0.5"
+            />
+            <p class="text-sm text-muted leading-relaxed">
+              The GitHub App is installed, but no repository is selected yet. Choose one to create
+              or attach issues.
+            </p>
+          </div>
+          <UButton
+            :to="`/projects/${projectId}/integrations`"
+            size="md"
+            color="neutral"
+            variant="outline"
+            icon="i-simple-icons-github"
+            label="Choose a repository"
+            trailing-icon="i-heroicons-arrow-right"
+            block
+          />
+        </div>
+        <p v-else-if="needsRepository" class="text-sm text-muted">
+          GitHub is connected but no repository is selected for this project.
+        </p>
 
         <div
           v-else-if="canEdit"
