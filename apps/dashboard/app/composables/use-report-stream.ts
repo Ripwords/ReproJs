@@ -28,6 +28,7 @@ export type ReportStreamEvent = {
     | "comment_edited"
     | "comment_deleted"
     | "github_synced"
+    | "github_linked"
     | "github_unlinked"
   payload?: Record<string, unknown>
 }

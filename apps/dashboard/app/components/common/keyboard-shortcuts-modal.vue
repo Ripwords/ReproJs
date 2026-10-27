@@ -14,7 +14,15 @@ defineEmits<{ "update:open": [boolean] }>()
 </script>
 
 <template>
-  <UModal :open="open" :ui="{ content: 'max-w-md' }" @update:open="(v) => $emit('update:open', v)">
+  <!-- `title` gives the dialog its accessible name; Nuxt UI renders it
+       visually hidden when the #content slot is used. -->
+  <UModal
+    :open="open"
+    title="Keyboard shortcuts"
+    description="Shortcuts available on the inbox and report pages."
+    :ui="{ content: 'max-w-md' }"
+    @update:open="(v) => $emit('update:open', v)"
+  >
     <template #content>
       <div class="p-6">
         <h3 class="text-lg font-semibold text-default mb-4">Keyboard shortcuts</h3>

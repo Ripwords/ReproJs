@@ -28,6 +28,7 @@ import {
   statusLabel,
 } from "~/composables/use-report-format"
 import { useReportPatch } from "~/composables/use-report-patch"
+import { isDialogOpen } from "~/composables/useKeyboardShortcuts"
 import RelativeTime from "~/components/common/relative-time.vue"
 import { hasProjectRole } from "~/utils/project-role"
 import type { ReportPriority, ReportStatus } from "@reprojs/shared"
@@ -226,13 +227,12 @@ function onKey(e: KeyboardEvent) {
   if (tag === "input" || tag === "textarea" || target?.isContentEditable) return
   // Leave Cmd/Ctrl/Alt+digit to the browser (switching browser tabs).
   if (e.metaKey || e.ctrlKey || e.altKey) return
+  // While a popover, menu or dialog is open, Esc closes it (reka-ui's own
+  // listener, whichever fires first) and digits must not switch tabs behind
+  // the focus trap. The replay's fullscreen view marks its Esc as handled.
+  if (e.defaultPrevented || isDialogOpen(target)) return
 
   if (e.key === "Escape") {
-    // Close the innermost open thing first. Popovers, menus and dialogs are
-    // reka-ui dismissable layers (still in the DOM while this runs, whichever
-    // listener fires first); the replay's fullscreen view marks the event
-    // handled.
-    if (e.defaultPrevented || document.querySelector("[data-dismissable-layer]")) return
     navigateTo(`/projects/${projectId.value}/reports`)
     return
   }

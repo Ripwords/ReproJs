@@ -7,10 +7,10 @@
           so a wrong number shows an obviously wrong title before anything is
           posted.
 
-     Owns the POST. On success Repro links the report as `attached` and an
-     async reconcile posts the report as a comment on the issue, so we poll
-     the report the same way triage-footer does after "Create issue", then
-     emit `attached` so the parent refetches. -->
+     Owns the POST. The server writes the link (`attached`) inside the request,
+     so a 2xx means the report is linked — we emit `attached` right away and
+     the parent refetches. Only the comment on the issue is posted later by
+     the async reconcile. -->
 <script setup lang="ts">
 import { describeApiError } from "~/utils/api-error"
 import { parseRelatedIssueNumber } from "@reprojs/shared"
@@ -18,10 +18,8 @@ import type {
   GithubIssueListDTO,
   GithubIssueSummaryDTO,
   LinkGithubIssueBody,
-  ReportDetailDTO,
 } from "@reprojs/shared"
 import RelativeTime from "~/components/common/relative-time.vue"
-import { pollUntil } from "~/composables/use-poll-until"
 
 interface Props {
   projectId: string
@@ -142,9 +140,6 @@ const chosen = computed<GithubIssueSummaryDTO | null>(() =>
 )
 const submitting = ref(false)
 
-// Linking is followed by an async reconcile; poll like "Create issue" does so
-// the parent refetches once the link has landed. ~12s ceiling.
-const LINK_POLL = { attempts: 12, intervalMs: 1_000 } as const
 const abort = new AbortController()
 onUnmounted(() => {
   abort.abort()
@@ -164,15 +159,6 @@ async function confirm(): Promise<void> {
       body,
       signal: abort.signal,
     })
-    await pollUntil(
-      () =>
-        $fetch<ReportDetailDTO>(`/api/projects/${props.projectId}/reports/${props.reportId}`, {
-          credentials: "include",
-          signal: abort.signal,
-        }),
-      (r) => r.githubIssueNumber !== null,
-      LINK_POLL,
-    )
     if (abort.signal.aborted) return
     emit("attached", issue.number)
     emit("update:open", false)
@@ -236,7 +222,17 @@ function stateColor(state: GithubIssueSummaryDTO["state"]): "success" | "neutral
 </script>
 
 <template>
-  <UModal :open="open" :ui="{ content: 'max-w-lg' }" @update:open="onOpenChange">
+  <!-- `title`/`description` give the dialog its accessible name; with the
+       #content slot Nuxt UI renders them visually hidden, so the visible
+       heading below stays the only thing sighted users see. -->
+  <UModal
+    :open="open"
+    :dismissible="!submitting"
+    title="Attach to an existing GitHub issue"
+    description="Pick the issue this report belongs to. Nothing is posted until you confirm."
+    :ui="{ content: 'max-w-lg' }"
+    @update:open="onOpenChange"
+  >
     <template #content>
       <div class="p-6 space-y-4">
         <div>
@@ -266,13 +262,14 @@ function stateColor(state: GithubIssueSummaryDTO["state"]): "success" | "neutral
             class="w-full"
             @update:model-value="onQueryInput"
           />
-          <div class="max-h-72 overflow-y-auto rounded-lg border border-default" role="listbox">
+          <!-- A plain list of toggle buttons (Tab moves between them), not a
+               listbox: that role would promise arrow-key navigation. -->
+          <div class="max-h-72 overflow-y-auto rounded-lg border border-default">
             <button
               v-for="issue in results"
               :key="issue.number"
               type="button"
-              role="option"
-              :aria-selected="selected?.number === issue.number"
+              :aria-pressed="selected?.number === issue.number"
               class="w-full flex items-start gap-2.5 px-3 py-2 text-left text-sm text-default hover:bg-elevated focus:bg-elevated focus:outline-none border-b border-default/60 last:border-b-0"
               :class="{ 'bg-elevated': selected?.number === issue.number }"
               @click="selected = issue"
