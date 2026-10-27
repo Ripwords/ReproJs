@@ -90,8 +90,15 @@ const LIVE_ISSUE: LiveIssue = {
 interface MockOptions {
   /** Replaces the default createIssue (which throws): lets a test run work mid-call. */
   createIssue?: GitHubInstallationClient["createIssue"]
-  /** Comments already on the issue, returned by octokit.paginate(listComments). */
-  existingComments?: Array<{ id: number; body: string }>
+  /**
+   * Comments already on the issue, returned by octokit.paginate(listComments).
+   * Authored by the App's bot unless `user` says otherwise.
+   */
+  existingComments?: Array<{
+    id: number
+    body: string
+    user?: { id: number; login: string; type: string }
+  }>
 }
 
 function makeMock(opts: MockOptions = {}): { client: GitHubInstallationClient; calls: MockCalls } {
@@ -106,7 +113,7 @@ function makeMock(opts: MockOptions = {}): { client: GitHubInstallationClient; c
   const existing = (opts.existingComments ?? []).map((c) => ({
     id: c.id,
     body: c.body,
-    user: { id: 1, login: "repro[bot]", avatar_url: null },
+    user: { avatar_url: null, ...(c.user ?? { id: 1, login: APP_BOT_LOGIN, type: "Bot" }) },
     created_at: "2026-10-21T10:00:00Z",
     updated_at: "2026-10-21T10:00:00Z",
   }))
@@ -742,6 +749,32 @@ describe("attach comment echo", () => {
 
     expect(calls.createComment.length).toBe(0)
     expect((await loadReport(reportId)).githubAttachCommentId).toBe(5555)
+  })
+
+  test("reconcile ignores a marker comment a human or another app posted and posts its own", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ relatedIssue: "#42" }))
+    await linkOnly(pid, ownerId, reportId)
+    const marker = reportMarker(reportId)
+    const { client, calls } = makeMock({
+      existingComments: [
+        {
+          id: 6001,
+          body: `pasted:\n${marker}`,
+          user: { id: 500, login: "maintainer", type: "User" },
+        },
+        { id: 6002, body: marker, user: { id: 501, login: APP_BOT_LOGIN, type: "User" } },
+        { id: 6003, body: marker, user: { id: 502, login: "other-app[bot]", type: "Bot" } },
+      ],
+    })
+    __setClientOverride(() => client)
+
+    await reconcileReport(reportId)
+
+    expect(calls.createComment.length).toBe(1)
+    const row = await loadReport(reportId)
+    expect(row.githubAttachCommentId).not.toBeNull()
+    expect([6001, 6002, 6003]).not.toContain(row.githubAttachCommentId)
   })
 })
 

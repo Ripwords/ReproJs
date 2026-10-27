@@ -5,7 +5,7 @@ import type { Octokit } from "@octokit/rest"
 export type GithubComment = {
   id: number
   body: string
-  user: { id: number; login: string; avatar_url: string | null }
+  user: { id: number; login: string; avatar_url: string | null; type: string | null }
   createdAt: string
   updatedAt: string
 }
@@ -31,6 +31,7 @@ export async function createIssueComment(
       id: c.user?.id ?? 0,
       login: c.user?.login ?? "",
       avatar_url: c.user?.avatar_url ?? null,
+      type: c.user?.type ?? null,
     },
     createdAt: c.created_at,
     updatedAt: c.updated_at,
@@ -87,6 +88,7 @@ export async function listIssueComments(
           id: c.user?.id ?? 0,
           login: c.user?.login ?? "",
           avatar_url: c.user?.avatar_url ?? null,
+          type: c.user?.type ?? null,
         },
         createdAt: c.created_at,
         updatedAt: c.updated_at,

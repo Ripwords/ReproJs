@@ -36,7 +36,12 @@ describe("createIssueComment", () => {
     expect(result).toEqual({
       id: 100,
       body: "Hello!",
-      user: { id: 42, login: "test-user", avatar_url: "https://example.com/avatar.png" },
+      user: {
+        id: 42,
+        login: "test-user",
+        avatar_url: "https://example.com/avatar.png",
+        type: null,
+      },
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-02T00:00:00Z",
     })
@@ -57,7 +62,7 @@ describe("createIssueComment", () => {
     } as unknown as Octokit
 
     const result = await createIssueComment(client, "owner", "repo", 1, "test")
-    expect(result.user).toEqual({ id: 0, login: "", avatar_url: null })
+    expect(result.user).toEqual({ id: 0, login: "", avatar_url: null, type: null })
   })
 })
 

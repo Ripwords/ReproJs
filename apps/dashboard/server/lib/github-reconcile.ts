@@ -49,6 +49,7 @@ import {
 import { recordWriteLock } from "./github-write-locks"
 import { withBotFooter, stripBotFooter } from "./comment-serializer"
 import { resolveGithubUser } from "./github-identities"
+import { isOurBotComment } from "./github-bot-identity"
 import type { GithubIntegration, Report } from "../db/schema"
 
 export class ReconcileSkipped extends Error {}
@@ -561,7 +562,12 @@ async function findAttachCommentOnIssue(
   const marker = reportMarker(reportId)
   try {
     const comments = await listIssueComments(octokit, gi.repoOwner, gi.repoName, issueNumber)
-    return comments.find((c) => c.body.includes(marker))?.id ?? null
+    // Anyone with write access can paste the marker text; only a comment the
+    // App's own bot wrote counts, otherwise the report body would never land.
+    for (const c of comments) {
+      if (c.body.includes(marker) && (await isOurBotComment(c.user))) return c.id
+    }
+    return null
   } catch (err) {
     console.warn("[github] could not list issue comments before posting the attach comment", {
       reportId,

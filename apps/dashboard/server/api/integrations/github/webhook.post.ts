@@ -12,7 +12,7 @@ import {
 } from "../../../db/schema"
 import type { GithubIntegration, Report } from "../../../db/schema"
 import { getWebhookSecret } from "../../../lib/github"
-import { getGithubAppCredentials } from "../../../lib/github-app-credentials"
+import { isOurBotComment } from "../../../lib/github-bot-identity"
 import { invalidateInstallationRepos } from "../../../lib/github-cache"
 import { publishReportStream } from "../../../lib/report-events-bus"
 import { githubCache } from "../../../lib/github-cache"
@@ -107,19 +107,6 @@ interface IssueCommentPayload {
 }
 
 type LinkedReport = { r: Report; gi: GithubIntegration }
-
-/**
- * True only when the comment was authored by this deployment's GitHub App
- * (GitHub reports App comments as `type: "Bot"` under `<slug>[bot]`). Used to
- * recognise our own report-body comment by its marker; a human pasting the
- * marker text must never be mistaken for us.
- */
-async function isOurBotComment(user: IssueCommentPayload["comment"]["user"]): Promise<boolean> {
-  if (!user || user.type !== "Bot") return false
-  const creds = await getGithubAppCredentials()
-  if (!creds?.slug) return false
-  return user.login === `${creds.slug}[bot]`
-}
 
 /**
  * Every report linked to an issue in a repo, oldest report first. One issue
