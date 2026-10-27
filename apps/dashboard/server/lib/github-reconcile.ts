@@ -548,6 +548,31 @@ async function backfillGithubComments(
 // --- Attached reports: one-time body comment ---
 
 /**
+ * Id of the comment on `issueNumber` that already carries this report's
+ * marker, or null. Best-effort like findIssueByMarker: a listing failure
+ * returns null and the caller falls back to posting.
+ */
+async function findAttachCommentOnIssue(
+  octokit: Octokit,
+  gi: GithubIntegration,
+  issueNumber: number,
+  reportId: string,
+): Promise<number | null> {
+  const marker = reportMarker(reportId)
+  try {
+    const comments = await listIssueComments(octokit, gi.repoOwner, gi.repoName, issueNumber)
+    return comments.find((c) => c.body.includes(marker))?.id ?? null
+  } catch (err) {
+    console.warn("[github] could not list issue comments before posting the attach comment", {
+      reportId,
+      issueNumber,
+      err: String(err),
+    })
+    return null
+  }
+}
+
+/**
  * Post the report body (same renderer as a new issue, marker included) as a
  * comment on the issue the report was attached to. Idempotent: the comment
  * id is stored on the report and re-read under a per-report advisory lock,
@@ -575,6 +600,17 @@ async function postAttachComment(
       .limit(1)
     // Another worker posted it, or the report was unlinked meanwhile.
     if (!fresh || fresh.githubAttachCommentId !== null || fresh.githubIssueNumber !== issueNumber) {
+      return
+    }
+    // Backstop for a previous attempt that posted the comment but failed
+    // before this transaction committed its id (same role findIssueByMarker
+    // plays for issue creation): adopt the comment already on the issue.
+    const existing = await findAttachCommentOnIssue(octokit, gi, issueNumber, report.id)
+    if (existing !== null) {
+      await tx
+        .update(reports)
+        .set({ githubAttachCommentId: existing })
+        .where(eq(reports.id, report.id))
       return
     }
     // A new issue carries the report title as its own title; a comment has

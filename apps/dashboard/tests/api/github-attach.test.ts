@@ -677,6 +677,25 @@ describe("attach comment echo", () => {
     await reconcileReport(reportId)
     expect(calls.createComment.length).toBe(0)
   })
+
+  test("reconcile adopts a marker comment already on the issue instead of posting a copy", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ relatedIssue: "#42" }))
+    await linkOnly(pid, ownerId, reportId)
+    // A previous attempt posted the comment but failed before storing its id.
+    const { client, calls } = makeMock({
+      existingComments: [
+        { id: 4242, body: "unrelated human comment" },
+        { id: 5555, body: `### old attempt\n\n${reportMarker(reportId)}` },
+      ],
+    })
+    __setClientOverride(() => client)
+
+    await reconcileReport(reportId)
+
+    expect(calls.createComment.length).toBe(0)
+    expect((await loadReport(reportId)).githubAttachCommentId).toBe(5555)
+  })
 })
 
 describe("attach vs. auto-create race", () => {
