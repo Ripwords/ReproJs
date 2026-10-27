@@ -577,6 +577,7 @@ const priorityDotClass = computed<string>(() => {
           </div>
 
           <UButton
+            v-if="canEdit"
             size="md"
             color="neutral"
             variant="outline"
@@ -584,19 +585,20 @@ const priorityDotClass = computed<string>(() => {
             :loading="ghSubmitting"
             :label="ghSubmitting ? 'Creating…' : 'Create GitHub issue'"
             block
-            :disabled="!canEdit"
             @click="createIssue"
           />
           <UButton
+            v-if="canEdit"
             size="md"
             color="neutral"
             variant="ghost"
             icon="i-heroicons-paper-clip"
             label="Attach to existing issue…"
             block
-            :disabled="!canEdit || ghSubmitting"
+            :disabled="ghSubmitting"
             @click="openLinkDialog()"
           />
+          <p v-if="!canEdit" class="text-sm text-muted">Not linked to a GitHub issue.</p>
         </template>
 
         <div
