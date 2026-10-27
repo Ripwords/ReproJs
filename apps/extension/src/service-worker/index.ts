@@ -20,7 +20,18 @@ registerProxyHandler()
 // The Map is lost when the service worker is torn down (~30s idle in MV3).
 // The bootRepro DOM-existence check in set-config.ts is the backstop for
 // that case — page-world state survives worker revivals.
-const injectedForTab = new Map<number, string>()
+//
+// Each entry also carries a `run` token unique to the tryInject call that
+// reserved it. A navigation committed while that call is awaiting clears the
+// slot (and the next tryInject re-reserves it with a fresh token), so after
+// every await the in-flight call checks the token is still its own and bails
+// otherwise — the remaining executeScript steps would land in the new
+// document carrying the previous page's config.
+interface InjectSlot {
+  origin: string
+  run: symbol
+}
+const injectedForTab = new Map<number, InjectSlot>()
 
 // Written by scripts/sync-sdk.ts next to the copied IIFE. Read once per
 // worker lifetime; "unknown" keeps the boot log line useful if the file is
@@ -38,7 +49,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
   const origin = toOrigin(url)
   if (origin === null) return
 
-  if (injectedForTab.get(tabId) === origin) return
+  if (injectedForTab.get(tabId)?.origin === origin) return
 
   // Reserve the slot synchronously, before the first await. Two triggers
   // for the same navigation (onDOMContentLoaded + tabs complete, or the
@@ -47,20 +58,31 @@ async function tryInject(tabId: number, url: string): Promise<void> {
   // and evaluates the IIFE twice, leaving window.Repro as a second,
   // never-initialised instance. Every early return below MUST release the
   // slot so the fallback trigger can retry.
-  injectedForTab.set(tabId, origin)
+  const run = Symbol("inject")
+  injectedForTab.set(tabId, { origin, run })
+  // Still the call that owns this tab's slot? False once a navigation
+  // committed mid-flight cleared it or a newer tryInject re-reserved it.
+  const owns = () => injectedForTab.get(tabId)?.run === run
+  // Release only our own reservation — never a newer call's.
+  const release = () => {
+    if (owns()) injectedForTab.delete(tabId)
+  }
 
   const configs = await listConfigs()
+  if (!owns()) return
   const match = findConfigForUrl(url, configs)
   if (!match) {
-    injectedForTab.delete(tabId)
+    release()
     return
   }
 
   // Permission may have been revoked in chrome://extensions between tab load
   // and here. Check first so we emit a clear log line instead of a noisy
   // scripting error.
-  if (!(await hasOriginPermission(match.origin))) {
-    injectedForTab.delete(tabId)
+  const hasPagePermission = await hasOriginPermission(match.origin)
+  if (!owns()) return
+  if (!hasPagePermission) {
+    release()
     console.debug("[repro-extension] skip inject: page origin permission missing", match.origin)
     return
   }
@@ -69,7 +91,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
   try {
     intakeOrigin = new URL(match.intakeEndpoint).origin
   } catch {
-    injectedForTab.delete(tabId)
+    release()
     console.debug("[repro-extension] bad intakeEndpoint in config", match.id)
     return
   }
@@ -79,8 +101,10 @@ async function tryInject(tabId: number, url: string): Promise<void> {
   // fine and every submission dies with an opaque "Failed to fetch". Refuse
   // to inject and say why; the popup shows the same config as "pending"
   // with a Grant button.
-  if (!(await hasOriginPermission(intakeOrigin))) {
-    injectedForTab.delete(tabId)
+  const hasIntakePermission = await hasOriginPermission(intakeOrigin)
+  if (!owns()) return
+  if (!hasIntakePermission) {
+    release()
     console.warn(
       `[repro-extension] skip inject for ${match.origin}: host permission missing for intake ${intakeOrigin}. Open the popup and click Grant.`,
     )
@@ -101,6 +125,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
       world: "MAIN",
       func: probeBootState,
     })
+    if (!owns()) return
     const state = probe?.result as BootState | undefined
     if (state === "booted") {
       console.debug("[repro-extension] SDK already booted in tab, skipping", tabId)
@@ -113,6 +138,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
       func: injectConfig,
       args: [match.projectKey, match.intakeEndpoint, match.relatedIssueField],
     })
+    if (!owns()) return
     // 2. Install the fetch proxy BEFORE the SDK loads so the SDK's intake
     //    POST is routed through the service worker instead of hitting the
     //    page's connect-src CSP.
@@ -122,6 +148,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
       func: installFetchProxy,
       args: [intakeOrigin, MAX_PROXY_RAW_BODY_BYTES],
     })
+    if (!owns()) return
     // 3. Install the ISOLATED-world bridge so window.postMessage from the
     //    fetch proxy can reach chrome.runtime.sendMessage.
     await chrome.scripting.executeScript({
@@ -129,6 +156,7 @@ async function tryInject(tabId: number, url: string): Promise<void> {
       world: "ISOLATED",
       func: installBridge,
     })
+    if (!owns()) return
     // 4. Load the bundled SDK IIFE in the page world — skipped when the
     //    probe above found one already evaluated (boot failed half-way or
     //    the host page embeds the SDK itself); bootRepro then only inits.
@@ -138,18 +166,21 @@ async function tryInject(tabId: number, url: string): Promise<void> {
         world: "MAIN",
         files: ["repro.iife.js"],
       })
+      if (!owns()) return
     }
+    const sdkVersion = await bundledSdkVersion()
+    if (!owns()) return
     // 5. Call Repro.init(). Guarded against double-init inside bootRepro.
     await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       world: "MAIN",
       func: bootRepro,
-      args: [await bundledSdkVersion()],
+      args: [sdkVersion],
     })
   } catch (err) {
     // Permission denied / tab closed mid-inject / page navigated away.
     // Swallow — the next tabs.onUpdated cycle will retry if the user returns.
-    injectedForTab.delete(tabId)
+    release()
     console.debug("[repro-extension] inject failed", err)
   }
 }
