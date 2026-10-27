@@ -53,6 +53,8 @@ const PK = "rp_pk_ATTACH1234567890abcdef12"
 const ORIGIN = "http://localhost:4000"
 const INSTALLATION_ID = 77
 const WEBHOOK_SECRET = "test-webhook-secret"
+/** Login GitHub gives the App seeded by seedGithubApp (slug "repro-test"). */
+const APP_BOT_LOGIN = "repro-test[bot]"
 
 // --- GitHub mock -----------------------------------------------------------
 
@@ -647,15 +649,16 @@ describe("attach comment echo", () => {
     const { client, calls } = makeMock()
     __setClientOverride(() => client)
 
-    // GitHub delivers our own body comment before postAttachComment has
-    // recorded the write-lock (createIssueComment has not even returned).
+    // GitHub delivers our own body comment (authored by the App's bot, see
+    // seedGithubApp's slug) before postAttachComment has recorded the
+    // write-lock (createIssueComment has not even returned).
     const echoBody = `### Checkout button does nothing (re-test)\n\n${reportMarker(reportId)}\n\nbody`
     const echo = await sendWebhook("issue_comment", {
       action: "created",
       comment: {
         id: 9001,
         body: echoBody,
-        user: { id: 1, login: "repro[bot]", avatar_url: "https://example.com/a.png" },
+        user: { id: 1, login: APP_BOT_LOGIN, avatar_url: "https://example.com/a.png", type: "Bot" },
       },
       issue: { number: 42 },
       repository: REPO,
@@ -676,6 +679,50 @@ describe("attach comment echo", () => {
     // The reconciler now sees the id and posts nothing.
     await reconcileReport(reportId)
     expect(calls.createComment.length).toBe(0)
+  })
+
+  test("a human pasting the marker is mirrored like any comment and cannot claim the attach comment id", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ relatedIssue: "#42" }))
+    await linkOnly(pid, ownerId, reportId)
+    const { client } = makeMock()
+    __setClientOverride(() => client)
+
+    const pasted = `quoting the bot: ${reportMarker(reportId)}`
+    // A user account using our bot's login, and a bot with a different login,
+    // must both fail the identity check.
+    for (const [id, user] of [
+      [
+        8801,
+        { id: 500, login: "maintainer", avatar_url: "https://example.com/m.png", type: "User" },
+      ],
+      [
+        8802,
+        { id: 501, login: APP_BOT_LOGIN, avatar_url: "https://example.com/m.png", type: "User" },
+      ],
+      [
+        8803,
+        { id: 502, login: "other-app[bot]", avatar_url: "https://example.com/m.png", type: "Bot" },
+      ],
+    ] as const) {
+      const res = await sendWebhook("issue_comment", {
+        action: "created",
+        comment: { id, body: pasted, user },
+        issue: { number: 42 },
+        repository: REPO,
+        installation: { id: INSTALLATION_ID },
+      })
+      expect(res.status).toBe(202)
+      expect((await res.json()) as { echo?: boolean }).not.toMatchObject({ echo: true })
+    }
+
+    const mirrored = await db
+      .select()
+      .from(reportComments)
+      .where(eq(reportComments.reportId, reportId))
+    expect(mirrored.map((c) => c.githubCommentId).toSorted()).toEqual([8801, 8802, 8803])
+    expect(mirrored.every((c) => c.source === "github")).toBe(true)
+    expect((await loadReport(reportId)).githubAttachCommentId).toBeNull()
   })
 
   test("reconcile adopts a marker comment already on the issue instead of posting a copy", async () => {

@@ -12,6 +12,7 @@ import {
 } from "../../../db/schema"
 import type { GithubIntegration, Report } from "../../../db/schema"
 import { getWebhookSecret } from "../../../lib/github"
+import { getGithubAppCredentials } from "../../../lib/github-app-credentials"
 import { invalidateInstallationRepos } from "../../../lib/github-cache"
 import { publishReportStream } from "../../../lib/report-events-bus"
 import { githubCache } from "../../../lib/github-cache"
@@ -98,7 +99,7 @@ interface IssueCommentPayload {
   comment: {
     id: number
     body: string | null
-    user: { id: number; login: string; avatar_url: string } | null
+    user: { id: number; login: string; avatar_url: string; type?: string } | null
   }
   issue: { number: number }
   repository: { name: string; owner: { login: string } }
@@ -106,6 +107,19 @@ interface IssueCommentPayload {
 }
 
 type LinkedReport = { r: Report; gi: GithubIntegration }
+
+/**
+ * True only when the comment was authored by this deployment's GitHub App
+ * (GitHub reports App comments as `type: "Bot"` under `<slug>[bot]`). Used to
+ * recognise our own report-body comment by its marker; a human pasting the
+ * marker text must never be mistaken for us.
+ */
+async function isOurBotComment(user: IssueCommentPayload["comment"]["user"]): Promise<boolean> {
+  if (!user || user.type !== "Bot") return false
+  const creds = await getGithubAppCredentials()
+  if (!creds?.slug) return false
+  return user.login === `${creds.slug}[bot]`
+}
 
 /**
  * Every report linked to an issue in a repo, oldest report first. One issue
@@ -499,8 +513,9 @@ export default defineEventHandler(async (event) => {
           // dashboard comment row to adopt it into — so match on the marker:
           // drop the delivery and, if the reconciler has not stored the
           // comment id yet, store it from the echo so it never posts a copy.
+          // Only the App's own bot qualifies: anyone can paste the marker.
           const marked = linkedAll.find((l) => commentBody.includes(reportMarker(l.r.id)))
-          if (marked) {
+          if (marked && (await isOurBotComment(githubUser))) {
             await db
               .update(reports)
               .set({ githubAttachCommentId: comment.id })
