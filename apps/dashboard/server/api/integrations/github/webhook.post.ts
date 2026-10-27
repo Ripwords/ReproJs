@@ -15,7 +15,7 @@ import { getWebhookSecret } from "../../../lib/github"
 import { invalidateInstallationRepos } from "../../../lib/github-cache"
 import { publishReportStream } from "../../../lib/report-events-bus"
 import { githubCache } from "../../../lib/github-cache"
-import { parseGithubLabels } from "../../../lib/github-helpers"
+import { parseGithubLabels, reportMarker } from "../../../lib/github-helpers"
 import {
   checkBodySize,
   MAX_WEBHOOK_BODY_BYTES,
@@ -493,6 +493,28 @@ export default defineEventHandler(async (event) => {
           : null
 
         if (action === "created") {
+          // The report-body comment of an attached report carries that
+          // report's marker. Its echo can also beat the write-lock (recorded
+          // only after createIssueComment returns), and there is no pending
+          // dashboard comment row to adopt it into — so match on the marker:
+          // drop the delivery and, if the reconciler has not stored the
+          // comment id yet, store it from the echo so it never posts a copy.
+          const marked = linkedAll.find((l) => commentBody.includes(reportMarker(l.r.id)))
+          if (marked) {
+            await db
+              .update(reports)
+              .set({ githubAttachCommentId: comment.id })
+              .where(
+                and(
+                  eq(reports.id, marked.r.id),
+                  eq(reports.githubLinkKind, "attached"),
+                  isNull(reports.githubAttachCommentId),
+                ),
+              )
+            setResponseStatus(event, 202)
+            return { ok: true, echo: true }
+          }
+
           // Our own comment can echo back before reconcile has stored its
           // github_comment_id: the write-lock is only recorded after
           // createComment returns, so a fast webhook beats it and used to

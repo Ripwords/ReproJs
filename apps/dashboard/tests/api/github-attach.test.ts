@@ -28,6 +28,7 @@ import {
 } from "../../server/db/schema"
 import { __setClientOverride } from "../../server/lib/github"
 import { attachReportToGithubIssue } from "../../server/lib/github-attach"
+import { linkReportToGithubIssue } from "../../server/lib/github-link"
 import { signCommentUpsert } from "../../server/lib/github-diff"
 import { reportMarker } from "../../server/lib/github-helpers"
 import { reconcileReport, type LiveIssue } from "../../server/lib/github-reconcile"
@@ -618,6 +619,63 @@ describe("attach → reconcile follows the issue", () => {
     expect(detail.status).toBe(200)
     expect(detail.body.githubLinkKind).toBe("attached")
     expect(detail.body.reporterIssueHint).toBeNull()
+  })
+})
+
+describe("attach comment echo", () => {
+  /** Link without the post-commit enqueue so no reconcile runs behind the test's back. */
+  async function linkOnly(pid: string, ownerId: string, reportId: string) {
+    await db.transaction((tx) =>
+      linkReportToGithubIssue(tx, {
+        projectId: pid,
+        reportId,
+        actorId: ownerId,
+        actorClientId: null,
+        repoOwner: "acme",
+        repoName: "frontend",
+        issueNumber: EXISTING_ISSUE.number,
+        issueNodeId: EXISTING_ISSUE.nodeId,
+        issueTitle: EXISTING_ISSUE.title,
+      }),
+    )
+  }
+
+  test("an echo that beats the write-lock is dropped and its id adopted as the attach comment", async () => {
+    const { pid, ownerId } = await seedConnectedProject({ autoCreateOnIntake: false })
+    const reportId = await intake(reportJson({ relatedIssue: "#42" }))
+    await linkOnly(pid, ownerId, reportId)
+    const { client, calls } = makeMock()
+    __setClientOverride(() => client)
+
+    // GitHub delivers our own body comment before postAttachComment has
+    // recorded the write-lock (createIssueComment has not even returned).
+    const echoBody = `### Checkout button does nothing (re-test)\n\n${reportMarker(reportId)}\n\nbody`
+    const echo = await sendWebhook("issue_comment", {
+      action: "created",
+      comment: {
+        id: 9001,
+        body: echoBody,
+        user: { id: 1, login: "repro[bot]", avatar_url: "https://example.com/a.png" },
+      },
+      issue: { number: 42 },
+      repository: REPO,
+      installation: { id: INSTALLATION_ID },
+    })
+    expect(echo.status).toBe(202)
+    expect((await echo.json()) as { echo?: boolean }).toMatchObject({ echo: true })
+
+    const mirrored = await db
+      .select()
+      .from(reportComments)
+      .where(eq(reportComments.reportId, reportId))
+    expect(mirrored.length).toBe(0)
+    const events = await db.select().from(reportEvents).where(eq(reportEvents.reportId, reportId))
+    expect(events.filter((e) => e.kind === "comment_added").length).toBe(0)
+    expect((await loadReport(reportId)).githubAttachCommentId).toBe(9001)
+
+    // The reconciler now sees the id and posts nothing.
+    await reconcileReport(reportId)
+    expect(calls.createComment.length).toBe(0)
   })
 })
 
