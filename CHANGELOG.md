@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.6
+
+[compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.5...v0.7.6)
+
+### 🚀 Enhancements
+
+- **api:** Per-project stats endpoint for the projects grid ([01757bf](https://github.com/Ripwords/ReproJs/commit/01757bf))
+- **dashboard:** Project cards show triage numbers and the grid paginates ([c450706](https://github.com/Ripwords/ReproJs/commit/c450706))
+
+### ❤️ Contributors
+
+- JJ ([@Ripwords](https://github.com/Ripwords))
+
 ## v0.7.5
 
 [compare changes](https://github.com/Ripwords/ReproJs/compare/v0.7.4...v0.7.5)
