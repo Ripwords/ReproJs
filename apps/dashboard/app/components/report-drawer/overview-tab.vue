@@ -4,13 +4,14 @@
      `bg-primary/8` header strip and `text-primary` label.
 
      Layout:
-       Screenshot + "Play replay" CTA (col-span-7) | Description + Report details (col-span-5)
+       Screenshot + "Play replay" CTA (col-span-7) | Description + Report details + Thread (col-span-5)
 
      Diagnostic content (Session env / System info / Raw context) lives
      in the dedicated System and Raw tabs, and the conversation lives in
      the Comments tab — the overview is for the "what / who / when". -->
 <script setup lang="ts">
 import RelativeTime from "~/components/common/relative-time.vue"
+import ThreadCard from "~/components/report-drawer/thread-card.vue"
 import type { ReportDetailDTO } from "@reprojs/shared"
 import { safeHref } from "~/composables/use-safe-href"
 import { useMarkdown } from "~/composables/use-markdown"
@@ -241,6 +242,8 @@ const descriptionHtml = computed(() =>
             </div>
           </dl>
         </section>
+
+        <ThreadCard :project-id="projectId" :report="report" />
       </div>
     </div>
 
