@@ -7,10 +7,10 @@
           so a wrong number shows an obviously wrong title before anything is
           posted.
 
-     Owns the POST. On success Repro links the report as `attached` and an
-     async reconcile posts the report as a comment on the issue, so we poll
-     the report the same way triage-footer does after "Create issue", then
-     emit `attached` so the parent refetches. -->
+     Owns the POST. The server writes the link (`attached`) inside the request,
+     so a 2xx means the report is linked — we emit `attached` right away and
+     the parent refetches. Only the comment on the issue is posted later by
+     the async reconcile. -->
 <script setup lang="ts">
 import { describeApiError } from "~/utils/api-error"
 import { parseRelatedIssueNumber } from "@reprojs/shared"
@@ -18,10 +18,8 @@ import type {
   GithubIssueListDTO,
   GithubIssueSummaryDTO,
   LinkGithubIssueBody,
-  ReportDetailDTO,
 } from "@reprojs/shared"
 import RelativeTime from "~/components/common/relative-time.vue"
-import { pollUntil } from "~/composables/use-poll-until"
 
 interface Props {
   projectId: string
@@ -142,9 +140,6 @@ const chosen = computed<GithubIssueSummaryDTO | null>(() =>
 )
 const submitting = ref(false)
 
-// Linking is followed by an async reconcile; poll like "Create issue" does so
-// the parent refetches once the link has landed. ~12s ceiling.
-const LINK_POLL = { attempts: 12, intervalMs: 1_000 } as const
 const abort = new AbortController()
 onUnmounted(() => {
   abort.abort()
@@ -164,15 +159,6 @@ async function confirm(): Promise<void> {
       body,
       signal: abort.signal,
     })
-    await pollUntil(
-      () =>
-        $fetch<ReportDetailDTO>(`/api/projects/${props.projectId}/reports/${props.reportId}`, {
-          credentials: "include",
-          signal: abort.signal,
-        }),
-      (r) => r.githubIssueNumber !== null,
-      LINK_POLL,
-    )
     if (abort.signal.aborted) return
     emit("attached", issue.number)
     emit("update:open", false)
